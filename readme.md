@@ -48,12 +48,31 @@ Client                           Service
 
 # References
 
-## OPRF
+## PAKE / OPAQUE
+The origins of this protocol are based on the OPAQUE protocol, which is a password-authenticated 
+key exchange (PAKE) protocol that allows two parties to establish a shared secret 
+over an insecure channel using a password. 
+The OPRF is a key component of the OPAQUE protocol, as it allows the client to 
+compute a blinded version of the password without revealing it to the server.
+- [Original Paper](https://eprint.iacr.org/2018/163.pdf)
+- [Password-authenticated key exchange - Wikipedia](https://en.wikipedia.org/wiki/Password-authenticated_key_exchange)
 
+## OPRF
+Oblivious Pseudorandom Function (OPRF) is a cryptographic mechanism that allows 
+one party (the client) to compute a pseudorandom function on an input without 
+revealing the input to the other party (the server). The server holds a secret 
+key that is used to compute the pseudorandom function, but it does not learn 
+anything about the client's input. This is used for things like password hashing 
+and secure multi-party computation.
 - [Oblivious Pseudorandom Function - Wikipedia](https://en.wikipedia.org/wiki/Oblivious_pseudorandom_function)
 - [RFC 9497](https://www.rfc-editor.org/rfc/rfc9497.html)
 
 ## Hash-to-Curve
+Hash-to-curve is a technique used in elliptic curve cryptography to map arbitrary 
+input data (such as a string) to a point on an elliptic curve. 
+Protocols like OPRF uses this technique to derive a point on the curve from the 
+input text. The hash-to-curve process ensures that the resulting point is 
+uniformly distributed on the curve. That uniform distribution is needed for security applications.
 - [RFC 9380](https://www.rfc-editor.org/rfc/rfc9380.html)
 
 ## Origins of the name
