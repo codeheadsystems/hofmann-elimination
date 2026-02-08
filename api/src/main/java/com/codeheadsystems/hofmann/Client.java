@@ -1,15 +1,20 @@
-package com.codeheadsystems.hofman;
+package com.codeheadsystems.hofmann;
 
-import static java.util.UUID.randomUUID;
+import static com.codeheadsystems.hofmann.Curve.BYTES_TO_HEX;
+import static com.codeheadsystems.hofmann.Curve.ECPOINT_TO_HEX;
+import static com.codeheadsystems.hofmann.Curve.HASH;
+import static com.codeheadsystems.hofmann.Curve.HEX_TO_ECPOINT;
 
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
-import org.bouncycastle.crypto.params.ECDomainParameters;
+import java.util.UUID;
 import org.bouncycastle.math.ec.ECPoint;
 
 public interface Client {
 
-  ECDomainParameters DOMAIN = Curve.DEFAULT_CURVE;
+  default ClientKey generateClientKey(final Server server) {
+    return server.generateClientKey(customerId());
+  }
 
   /**
    * Defines the steps the client takes to convert sensitive data into a key that can be used for elimination.
@@ -23,16 +28,16 @@ public interface Client {
                                      final ClientKey clientKey,
                                      final String sensitiveData) {
     // Generate our request-unique data. This is for debug tracking
-    final String requestId = randomUUID().toString();
+    final String requestId = UUID.randomUUID().toString();
     // We generate a random blinding factor, which is a random scalar value mod to the points on the curve.
     // This blinding factor is used to blind the hashed data point before sending it to the server. The blinding process
     // ensures that the server cannot learn anything about the original data or the hashed point, as it only sees a
     // blinded version of the point.
-    final BigInteger blindingFactor = randomScalar();
+    final BigInteger blindingFactor = Curve.RANDOM_SCALER();
 
     // First we hash the sensitive data to create a fixed-length representation. The additional security here is nominal,
     // as this step does not protect from rainbow table attacks or preimage attacks on the original data.
-    final byte[] hashedBytes = generateHashString(sensitiveData.getBytes(StandardCharsets.UTF_8));
+    final byte[] hashedBytes = HASH(sensitiveData.getBytes(StandardCharsets.UTF_8));
 
     // Next, we map the hashed bytes to a point on the elliptic curve. This is done using a deterministic method that
     // ensures the same input bytes will always produce the same curve point.
@@ -52,8 +57,8 @@ public interface Client {
     // final identify key from this and the process identifier provided by the server, which allows us to trace back the
     // final key to the specific server process that generated it.
     final byte[] unblindedBytes = unblindedPoint.getEncoded(false);
-    final byte[] finalHash = generateHashString(unblindedBytes);
-    return eliminationResponse.processIdentifier() + ":" + bytesToHex(finalHash);
+    final byte[] finalHash = HASH(unblindedBytes);
+    return eliminationResponse.processIdentifier() + ":" + BYTES_TO_HEX(finalHash);
   }
 
   /**
@@ -70,8 +75,8 @@ public interface Client {
     // Convert the response back to an ECPoint and unblind it using the inverse of the blinding factor. This step
     // retrieves the original point that resulted from the server processed, without revealing any information about
     // the original data to the server.
-    final ECPoint eliminationPoint = hexToEcPoint(hex);
-    final BigInteger inverseBlindingFactor = blindingFactor.modInverse(DOMAIN.getN());
+    final ECPoint eliminationPoint = HEX_TO_ECPOINT(hex);
+    final BigInteger inverseBlindingFactor = blindingFactor.modInverse(Curve.DEFAULT_CURVE.getN());
     return eliminationPoint.multiply(inverseBlindingFactor);
   }
 
@@ -92,17 +97,10 @@ public interface Client {
 
     // We convert the blinded point to a hexadecimal string representation to send to the server. The server will process
     // this blinded point and return an elimination point, which is also represented as a hexadecimal string.
-    return ecPointToHex(blindedPoint);
+    return ECPOINT_TO_HEX(blindedPoint);
   }
 
-  /**
-   * Hashes the input bytes using a secure hash function to produce a fixed-length output. We use the BLAKE3 hash function
-   * with an output length of 32 bytes (256 bits) to ensure a strong and unique hash for the input data.
-   *
-   * @param bytes The input data to be hashed.
-   * @return A byte array containing the hash of the input data.
-   */
-  byte[] generateHashString(byte[] bytes);
+  String customerId();
 
   /**
    * Maps the hashed bytes to a point on the elliptic curve. This is done using a deterministic method that ensures the
@@ -114,37 +112,5 @@ public interface Client {
    * cryptographic operations.
    */
   ECPoint hashToCurve(byte[] sensitiveBytes);
-
-  /**
-   * Generates a random scalar value that can be used as a blinding factor in the protocol. The scalar should be a
-   * random integer in the range [1, n-1], where n is the order of the elliptic curve group.
-   *
-   * @return A random BigInteger that can be used as a blinding factor in the protocol.
-   */
-  BigInteger randomScalar();
-
-  /**
-   * Converts an ECPoint to a hexadecimal string representation.
-   *
-   * @param blindedPoint The ECPoint that we want to convert to a hex string.
-   * @return A hex-encoded string representation of the given ECPoint.
-   */
-  String ecPointToHex(ECPoint blindedPoint);
-
-  /**
-   * Converts a hexadecimal string representation of an ECPoint back to an ECPoint object.
-   *
-   * @param hex The hex-encoded elliptic curve point.
-   * @return An ECPoint object representing the point encoded in the given hexadecimal string.
-   */
-  ECPoint hexToEcPoint(String hex);
-
-  /**
-   * Converts a byte array to a hexadecimal string representation.
-   *
-   * @param bytes The byte array that we want to convert to a hex string.
-   * @return A hex-encoded string representation of the given byte array.
-   */
-  String bytesToHex(byte[] bytes);
 
 }

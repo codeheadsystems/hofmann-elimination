@@ -1,4 +1,4 @@
-package com.codeheadsystems.hofman;
+package com.codeheadsystems.hofmann;
 
 public interface Server {
 

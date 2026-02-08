@@ -1,4 +1,4 @@
-package com.codeheadsystems.hofman;
+package com.codeheadsystems.hofmann;
 
 /**
  * The response from the server after processing an elimination request.
