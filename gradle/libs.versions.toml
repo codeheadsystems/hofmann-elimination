@@ -4,8 +4,8 @@
 [versions]
 bouncy-castle = "1.83"
 commons-math3 = "3.6.1"
-guava = "33.4.6-jre"
-junit-jupiter = "5.12.1"
+guava = "33.5.0-jre"
+junit-jupiter = "6.0.2"
 
 [libraries]
 bouncy-castle = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncy-castle" }
