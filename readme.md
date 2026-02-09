@@ -2,9 +2,19 @@
 
 ## Purpose
 
-This project is an implementation of the the OPRF ([Oblivious Pseudo-Random Function](https://en.wikipedia.org/wiki/Oblivious_pseudorandom_function)) protocol to create consistent, reusable keys across multiple clients without sharing the
-information used to create the key. This results in an identifier that can be used with services without those services knowing the origins of the key. Useful when
-the identifier is based on information to hide from the service or even other clients.
+This project provides a protocol to create consistent, 
+reusable identifier across multiple clients without sharing the
+key data used to make up that identifier. This results in an identifier that can 
+be used with services without those services knowing the origins of the data used. 
+Useful when that data is based on information one does not want to expose
+outside of the owning client. This makes uses of OPRF (Oblivious Pseudorandom Function) 
+and hash-to-curve techniques to achieve this goal.
+
+Note that OPRF is extended to limit the ability of the service 
+to compute the same blinded point for different clients. This allows for multiple 
+clients to use the same input text and get the same output, but without the service 
+being able to link those outputs together. It also reduces the ability to brute-force 
+attack the server secret key from just the data transmitted between client and server.
 
 # Protocol
 
@@ -20,13 +30,13 @@ The protocol relies on the following data types:
 The protocol flow is as follows:
 
 ```
-Client                           Service
-────────                         ───────
+Client                          Service
+────────                        ───────
 1. P = HashToCurve(text)
 2. Q = kᵢ · P · r
-3. Send Q  ──────────────────►   R = (s/kᵢ) · Q
-           ◄─────────────────    R = s · P · r
-4. U = r⁻¹ · R = s·P
+3. Send Q  ─────────────────►   R = (s/kᵢ) · Q
+           ◄─────────────────   R = s · P · r
+4. U = r⁻¹ · R = s · P
 5. idenentityKey = BLAKE3(U)
 ``` 
 
@@ -34,7 +44,7 @@ Client                           Service
 
 1. The client takes the input text and applies a hash-to-curve function to derive a point `P` on the elliptic curve.
 2. The client computes the blinded point `Q` by multiplying `P` with their client key `kᵢ` and a random blinding factor `r`.
-3. The client sends the blinded point `Q` to the service. The service computes `R` by multiplying `Q` with the master key `s` and divided by the customer's key `kᵢ`. This effectively cancels out the customer's key, resulting in `R = s · P · P`.
+3. The client sends the blinded point `Q` to the service. The service computes `R` by multiplying `Q` with the master key `s` and divided by the customer's key `kᵢ`. This effectively cancels out the customer's key, resulting in `R = s · P · r`.
 4. The client receives `R` and unblinds it by multiplying with the inverse of the blinding factor `r`, yielding `U = s·P`.
 5. Finally, the client can derive a consistent identity key from `U` using the hash function BLAKE3.
 
@@ -48,14 +58,16 @@ Client                           Service
 
 # References
 
-## PAKE / OPAQUE
-The origins of this protocol are based on the OPAQUE protocol, which is a password-authenticated 
-key exchange (PAKE) protocol that allows two parties to establish a shared secret 
-over an insecure channel using a password. 
+## OPAQUE / aPAKE
+The origins of the OPAQUE Augmented Password-Authenticated Key Exchange (aPAKE) 
+Protocol protocol is largely what this project is based on. 
+This protocol allows two parties to cooperate to securely compute a pseudorandom function
+over an insecure channel without revealing the input to the other party.
 The OPRF is a key component of the OPAQUE protocol, as it allows the client to 
-compute a blinded version of the password without revealing it to the server.
+compute a blinded version of the password without revealing it to the server. 
 - [Original Paper](https://eprint.iacr.org/2018/163.pdf)
 - [Password-authenticated key exchange - Wikipedia](https://en.wikipedia.org/wiki/Password-authenticated_key_exchange)
+- [RFC 9807](https://www.rfc-editor.org/rfc/rfc9807.html)
 
 ## OPRF
 Oblivious Pseudorandom Function (OPRF) is a cryptographic mechanism that allows 
