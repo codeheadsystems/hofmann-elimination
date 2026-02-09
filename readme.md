@@ -87,11 +87,9 @@ Protocols like OPRF use this technique to derive a point on the curve from the
 input text. The hash-to-curve process ensures that the resulting point is
 uniformly distributed on the curve. That uniform distribution is needed for security applications.
 
-**Note:** The current implementation uses a simplified deterministic point generation
-method (hash then multiply by generator) rather than the full RFC 9380 hash-to-curve
-specification. This is sufficient for the protocol's requirements but does not provide
-all the security properties of RFC 9380-compliant hash-to-curve.
-- [RFC 9380](https://www.rfc-editor.org/rfc/rfc9380.html)
+Implemented the [RFC 9380](https://www.rfc-editor.org/rfc/rfc9380.html) specification, but note it was implemented via Claude Code.
+The original approximation is included as well. Expect changes there as I evaluate the work
+done by Claude and look for security or implementation issues.
 
 ## Origins of the name
 

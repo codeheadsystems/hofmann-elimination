@@ -5,6 +5,7 @@ import static com.codeheadsystems.hofmann.Curve.ECPOINT_TO_HEX;
 import static com.codeheadsystems.hofmann.Curve.HASH;
 import static com.codeheadsystems.hofmann.Curve.HEX_TO_ECPOINT;
 
+import com.codeheadsystems.hofmann.rfc9380.HashToCurve;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
@@ -107,20 +108,31 @@ public class Client {
   }
 
   /**
-   * Maps the hashed bytes to a point on the elliptic curve. This is done using a deterministic method that ensures the
-   * same input bytes will always produce the same curve point. The curve we use is secp256k1, which is widely used in
-   * cryptographic applications. The mapping should ensure that the resulting point is valid and lies on the curve.
+   * Maps the hashed bytes to a point on the elliptic curve using RFC 9380 compliant hash-to-curve.
+   * <p>
+   * This implementation follows RFC 9380 Section 8.7 (secp256k1_XMD:SHA-256_SSWU_RO_) which provides:
    * <ol>
-   * <li> Converts the hash to a scalar in the valid range [1, n-1] using modular arithmetic</li>
-   * <li> Multiplies the generator point G by the scalar to produce a deterministic point on the curve</li>
-   * <li> Normalizes the point for consistent representation</li>
+   * <li> Uniform distribution of points across the curve (random oracle property)</li>
+   * <li> Deterministic mapping - same input always produces the same output</li>
+   * <li> Cryptographic security properties required for OPRF-like protocols</li>
    * </ol>
+   * <p>
+   * The mapping uses:
+   * - hash_to_field: Expands input to field elements using SHA-256
+   * - Simplified SWU: Maps field elements to an isogenous curve
+   * - 3-isogeny: Transforms points to secp256k1
    *
    * @param hash The input bytes that have been hashed and need to be mapped to a curve point.
-   * @return An ECPoint representing the hashed data on the elliptic curve, which can be used in subsequent
-   * cryptographic operations.
+   * @return An ECPoint representing the hashed data on the elliptic curve, uniformly distributed and
+   *         cryptographically secure.
    */
   private ECPoint hashToCurve(byte[] hash) {
+    // Use application-specific domain separation tag
+    String dst = "HOFMANN-ELIMINATION-V1-CS01";
+    return HashToCurve.hash(hash, dst, Curve.DEFAULT_CURVE);
+  }
+
+  private ECPoint hashToCurveApproximation(byte[] hash) {
     BigInteger scalar = new BigInteger(1, hash)
         .mod(Curve.DEFAULT_CURVE.getN().subtract(BigInteger.ONE))
         .add(BigInteger.ONE);
