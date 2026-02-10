@@ -55,8 +55,6 @@ Client                          Service
 The OPAQUE Augmented Password-Authenticated Key Exchange (aPAKE) protocol is a primary
 inspiration for this project. OPAQUE allows two parties to cooperate to securely compute
 a pseudorandom function over an insecure channel without revealing the input to the other party.
-The OPRF component is key, as it allows the client to compute a blinded version of the password
-without revealing it to the server.
 - [Original Paper](https://eprint.iacr.org/2018/163.pdf)
 - [Password-authenticated key exchange - Wikipedia](https://en.wikipedia.org/wiki/Password-authenticated_key_exchange)
 - [RFC 9807](https://www.rfc-editor.org/rfc/rfc9807.html)
@@ -66,8 +64,7 @@ Oblivious Pseudorandom Function (OPRF) is a cryptographic mechanism that allows
 one party (the client) to compute a pseudorandom function on an input without
 revealing the input to the other party (the server). The server holds a secret
 key that is used to compute the pseudorandom function, but it does not learn
-anything about the client's input. This is used for things like password hashing
-and secure multi-party computation.
+anything about the client's input. This is used for things like secure multi-party computation.
 - [Oblivious Pseudorandom Function - Wikipedia](https://en.wikipedia.org/wiki/Oblivious_pseudorandom_function)
 - [RFC 9497](https://www.rfc-editor.org/rfc/rfc9497.html)
 
@@ -84,6 +81,15 @@ done by Claude and look for security or implementation issues.
 
 ## Origins of the name
 
-The [Hofmann Elimination](https://en.wikipedia.org/wiki/Hofmann_elimination) is a chemical reaction that involves the elimination of an amine to produce an alkene. This reaction is named after the German chemist August Wilhelm von Hofmann, who first described it in the 19th century. The Hofmann elimination is often used to synthesize alkenes from amines. It does this by treating the quaternary ammonium salt with a strong base, such as sodium hydroxide, which leads to the elimination of the ammonium group and the formation of an alkene. The reaction is typically carried out under heat to facilitate the elimination process.
+The [Hofmann Elimination](https://en.wikipedia.org/wiki/Hofmann_elimination) is a chemical reaction that involves the elimination of an 
+amine to produce an alkene. This reaction is named after the German chemist August 
+Wilhelm von Hofmann, who first described it in the 19th century. The Hofmann elimination 
+is often used to synthesize alkenes from amines. It does this by treating the quaternary 
+ammonium salt with a strong base, such as sodium hydroxide, which leads to the elimination 
+of the ammonium group and the formation of an alkene. The reaction is typically carried out 
+under heat to facilitate the elimination process.
 
-Unlike other elimination reactions, the Hofmann elimination produces the least substituted alkene as the major product, which is a result of the steric hindrance around the quaternary ammonium salt. This makes it a useful reaction for synthesizing specific alkenes that may be difficult to obtain through other methods.
+Unlike other elimination reactions, the Hofmann elimination produces the least substituted 
+alkene as the major product, which is a result of the steric hindrance around the quaternary 
+ammonium salt. This makes it a useful reaction for synthesizing specific alkenes that may be 
+difficult to obtain through other methods.
