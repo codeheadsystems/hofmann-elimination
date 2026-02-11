@@ -1,8 +1,8 @@
 package com.codeheadsystems.hofmann;
 
-import static com.codeheadsystems.hofmann.Curve.BYTES_TO_HEX;
-import static com.codeheadsystems.hofmann.Curve.ECPOINT_TO_HEX;
-import static com.codeheadsystems.hofmann.Curve.HEX_TO_ECPOINT;
+import static com.codeheadsystems.hofmann.EcUtilities.BYTES_TO_HEX;
+import static com.codeheadsystems.hofmann.EcUtilities.ECPOINT_TO_HEX;
+import static com.codeheadsystems.hofmann.EcUtilities.HEX_TO_ECPOINT;
 
 import com.codeheadsystems.hofmann.rfc9380.HashToCurve;
 import com.codeheadsystems.hofmann.rfc9497.OprfSuite;
@@ -32,7 +32,7 @@ public class Client {
     // This blinding factor is used to blind the hashed data point before sending it to the server. The blinding process
     // ensures that the server cannot learn anything about the original data or the hashed point, as it only sees a
     // blinded version of the point.
-    final BigInteger blindingFactor = Curve.RANDOM_SCALER();
+    final BigInteger blindingFactor = Curve.P256_CURVE.randomScaler();
 
     // Use raw UTF-8 bytes as input (RFC 9497 passes input directly to HashToGroup)
     final byte[] input = sensitiveData.getBytes(StandardCharsets.UTF_8);
@@ -76,7 +76,7 @@ public class Client {
    * @return An ECPoint on P-256.
    */
   private ECPoint hashToCurve(byte[] input) {
-    return HashToCurve.forP256(Curve.DEFAULT_CURVE).hashToCurve(input, OprfSuite.HASH_TO_GROUP_DST);
+    return HashToCurve.forP256(Curve.P256_CURVE.params()).hashToCurve(input, OprfSuite.HASH_TO_GROUP_DST);
   }
 
 }

@@ -17,7 +17,6 @@ repositories {
 
 dependencies {
 
-    implementation(project(":api"))
     implementation(libs.bundles.core)
 
     testImplementation(libs.bundles.test)

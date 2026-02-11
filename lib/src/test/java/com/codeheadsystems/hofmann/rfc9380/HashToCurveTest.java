@@ -21,7 +21,7 @@ public class HashToCurveTest {
 
   @BeforeEach
   void setUp() {
-    hashToCurve = HashToCurve.forSecp256k1(Curve.SECP256K1_CURVE);
+    hashToCurve = HashToCurve.forSecp256k1(Curve.SECP256K1_CURVE.params());
   }
 
   @Test
@@ -152,7 +152,7 @@ public class HashToCurveTest {
     // Check that the point satisfies the curve equation: y^2 = x^3 + 7
     BigInteger x = point.getXCoord().toBigInteger();
     BigInteger y = point.getYCoord().toBigInteger();
-    BigInteger p = Curve.SECP256K1_CURVE.getCurve().getField().getCharacteristic();
+    BigInteger p = Curve.SECP256K1_CURVE.params().getCurve().getField().getCharacteristic();
 
     System.out.println("On-curve test: x = " + x.toString(16));
     System.out.println("On-curve test: y = " + y.toString(16));

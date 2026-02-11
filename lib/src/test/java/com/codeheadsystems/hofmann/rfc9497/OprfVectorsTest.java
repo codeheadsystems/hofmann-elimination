@@ -3,6 +3,7 @@ package com.codeheadsystems.hofmann.rfc9497;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.codeheadsystems.hofmann.Curve;
+import com.codeheadsystems.hofmann.EcUtilities;
 import com.codeheadsystems.hofmann.rfc9380.HashToCurve;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -47,7 +48,7 @@ public class OprfVectorsTest {
         "3338fa65ec36e0290022b48eb562889d89dbfa691d1cde91517fa222ed7ad364", 16);
 
     // Client: H(input) using RFC 9497 HashToGroup DST
-    ECPoint P = HashToCurve.forP256(Curve.DEFAULT_CURVE)
+    ECPoint P = HashToCurve.forP256(Curve.P256_CURVE.params())
         .hashToCurve(input, OprfSuite.HASH_TO_GROUP_DST);
 
     // Client: blind
@@ -59,7 +60,7 @@ public class OprfVectorsTest {
     // Client: finalize
     byte[] output = OprfSuite.finalize(input, blind, evaluatedElement);
 
-    assertThat(Curve.BYTES_TO_HEX(output))
+    assertThat(EcUtilities.BYTES_TO_HEX(output))
         .isEqualTo("a0b34de5fa4c5b6da07e72af73cc507cceeb48981b97b7285fc375345fe495dd");
   }
 
@@ -76,7 +77,7 @@ public class OprfVectorsTest {
         "e6d0f1d89ad552e859d708177054aca4695ef33b5d89d4d3f9a2c376e08a1450", 16);
 
     // Client: H(input) using RFC 9497 HashToGroup DST
-    ECPoint P = HashToCurve.forP256(Curve.DEFAULT_CURVE)
+    ECPoint P = HashToCurve.forP256(Curve.P256_CURVE.params())
         .hashToCurve(input, OprfSuite.HASH_TO_GROUP_DST);
 
     // Client: blind
@@ -88,7 +89,7 @@ public class OprfVectorsTest {
     // Client: finalize
     byte[] output = OprfSuite.finalize(input, blind, evaluatedElement);
 
-    assertThat(Curve.BYTES_TO_HEX(output))
+    assertThat(EcUtilities.BYTES_TO_HEX(output))
         .isEqualTo("c748ca6dd327f0ce85f4ae3a8cd6d4d5390bbb804c9e12dcf94f853fece3dcce");
   }
 }

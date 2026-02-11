@@ -2,7 +2,6 @@ package com.codeheadsystems.hofmann.rfc9497;
 
 import com.codeheadsystems.hofmann.Curve;
 import com.codeheadsystems.hofmann.rfc9380.HashToField;
-import com.codeheadsystems.hofmann.rfc9380.HashToCurve;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -91,7 +90,7 @@ public class OprfSuite {
    */
   public static byte[] finalize(byte[] input, BigInteger blind, ECPoint evaluatedElement) {
     // Unblind: N = blind^(-1) * evaluatedElement = skS * H(input)
-    BigInteger n = Curve.DEFAULT_CURVE.getN();
+    BigInteger n = Curve.P256_CURVE.n();
     BigInteger inverseBlind = blind.modInverse(n);
     ECPoint N = evaluatedElement.multiply(inverseBlind).normalize();
 
