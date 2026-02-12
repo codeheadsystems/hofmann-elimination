@@ -78,7 +78,7 @@ public class Client {
    * @return An ECPoint on P-256.
    */
   private ECPoint hashToCurve(byte[] input) {
-    return HashToCurve.forP256(Curve.P256_CURVE.params()).hashToCurve(input, OprfSuite.HASH_TO_GROUP_DST);
+    return HashToCurve.forP256().hashToCurve(input, OprfSuite.HASH_TO_GROUP_DST);
   }
 
 }

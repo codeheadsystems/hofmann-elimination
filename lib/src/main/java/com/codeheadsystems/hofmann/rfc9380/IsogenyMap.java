@@ -1,5 +1,6 @@
 package com.codeheadsystems.hofmann.rfc9380;
 
+import com.codeheadsystems.hofmann.Curve;
 import java.math.BigInteger;
 import org.bouncycastle.math.ec.ECCurve;
 import org.bouncycastle.math.ec.ECFieldElement;
@@ -29,10 +30,10 @@ public class IsogenyMap {
    * @param yDenCoeffs  Coefficients for y denominator polynomial
    */
   private IsogenyMap(ECCurve targetCurve,
-                    BigInteger[] xNumCoeffs,
-                    BigInteger[] xDenCoeffs,
-                    BigInteger[] yNumCoeffs,
-                    BigInteger[] yDenCoeffs) {
+                     BigInteger[] xNumCoeffs,
+                     BigInteger[] xDenCoeffs,
+                     BigInteger[] yNumCoeffs,
+                     BigInteger[] yDenCoeffs) {
     this.targetCurve = targetCurve;
     this.xNumCoeffs = xNumCoeffs;
     this.xDenCoeffs = xDenCoeffs;
@@ -44,10 +45,9 @@ public class IsogenyMap {
    * Factory method for secp256k1 3-isogeny map.
    * Coefficients are from RFC 9380 Appendix E.1 for the secp256k1 3-isogeny.
    *
-   * @param targetCurve The secp256k1 curve
    * @return IsogenyMap instance configured for secp256k1
    */
-  public static IsogenyMap forSecp256k1(ECCurve targetCurve) {
+  public static IsogenyMap forSecp256k1() {
     // x-coordinate numerator coefficients (degree 3)
     BigInteger[] xNum = {
         new BigInteger("8e38e38e38e38e38e38e38e38e38e38e38e38e38e38e38e38e38e38daaaaa8c7", 16),
@@ -79,7 +79,7 @@ public class IsogenyMap {
         BigInteger.ONE
     };
 
-    return new IsogenyMap(targetCurve, xNum, xDen, yNum, yDen);
+    return new IsogenyMap(Curve.SECP256K1_CURVE.curve(), xNum, xDen, yNum, yDen);
   }
 
   /**

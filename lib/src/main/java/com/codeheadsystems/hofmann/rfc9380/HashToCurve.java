@@ -1,8 +1,8 @@
 package com.codeheadsystems.hofmann.rfc9380;
 
+import com.codeheadsystems.hofmann.Curve;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
-import org.bouncycastle.crypto.params.ECDomainParameters;
 import org.bouncycastle.math.ec.ECCurve;
 import org.bouncycastle.math.ec.ECPoint;
 
@@ -64,13 +64,12 @@ public class HashToCurve {
    * Factory method to create a HashToCurve instance for secp256k1.
    * Uses the standard parameters from RFC 9380 Section 8.7.
    *
-   * @param domainParams secp256k1 domain parameters
    * @return HashToCurve instance configured for secp256k1_XMD:SHA-256_SSWU_RO_
    */
-  public static HashToCurve forSecp256k1(ECDomainParameters domainParams) {
+  public static HashToCurve forSecp256k1() {
     HashToField hashToField = HashToField.forSecp256k1();
-    SimplifiedSWU simplifiedSWU = SimplifiedSWU.forSecp256k1(domainParams);
-    IsogenyMap isogenyMap = IsogenyMap.forSecp256k1(domainParams.getCurve());
+    SimplifiedSWU simplifiedSWU = SimplifiedSWU.forSecp256k1();
+    IsogenyMap isogenyMap = IsogenyMap.forSecp256k1();
 
     return new HashToCurve(hashToField, simplifiedSWU, isogenyMap);
   }
@@ -80,37 +79,13 @@ public class HashToCurve {
    * Uses the standard parameters from RFC 9380 Section 8.2.
    * No isogeny is needed since P-256 has A != 0.
    *
-   * @param domainParams P-256 domain parameters
    * @return HashToCurve instance configured for P256_XMD:SHA-256_SSWU_RO_
    */
-  public static HashToCurve forP256(ECDomainParameters domainParams) {
+  public static HashToCurve forP256() {
     HashToField hashToField = HashToField.forP256();
-    SimplifiedSWU simplifiedSWU = SimplifiedSWU.forP256(domainParams);
+    SimplifiedSWU simplifiedSWU = SimplifiedSWU.forP256();
 
-    return new HashToCurve(hashToField, simplifiedSWU, domainParams.getCurve());
-  }
-
-  /**
-   * Convenience method to hash directly using secp256k1 with default DST.
-   *
-   * @param message      Message to hash
-   * @param domainParams secp256k1 domain parameters
-   * @return Point on secp256k1
-   */
-  public static ECPoint hash(byte[] message, ECDomainParameters domainParams) {
-    return forSecp256k1(domainParams).hashToCurve(message, DEFAULT_DST);
-  }
-
-  /**
-   * Convenience method with custom DST.
-   *
-   * @param message      Message to hash
-   * @param dst          Application-specific domain separation tag
-   * @param domainParams secp256k1 domain parameters
-   * @return Point on secp256k1
-   */
-  public static ECPoint hash(byte[] message, String dst, ECDomainParameters domainParams) {
-    return forSecp256k1(domainParams).hashToCurve(message, dst);
+    return new HashToCurve(hashToField, simplifiedSWU, Curve.P256_CURVE.curve());
   }
 
   /**

@@ -48,7 +48,7 @@ public class ComponentTest {
 
   @Test
   void stage2_simplifiedSWU() {
-    SimplifiedSWU swu = SimplifiedSWU.forSecp256k1(Curve.SECP256K1_CURVE.params());
+    SimplifiedSWU swu = SimplifiedSWU.forSecp256k1();
 
     BigInteger[] swu0 = swu.map(EXPECTED_U0);
     BigInteger[] swu1 = swu.map(EXPECTED_U1);
@@ -83,8 +83,8 @@ public class ComponentTest {
 
   @Test
   void stage3_isogenyMap() {
-    SimplifiedSWU swu = SimplifiedSWU.forSecp256k1(Curve.SECP256K1_CURVE.params());
-    IsogenyMap iso = IsogenyMap.forSecp256k1(Curve.SECP256K1_CURVE.params().getCurve());
+    SimplifiedSWU swu = SimplifiedSWU.forSecp256k1();
+    IsogenyMap iso = IsogenyMap.forSecp256k1();
 
     BigInteger[] swu0 = swu.map(EXPECTED_U0);
     ECPoint Q0 = iso.map(swu0);
@@ -110,7 +110,7 @@ public class ComponentTest {
 
   @Test
   void stage4_fullPipeline() {
-    HashToCurve h2c = HashToCurve.forSecp256k1(Curve.SECP256K1_CURVE.params());
+    HashToCurve h2c = HashToCurve.forSecp256k1();
     byte[] msg = "".getBytes(StandardCharsets.UTF_8);
 
     ECPoint P = h2c.hashToCurve(msg, DST);

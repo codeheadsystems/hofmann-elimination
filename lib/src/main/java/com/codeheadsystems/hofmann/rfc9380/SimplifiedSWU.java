@@ -1,5 +1,6 @@
 package com.codeheadsystems.hofmann.rfc9380;
 
+import com.codeheadsystems.hofmann.Curve;
 import java.math.BigInteger;
 import org.bouncycastle.crypto.params.ECDomainParameters;
 import org.bouncycastle.math.ec.ECCurve;
@@ -46,10 +47,9 @@ public class SimplifiedSWU {
    * Factory method for secp256k1 isogenous curve parameters.
    * These are the standard parameters from RFC 9380 Section 8.7.
    *
-   * @param domainParams secp256k1 domain parameters
    * @return SimplifiedSWU instance configured for secp256k1
    */
-  public static SimplifiedSWU forSecp256k1(ECDomainParameters domainParams) {
+  public static SimplifiedSWU forSecp256k1() {
     // A' for secp256k1 isogenous curve
     BigInteger APrime = new BigInteger(
         "3f8731abdd661adca08a5558f0f5d272e953d363cb6f0e5d405447c01a444533",
@@ -62,7 +62,7 @@ public class SimplifiedSWU {
     // Z parameter
     BigInteger ZValue = BigInteger.valueOf(-11);
 
-    return new SimplifiedSWU(domainParams, APrime, BPrime, ZValue);
+    return new SimplifiedSWU(Curve.SECP256K1_CURVE.params(), APrime, BPrime, ZValue);
   }
 
   /**
@@ -70,10 +70,9 @@ public class SimplifiedSWU {
    * For P-256, A != 0, so Simplified SWU maps directly to the curve (no isogeny needed).
    * Parameters from RFC 9380 Section 8.2.
    *
-   * @param domainParams P-256 domain parameters
    * @return SimplifiedSWU instance configured for P-256
    */
-  public static SimplifiedSWU forP256(ECDomainParameters domainParams) {
+  public static SimplifiedSWU forP256() {
     // P-256 curve coefficient A = -3 mod p
     BigInteger APrime = new BigInteger(
         "ffffffff00000001000000000000000000000000fffffffffffffffffffffffc",
@@ -89,7 +88,7 @@ public class SimplifiedSWU {
     // Z = -10 mod p (from RFC 9380 Section 8.2, Table 5)
     BigInteger ZValue = BigInteger.valueOf(-10);
 
-    return new SimplifiedSWU(domainParams, APrime, BPrime, ZValue);
+    return new SimplifiedSWU(Curve.P256_CURVE.params(), APrime, BPrime, ZValue);
   }
 
   /**
@@ -268,13 +267,6 @@ public class SimplifiedSWU {
   /**
    * Result of sqrt_ratio computation.
    */
-  static class SqrtRatioResult {
-    final boolean isSquare;
-    final ECFieldElement root;
-
-    SqrtRatioResult(boolean isSquare, ECFieldElement root) {
-      this.isSquare = isSquare;
-      this.root = root;
-    }
+  record SqrtRatioResult(boolean isSquare, ECFieldElement root) {
   }
 }

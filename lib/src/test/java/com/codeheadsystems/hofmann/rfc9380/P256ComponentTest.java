@@ -37,7 +37,7 @@ public class P256ComponentTest {
   }
   @Test
   void stage2_simplifiedSWU() {
-    SimplifiedSWU swu = SimplifiedSWU.forP256(Curve.P256_CURVE.params());
+    SimplifiedSWU swu = SimplifiedSWU.forP256();
     BigInteger[] swu0 = swu.map(EXPECTED_U0);
     BigInteger[] swu1 = swu.map(EXPECTED_U1);
     System.out.println("=== Stage 2: Simplified SWU (P-256) ===");
@@ -52,7 +52,7 @@ public class P256ComponentTest {
   }
   @Test
   void stage3_pointAddition() {
-    SimplifiedSWU swu = SimplifiedSWU.forP256(Curve.P256_CURVE.params());
+    SimplifiedSWU swu = SimplifiedSWU.forP256();
     BigInteger[] swu0 = swu.map(EXPECTED_U0);
     BigInteger[] swu1 = swu.map(EXPECTED_U1);
     ECPoint Q0 = Curve.P256_CURVE.params().getCurve().createPoint(swu0[0], swu0[1]);
@@ -66,7 +66,7 @@ public class P256ComponentTest {
   }
   @Test
   void stage4_fullPipeline() {
-    HashToCurve h2c = HashToCurve.forP256(Curve.P256_CURVE.params());
+    HashToCurve h2c = HashToCurve.forP256();
     byte[] msg = "".getBytes(StandardCharsets.UTF_8);
     ECPoint P = h2c.hashToCurve(msg, DST);
     System.out.println("=== Stage 4: Full Pipeline (P-256) ===");

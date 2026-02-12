@@ -21,7 +21,7 @@ public class HashToCurveTest {
 
   @BeforeEach
   void setUp() {
-    hashToCurve = HashToCurve.forSecp256k1(Curve.SECP256K1_CURVE.params());
+    hashToCurve = HashToCurve.forSecp256k1();
   }
 
   @Test

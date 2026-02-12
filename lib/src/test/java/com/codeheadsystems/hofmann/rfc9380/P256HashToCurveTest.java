@@ -21,7 +21,7 @@ public class P256HashToCurveTest {
 
   @BeforeEach
   void setUp() {
-    hashToCurve = HashToCurve.forP256(Curve.P256_CURVE.params());
+    hashToCurve = HashToCurve.forP256();
   }
 
   @Test

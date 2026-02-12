@@ -48,7 +48,7 @@ public class OprfVectorsTest {
         "3338fa65ec36e0290022b48eb562889d89dbfa691d1cde91517fa222ed7ad364", 16);
 
     // Client: H(input) using RFC 9497 HashToGroup DST
-    ECPoint P = HashToCurve.forP256(Curve.P256_CURVE.params())
+    ECPoint P = HashToCurve.forP256()
         .hashToCurve(input, OprfSuite.HASH_TO_GROUP_DST);
 
     // Client: blind
@@ -77,7 +77,7 @@ public class OprfVectorsTest {
         "e6d0f1d89ad552e859d708177054aca4695ef33b5d89d4d3f9a2c376e08a1450", 16);
 
     // Client: H(input) using RFC 9497 HashToGroup DST
-    ECPoint P = HashToCurve.forP256(Curve.P256_CURVE.params())
+    ECPoint P = HashToCurve.forP256()
         .hashToCurve(input, OprfSuite.HASH_TO_GROUP_DST);
 
     // Client: blind
