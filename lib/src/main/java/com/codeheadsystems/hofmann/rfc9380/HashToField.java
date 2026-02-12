@@ -42,11 +42,8 @@ public class HashToField {
         "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F",
         16
     );
-
     // L = 48 bytes (for 128-bit security with 256-bit field)
-    int L = 48;
-
-    return new HashToField(p, L);
+    return new HashToField(p, 48);
   }
 
   /**
@@ -61,6 +58,7 @@ public class HashToField {
         "ffffffff00000001000000000000000000000000ffffffffffffffffffffffff",
         16
     );
+    // L = 48 bytes (for 128-bit security with 256-bit field)
     return new HashToField(p, 48);
   }
 
@@ -76,6 +74,7 @@ public class HashToField {
         "ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
         16
     );
+    // L = 48 bytes (for 128-bit security with 256-bit field)
     return new HashToField(n, 48);
   }
 
@@ -92,17 +91,14 @@ public class HashToField {
       throw new IllegalArgumentException("count must be positive");
     }
 
-    // len_in_bytes = count * m * L
     int lenInBytes = count * m * L;
 
-    // uniform_bytes = expand_message_xmd(msg, DST, len_in_bytes)
     byte[] uniformBytes = ExpandMessageXmd.expand(msg, dst, lenInBytes);
 
     // Convert uniform_bytes to field elements
     BigInteger[] fieldElements = new BigInteger[count];
 
     for (int i = 0; i < count; i++) {
-      // elm_offset = L * i * m
       int elmOffset = L * i * m;
 
       // tv = substr(uniform_bytes, elm_offset, L)
