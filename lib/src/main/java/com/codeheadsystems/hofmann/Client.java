@@ -48,8 +48,7 @@ public class Client {
     final EliminationResponse eliminationResponse = server.process(eliminationRequest);
 
     // Get the server's evaluated element (still blinded)
-    final ECPoint evaluatedElement = curve.toEcPoint(eliminationResponse.hexCodedEcPoint())
-        .orElseThrow(() -> new IllegalArgumentException("Invalid hex-encoded EC point from server: " + eliminationResponse.hexCodedEcPoint()));
+    final ECPoint evaluatedElement = curve.toEcPoint(eliminationResponse.hexCodedEcPoint());
 
     // RFC 9497 Finalize: unblind and produce the OPRF output
     final byte[] finalHash = OprfSuite.finalize(input, blindingFactor, evaluatedElement);
@@ -65,9 +64,7 @@ public class Client {
    * @return A hex-encoded string representation of the blinded EC point, which can be sent to the server for processing.
    */
   private String blindEcPointToHex(final ECPoint hashedData, final BigInteger blindingFactor) {
-    final ECPoint blindedPoint = hashedData.multiply(blindingFactor).normalize();
-    return curve.toHex(blindedPoint)
-        .orElseThrow(() -> new IllegalArgumentException("Invalid EC point: " + blindedPoint));
+    return curve.toHex(hashedData.multiply(blindingFactor).normalize());
   }
 
   /**

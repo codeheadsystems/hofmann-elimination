@@ -23,11 +23,9 @@ public class ServerImpl implements Server {
 
   @Override
   public EliminationResponse process(final EliminationRequest eliminationRequest) {
-    ECPoint q = curve.toEcPoint(eliminationRequest.hexCodedEcPoint())
-        .orElseThrow(() -> new IllegalArgumentException("Invalid hex-encoded EC point: " + eliminationRequest.hexCodedEcPoint()));
+    ECPoint q = curve.toEcPoint(eliminationRequest.hexCodedEcPoint());
     ECPoint result = q.multiply(masterKey).normalize();
-    return new EliminationResponse(curve.toHex(result).orElseThrow(() -> new IllegalArgumentException("Invalid EC point: " + result)),
-        processIdentifier);
+    return new EliminationResponse(curve.toHex(result), processIdentifier);
   }
 
 

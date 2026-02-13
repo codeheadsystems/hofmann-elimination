@@ -2,7 +2,6 @@ package com.codeheadsystems.hofmann;
 
 import java.math.BigInteger;
 import java.security.SecureRandom;
-import java.util.Optional;
 import java.util.function.Function;
 import org.bouncycastle.asn1.x9.X9ECParameters;
 import org.bouncycastle.crypto.ec.CustomNamedCurves;
@@ -41,7 +40,7 @@ public record Curve(ECDomainParameters params, ECCurve curve, ECPoint g, BigInte
    * Converts a non-negative integer to an octet string of specified length.
    */
   public static byte[] I2OSP(int value, int length) {
-    if (value < 0 || (length < 4 && value >= (1 << (8 * length)))) {
+    if (value < 0 || value >= (1L << (8 * length))) {
       throw new IllegalArgumentException("Value too large for specified length");
     }
     byte[] result = new byte[length];
@@ -66,17 +65,18 @@ public record Curve(ECDomainParameters params, ECCurve curve, ECPoint g, BigInte
     return key;
   }
 
-  public Optional<String> toHex(final ECPoint blindedPoint) {
-    return Optional.ofNullable(blindedPoint)
-        .map(point -> point.getEncoded(true))
-        .map(Hex::toHexString);
+  public String toHex(final ECPoint point) {
+    if (point == null) {
+      throw new IllegalArgumentException("EC point must not be null");
+    }
+    return Hex.toHexString(point.getEncoded(true));
   }
 
-  public Optional<ECPoint> toEcPoint(final String hex) {
-    return Optional.ofNullable(hex)
-        .filter(h -> !h.isEmpty())
-        .map(Hex::decode)
-        .map(encoded -> params().getCurve().decodePoint(encoded));
+  public ECPoint toEcPoint(final String hex) {
+    if (hex == null || hex.isEmpty()) {
+      throw new IllegalArgumentException("Hex string must not be null or empty");
+    }
+    return params().getCurve().decodePoint(Hex.decode(hex));
   }
 
 }

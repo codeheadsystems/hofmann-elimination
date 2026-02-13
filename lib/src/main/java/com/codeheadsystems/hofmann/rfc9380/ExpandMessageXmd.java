@@ -1,5 +1,6 @@
 package com.codeheadsystems.hofmann.rfc9380;
 
+import com.codeheadsystems.hofmann.Curve;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -49,7 +50,7 @@ public class ExpandMessageXmd {
       byte[] zPad = new byte[R_IN_BYTES];
 
       // l_i_b_str = I2OSP(len_in_bytes, 2)
-      byte[] libStr = i2osp(lenInBytes, 2);
+      byte[] libStr = Curve.I2OSP(lenInBytes, 2);
 
       // msg_prime = Z_pad || msg || l_i_b_str || I2OSP(0, 1) || DST_prime
       byte[] msgPrime = ByteBuffer.allocate(R_IN_BYTES + msg.length + 2 + 1 + dstPrime.length)
@@ -119,22 +120,6 @@ public class ExpandMessageXmd {
       dstPrime[dst.length] = (byte) dst.length;
       return dstPrime;
     }
-  }
-
-  /**
-   * Integer to Octet String Primitive (I2OSP) from RFC 8017.
-   * Converts a non-negative integer to an octet string of specified length.
-   */
-  private static byte[] i2osp(int value, int length) {
-    if (value < 0 || value >= (1L << (8 * length))) {
-      throw new IllegalArgumentException("Value too large for specified length");
-    }
-    byte[] result = new byte[length];
-    for (int i = length - 1; i >= 0; i--) {
-      result[i] = (byte) (value & 0xFF);
-      value >>= 8;
-    }
-    return result;
   }
 
   /**
