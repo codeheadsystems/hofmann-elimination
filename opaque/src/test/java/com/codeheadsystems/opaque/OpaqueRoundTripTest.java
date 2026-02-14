@@ -209,6 +209,53 @@ class OpaqueRoundTripTest {
   }
 
   @Test
+  void fakeKE2CausesAuthenticationFailure() {
+    // When a user has not registered, the server responds with a fake KE2.
+    // The client cannot authenticate — fails at envelope auth_tag verification
+    // (same point and exception as a wrong-password attempt).
+    byte[] unknownCredentialId = "unknown@example.com".getBytes(StandardCharsets.UTF_8);
+    ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
+    Object[] ke2Result = server.generateFakeKE2(authState.ke1(), unknownCredentialId, null, null);
+    KE2 ke2 = (KE2) ke2Result[1];
+
+    assertThatThrownBy(() -> client.generateKE3(authState, null, null, ke2))
+        .isInstanceOf(SecurityException.class)
+        .hasMessageContaining("auth_tag mismatch");
+  }
+
+  @Test
+  void fakeKE2IsIndistinguishableFromWrongPassword() {
+    // Both scenarios produce the same SecurityException at the same protocol step,
+    // ensuring an attacker cannot distinguish registered from unregistered users.
+    RegistrationRecord record = register(PASSWORD_CORRECT);
+
+    // Capture wrong-password exception
+    SecurityException wrongPwdEx = null;
+    try {
+      ClientAuthState a = client.generateKE1(PASSWORD_WRONG);
+      Object[] r = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, a.ke1(), null);
+      client.generateKE3(a, null, null, (KE2) r[1]);
+    } catch (SecurityException e) {
+      wrongPwdEx = e;
+    }
+
+    // Capture fake-user exception
+    byte[] unknownCredId = "nobody@example.com".getBytes(StandardCharsets.UTF_8);
+    SecurityException fakeUserEx = null;
+    try {
+      ClientAuthState a = client.generateKE1(PASSWORD_CORRECT);
+      Object[] r = server.generateFakeKE2(a.ke1(), unknownCredId, null, null);
+      client.generateKE3(a, null, null, (KE2) r[1]);
+    } catch (SecurityException e) {
+      fakeUserEx = e;
+    }
+
+    assertThat(wrongPwdEx).isNotNull();
+    assertThat(fakeUserEx).isNotNull();
+    assertThat(fakeUserEx.getMessage()).isEqualTo(wrongPwdEx.getMessage());
+  }
+
+  @Test
   void exportKeyIsReproducibleAcrossSessions() {
     // The export_key is derived from randomizedPwd (deterministic given correct password)
     // and the envelope nonce (fixed at registration). It must be identical on every login.
@@ -254,5 +301,200 @@ class OpaqueRoundTripTest {
 
     // Their session keys are independent
     assertThat(res1.sessionKey()).isNotEqualTo(res2.sessionKey());
+  }
+
+  // ─── Additional coverage ──────────────────────────────────────────────────
+
+  @Test
+  void argon2idKsfRoundTrip() {
+    // OpaqueConfig.DEFAULT uses Argon2id but all other tests use IdentityKsf.
+    // Use minimal Argon2id params (64 KB, 1 iteration) to keep the test fast
+    // while still exercising the production KSF code path.
+    OpaqueConfig argon2Config = OpaqueConfig.withArgon2id(
+        "OPAQUE-TEST".getBytes(StandardCharsets.UTF_8), 64, 1, 1);
+    OpaqueClient argon2Client = new OpaqueClient(argon2Config);
+    OpaqueServer argon2Server = OpaqueServer.generate(argon2Config);
+
+    ClientRegistrationState regState = argon2Client.createRegistrationRequest(PASSWORD_CORRECT);
+    RegistrationRecord record = argon2Client.finalizeRegistration(regState,
+        argon2Server.createRegistrationResponse(regState.request(), CREDENTIAL_IDENTIFIER),
+        null, null);
+
+    ClientAuthState authState = argon2Client.generateKE1(PASSWORD_CORRECT);
+    Object[] ke2Result = argon2Server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
+    KE2 ke2 = (KE2) ke2Result[1];
+    ServerAuthState serverAuthState = (ServerAuthState) ke2Result[0];
+
+    AuthResult result = argon2Client.generateKE3(authState, null, null, ke2);
+    byte[] serverKey = argon2Server.serverFinish(serverAuthState, result.ke3());
+    assertThat(result.sessionKey()).isEqualTo(serverKey);
+    assertThat(result.exportKey()).isNotNull().hasSize(32);
+
+    // Wrong password must still fail under Argon2id.
+    assertThatThrownBy(() -> {
+      ClientAuthState bad = argon2Client.generateKE1(PASSWORD_WRONG);
+      Object[] r = argon2Server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, bad.ke1(), null);
+      argon2Client.generateKE3(bad, null, null, (KE2) r[1]);
+    }).isInstanceOf(SecurityException.class)
+      .hasMessageContaining("auth_tag mismatch");
+  }
+
+  @Test
+  void tamperedServerMacInKE2CausesSecurityException() {
+    // "Server MAC verification failed" is only reachable when the credential response
+    // decrypts correctly (so the envelope auth_tag passes) but the server MAC is wrong.
+    // This simulates a MITM that relays a valid credential response with a forged MAC.
+    RegistrationRecord record = register(PASSWORD_CORRECT);
+    ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
+    Object[] ke2Result = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
+    KE2 realKe2 = (KE2) ke2Result[1];
+
+    // Keep the real credential response so envelope recovery succeeds; tamper only the server MAC.
+    KE2 tamperedKe2 = new KE2(
+        realKe2.credentialResponse(),
+        realKe2.serverNonce(),
+        realKe2.serverAkePublicKey(),
+        new byte[32]  // all-zeros — definitely wrong
+    );
+
+    assertThatThrownBy(() -> client.generateKE3(authState, null, null, tamperedKe2))
+        .isInstanceOf(SecurityException.class)
+        .hasMessageContaining("Server MAC verification failed");
+  }
+
+  @Test
+  void differentContextsCauseMacMismatch() {
+    // RFC §6.1: the context string must be globally unique and is bound into the preamble.
+    // A client configured with a different context string cannot authenticate against a
+    // server that used a different context — the preamble diverges → different km2 → server
+    // MAC mismatch.  The envelope auth_tag is unaffected (context is not in the envelope).
+    OpaqueConfig configA = new OpaqueConfig(0, 0, 0,
+        "CONTEXT-A".getBytes(StandardCharsets.UTF_8), new OpaqueConfig.IdentityKsf());
+    OpaqueConfig configB = new OpaqueConfig(0, 0, 0,
+        "CONTEXT-B".getBytes(StandardCharsets.UTF_8), new OpaqueConfig.IdentityKsf());
+
+    OpaqueServer serverA = OpaqueServer.generate(configA);
+    OpaqueClient clientA = new OpaqueClient(configA);
+    OpaqueClient clientB = new OpaqueClient(configB);
+
+    ClientRegistrationState regState = clientA.createRegistrationRequest(PASSWORD_CORRECT);
+    RegistrationRecord record = clientA.finalizeRegistration(regState,
+        serverA.createRegistrationResponse(regState.request(), CREDENTIAL_IDENTIFIER),
+        null, null);
+
+    assertThatThrownBy(() -> {
+      ClientAuthState authState = clientB.generateKE1(PASSWORD_CORRECT);
+      Object[] ke2Result = serverA.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
+      clientB.generateKE3(authState, null, null, (KE2) ke2Result[1]);
+    }).isInstanceOf(SecurityException.class)
+      .hasMessageContaining("Server MAC verification failed");
+  }
+
+  @Test
+  void reRegistrationChangesExportKey() {
+    // Each registration uses a fresh random envelope nonce, so the export_key changes.
+    // Applications that store data encrypted under export_key must handle this on re-registration.
+    RegistrationRecord record1 = register(PASSWORD_CORRECT);
+    RegistrationRecord record2 = register(PASSWORD_CORRECT);
+
+    AuthResult result1 = authenticate(record1, PASSWORD_CORRECT, null, null);
+    AuthResult result2 = authenticate(record2, PASSWORD_CORRECT, null, null);
+
+    assertThat(result1.exportKey()).isNotEqualTo(result2.exportKey());
+    assertThat(result1.sessionKey()).isNotNull().hasSize(32);
+    assertThat(result2.sessionKey()).isNotNull().hasSize(32);
+  }
+
+  @Test
+  void wrongCredentialIdentifierCausesAuthFailure() {
+    // If the server looks up the wrong credential identifier when evaluating the OPRF,
+    // it derives a different OPRF key → different randomized_pwd → envelope auth_tag mismatch.
+    byte[] aliceCredId = "alice@example.com".getBytes(StandardCharsets.UTF_8);
+    byte[] bobCredId   = "bob@example.com".getBytes(StandardCharsets.UTF_8);
+
+    ClientRegistrationState regState = client.createRegistrationRequest(PASSWORD_CORRECT);
+    RegistrationRecord record = client.finalizeRegistration(regState,
+        server.createRegistrationResponse(regState.request(), aliceCredId), null, null);
+
+    assertThatThrownBy(() -> {
+      ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
+      // Server accidentally uses bob's credentialIdentifier for alice's record.
+      Object[] ke2Result = server.generateKE2(null, record, bobCredId, authState.ke1(), null);
+      client.generateKE3(authState, null, null, (KE2) ke2Result[1]);
+    }).isInstanceOf(SecurityException.class)
+      .hasMessageContaining("auth_tag mismatch");
+  }
+
+  @Test
+  void generateProducesValidKeyPair() {
+    // OpaqueServer.generate() must produce a valid compressed P-256 public key
+    // and the resulting server must be immediately usable for a full protocol round trip.
+    OpaqueServer generated = OpaqueServer.generate(CONFIG);
+    byte[] pk = generated.getServerPublicKey();
+
+    // Compressed SEC1 P-256 point: 33 bytes, first byte 0x02 or 0x03.
+    assertThat(pk).hasSize(33);
+    assertThat(pk[0]).isIn((byte) 0x02, (byte) 0x03);
+
+    OpaqueClient c = new OpaqueClient(CONFIG);
+    ClientRegistrationState regState = c.createRegistrationRequest(PASSWORD_CORRECT);
+    RegistrationRecord record = c.finalizeRegistration(regState,
+        generated.createRegistrationResponse(regState.request(), CREDENTIAL_IDENTIFIER),
+        null, null);
+
+    ClientAuthState authState = c.generateKE1(PASSWORD_CORRECT);
+    Object[] ke2Result = generated.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
+    KE2 ke2 = (KE2) ke2Result[1];
+    ServerAuthState sas = (ServerAuthState) ke2Result[0];
+
+    AuthResult result = c.generateKE3(authState, null, null, ke2);
+    byte[] serverKey = generated.serverFinish(sas, result.ke3());
+    assertThat(result.sessionKey()).isEqualTo(serverKey);
+  }
+
+  @Test
+  void differentOprfSeedsCannotCrossAuthenticate() {
+    // Two servers with identical long-term AKE keys but different OPRF seeds derive different
+    // per-credential OPRF keys.  A user registered against server A cannot authenticate against
+    // server B: the OPRF evaluation differs → different randomized_pwd → envelope auth_tag mismatch.
+    //
+    // A deterministic key pair is used so the only variable between the two servers is the seed.
+    Object[] kp = com.codeheadsystems.opaque.internal.OpaqueCrypto.deriveAkeKeyPairFull(new byte[32]);
+    java.math.BigInteger sharedSk = (java.math.BigInteger) kp[0];
+    byte[] sharedPk = (byte[]) kp[1];
+    byte[] rawSk = sharedSk.toByteArray();
+    byte[] skFixed = new byte[32];
+    if (rawSk.length > 32) {
+      System.arraycopy(rawSk, rawSk.length - 32, skFixed, 0, 32);
+    } else {
+      System.arraycopy(rawSk, 0, skFixed, 32 - rawSk.length, rawSk.length);
+    }
+
+    byte[] seedA = com.codeheadsystems.opaque.internal.OpaqueCrypto.randomBytes(32);
+    byte[] seedB = com.codeheadsystems.opaque.internal.OpaqueCrypto.randomBytes(32);
+    OpaqueServer serverA = new OpaqueServer(skFixed, sharedPk, seedA, CONFIG);
+    OpaqueServer serverB = new OpaqueServer(skFixed, sharedPk, seedB, CONFIG);
+
+    ClientRegistrationState regState = client.createRegistrationRequest(PASSWORD_CORRECT);
+    RegistrationRecord record = client.finalizeRegistration(regState,
+        serverA.createRegistrationResponse(regState.request(), CREDENTIAL_IDENTIFIER), null, null);
+
+    assertThatThrownBy(() -> {
+      ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
+      Object[] ke2Result = serverB.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
+      client.generateKE3(authState, null, null, (KE2) ke2Result[1]);
+    }).isInstanceOf(SecurityException.class)
+      .hasMessageContaining("auth_tag mismatch");
+  }
+
+  @Test
+  void registrationRequestsAreUnique() {
+    // createRegistrationRequest() applies a random blind on each call, so two requests
+    // for the same password produce different blinded elements on the wire.
+    ClientRegistrationState state1 = client.createRegistrationRequest(PASSWORD_CORRECT);
+    ClientRegistrationState state2 = client.createRegistrationRequest(PASSWORD_CORRECT);
+
+    assertThat(state1.request().blindedElement())
+        .isNotEqualTo(state2.request().blindedElement());
   }
 }
