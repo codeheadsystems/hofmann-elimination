@@ -4,6 +4,7 @@ import com.codeheadsystems.hofmann.curve.Curve;
 import com.codeheadsystems.hofmann.curve.OctetStringUtils;
 import com.codeheadsystems.hofmann.rfc9497.OprfSuite;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
@@ -69,7 +70,7 @@ public class OpaqueCrypto {
    * || I2OSP(len(context), 1) || context
    */
   public static byte[] hkdfExpandLabel(byte[] secret, byte[] label, byte[] context, int length) {
-    byte[] prefix = "OPAQUE-".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+    byte[] prefix = "OPAQUE-".getBytes(StandardCharsets.US_ASCII);
     byte[] fullLabel = concat(prefix, label);
     byte[] info = concat(
         OctetStringUtils.I2OSP(length, 2),
@@ -118,7 +119,7 @@ public class OpaqueCrypto {
    */
   public static BigInteger[] deriveAkeKeyPair(byte[] seed) {
     BigInteger sk = OprfSuite.deriveKeyPair(seed, "OPAQUE-DeriveDiffieHellmanKeyPair".getBytes(
-        java.nio.charset.StandardCharsets.US_ASCII));
+        StandardCharsets.US_ASCII));
     ECPoint pk = Curve.P256_CURVE.g().multiply(sk).normalize();
     return new BigInteger[]{sk, null}; // pk returned separately via serializePoint
   }
@@ -129,7 +130,7 @@ public class OpaqueCrypto {
    */
   public static Object[] deriveAkeKeyPairFull(byte[] seed) {
     BigInteger sk = OprfSuite.deriveKeyPair(seed, "OPAQUE-DeriveDiffieHellmanKeyPair".getBytes(
-        java.nio.charset.StandardCharsets.US_ASCII));
+        StandardCharsets.US_ASCII));
     ECPoint pk = Curve.P256_CURVE.g().multiply(sk).normalize();
     return new Object[]{sk, pk.getEncoded(true)};
   }

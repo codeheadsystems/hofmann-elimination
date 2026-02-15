@@ -71,10 +71,31 @@ class OpaqueVectorsTest {
   private static final OpaqueConfig CONFIG = OpaqueConfig.forTesting();
 
   // ─── Vector 1: No explicit identities ─────────────────────────────────────
+  private static final byte[] V3_SERVER_PRIVATE_KEY = hex("34fbe7e830be1fe8d2187c97414e3826040cbe49b893b64229bab5e85a5888c7");
+  private static final byte[] V3_SERVER_PUBLIC_KEY = hex("0221e034c0e202fe883dcfc96802a7624166fed4cfcab4ae30cf5f3290d01c88bf");
+  private static final byte[] V3_OPRF_SEED = hex("bb1cd59e16ac09bc0cb6d528541695d7eba2239b1613a3db3ade77b36280f725");
+  private static final byte[] V3_CREDENTIAL_ID = hex("31323334");
+  private static final byte[] V3_CLIENT_IDENTITY = hex("616c696365"); // "alice"
+  private static final byte[] V3_SERVER_IDENTITY = hex("626f62");     // "bob"
+  private static final byte[] V3_FAKE_CLIENT_PK = hex("03b81708eae026a9370616c22e1e8542fe9dbebd36ce8a2661b708e9628f4a57fc");
+  private static final byte[] V3_FAKE_MASKING_KEY = hex("caecc6ccb4cae27cb54d8f3a1af1bac52a3d53107ce08497cdd362b1992e4e5e");
+  private static final byte[] V3_MASKING_NONCE = hex("9c035896a043e70f897d87180c543e7a063b83c1bb728fbd189c619e27b6e5a6");
+
+  // ─── Vector 2: With explicit identities ───────────────────────────────────
+  private static final byte[] V3_SERVER_NONCE = hex("1e10f6eeab2a7a420bf09da9b27a4639645622c46358de9cf7ae813055ae2d12");
+  private static final byte[] V3_SERVER_KEYSHARE_SEED = hex("360b0937f47d45f6123a4d8f0d0c0814b6120d840ebb8bc5b4f6b62df07f78c2");
+  private static final byte[] V3_KE1 = hex("0396875da2b4f7749bba411513aea02dc514a48d169d8a9531bd61d3af3fa9baae42d4e61ed3f8d64cdd3b9d153343eca15b9b0d5e388232793c6376bd2d9cfd0a02147a6583983cc9973b5082db5f5070890cb373d70f7ac1b41ed2305361009784");
+
+  // ─── Helpers ──────────────────────────────────────────────────────────────
+  private static final byte[] V3_EXPECTED_KE2 = hex("0201198dcd13f9792eb75dcfa815f61b049abfe2e3e9456d4bbbceec5f442efd049c035896a043e70f897d87180c543e7a063b83c1bb728fbd189c619e27b6e5a6facda65ce0a97b9085e7af07f61fd3fdd046d257cbf2183ce8766090b8041a8bf28d79dd4c9031ddc75bb6ddb4c291e639937840e3d39fc0d5a3d6e7723c09f7945df485bcf9aefe3fe82d149e84049e259bb5b33d6a2ff3b25e4bfb7eff0962821e10f6eeab2a7a420bf09da9b27a4639645622c46358de9cf7ae813055ae2d12023f82bbb24e75b8683fd13b843cd566efae996cd0016cffdcc24ee2bc937d026f80144878749a69565b433c1040aff67e94f79345de888a877422b9bbe21ec329");
 
   private static byte[] hex(String s) {
     return Hex.decode(s);
   }
+
+  // ─── Vector 3: Fake KE2 (unregistered user, Fake=True) ────────────────────
+  // Tests RFC 9807 §7.1.2 user-enumeration protection.
+  // The fake vector uses a different server key pair and oprf_seed than vectors 1 and 2.
 
   private static byte[] concat(byte[]... parts) {
     int total = 0;
@@ -88,11 +109,13 @@ class OpaqueVectorsTest {
     return out;
   }
 
-  /** Deserializes a KE1 from its 98-byte wire format (blindedElement || clientNonce || clientAkePk). */
+  /**
+   * Deserializes a KE1 from its 98-byte wire format (blindedElement || clientNonce || clientAkePk).
+   */
   private static KE1 parseKE1(byte[] bytes) {
     byte[] blindedElement = Arrays.copyOfRange(bytes, 0, 33);
-    byte[] clientNonce    = Arrays.copyOfRange(bytes, 33, 65);
-    byte[] clientAkePk   = Arrays.copyOfRange(bytes, 65, 98);
+    byte[] clientNonce = Arrays.copyOfRange(bytes, 33, 65);
+    byte[] clientAkePk = Arrays.copyOfRange(bytes, 65, 98);
     return new KE1(new CredentialRequest(blindedElement), clientNonce, clientAkePk);
   }
 
@@ -165,8 +188,6 @@ class OpaqueVectorsTest {
         PASSWORD, BLIND_REGISTRATION, response.evaluatedElement(), CONFIG);
     assertThat(randomizedPwd).isEqualTo(EXPECTED_RANDOMIZED_PWD);
   }
-
-  // ─── Vector 2: With explicit identities ───────────────────────────────────
 
   @Test
   void vector1_ke2() {
@@ -244,8 +265,6 @@ class OpaqueVectorsTest {
     assertThat(authResult.sessionKey()).isEqualTo(EXPECTED_SESSION_KEY);
   }
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
-
   @Test
   void vector2_registrationUpload() {
     OpaqueClient client = new OpaqueClient(CONFIG);
@@ -287,24 +306,6 @@ class OpaqueVectorsTest {
     assertThat(authResult.sessionKey()).isEqualTo(EXPECTED_SESSION_KEY_V2);
     assertThat(authResult.exportKey()).isEqualTo(EXPECTED_EXPORT_KEY_V2);
   }
-
-  // ─── Vector 3: Fake KE2 (unregistered user, Fake=True) ────────────────────
-  // Tests RFC 9807 §7.1.2 user-enumeration protection.
-  // The fake vector uses a different server key pair and oprf_seed than vectors 1 and 2.
-
-  private static final byte[] V3_SERVER_PRIVATE_KEY = hex("34fbe7e830be1fe8d2187c97414e3826040cbe49b893b64229bab5e85a5888c7");
-  private static final byte[] V3_SERVER_PUBLIC_KEY  = hex("0221e034c0e202fe883dcfc96802a7624166fed4cfcab4ae30cf5f3290d01c88bf");
-  private static final byte[] V3_OPRF_SEED          = hex("bb1cd59e16ac09bc0cb6d528541695d7eba2239b1613a3db3ade77b36280f725");
-  private static final byte[] V3_CREDENTIAL_ID      = hex("31323334");
-  private static final byte[] V3_CLIENT_IDENTITY    = hex("616c696365"); // "alice"
-  private static final byte[] V3_SERVER_IDENTITY    = hex("626f62");     // "bob"
-  private static final byte[] V3_FAKE_CLIENT_PK     = hex("03b81708eae026a9370616c22e1e8542fe9dbebd36ce8a2661b708e9628f4a57fc");
-  private static final byte[] V3_FAKE_MASKING_KEY   = hex("caecc6ccb4cae27cb54d8f3a1af1bac52a3d53107ce08497cdd362b1992e4e5e");
-  private static final byte[] V3_MASKING_NONCE      = hex("9c035896a043e70f897d87180c543e7a063b83c1bb728fbd189c619e27b6e5a6");
-  private static final byte[] V3_SERVER_NONCE       = hex("1e10f6eeab2a7a420bf09da9b27a4639645622c46358de9cf7ae813055ae2d12");
-  private static final byte[] V3_SERVER_KEYSHARE_SEED = hex("360b0937f47d45f6123a4d8f0d0c0814b6120d840ebb8bc5b4f6b62df07f78c2");
-  private static final byte[] V3_KE1 = hex("0396875da2b4f7749bba411513aea02dc514a48d169d8a9531bd61d3af3fa9baae42d4e61ed3f8d64cdd3b9d153343eca15b9b0d5e388232793c6376bd2d9cfd0a02147a6583983cc9973b5082db5f5070890cb373d70f7ac1b41ed2305361009784");
-  private static final byte[] V3_EXPECTED_KE2 = hex("0201198dcd13f9792eb75dcfa815f61b049abfe2e3e9456d4bbbceec5f442efd049c035896a043e70f897d87180c543e7a063b83c1bb728fbd189c619e27b6e5a6facda65ce0a97b9085e7af07f61fd3fdd046d257cbf2183ce8766090b8041a8bf28d79dd4c9031ddc75bb6ddb4c291e639937840e3d39fc0d5a3d6e7723c09f7945df485bcf9aefe3fe82d149e84049e259bb5b33d6a2ff3b25e4bfb7eff0962821e10f6eeab2a7a420bf09da9b27a4639645622c46358de9cf7ae813055ae2d12023f82bbb24e75b8683fd13b843cd566efae996cd0016cffdcc24ee2bc937d026f80144878749a69565b433c1040aff67e94f79345de888a877422b9bbe21ec329");
 
   @Test
   void vector3_fakeKE2() {

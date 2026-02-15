@@ -1,5 +1,6 @@
 package com.codeheadsystems.opaque.internal;
 
+import com.codeheadsystems.hofmann.curve.Curve;
 import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.internal.OpaqueEnvelope.RecoverResult;
 import com.codeheadsystems.opaque.internal.OpaqueEnvelope.StoreResult;
@@ -25,7 +26,7 @@ public class OpaqueCredentials {
    * Client creates a registration request by blinding the password.
    */
   public static ClientRegistrationState createRegistrationRequest(byte[] password, OpaqueConfig config) {
-    BigInteger blind = com.codeheadsystems.hofmann.curve.Curve.P256_CURVE.randomScalar();
+    BigInteger blind = Curve.P256_CURVE.randomScalar();
     byte[] blindedElement = OpaqueOprf.blind(password, blind);
     RegistrationRequest request = new RegistrationRequest(blindedElement);
     return new ClientRegistrationState(blind, password, request);

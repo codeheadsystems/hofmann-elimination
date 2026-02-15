@@ -1,6 +1,8 @@
 package com.codeheadsystems.opaque.config;
 
 import java.nio.charset.StandardCharsets;
+import org.bouncycastle.crypto.generators.Argon2BytesGenerator;
+import org.bouncycastle.crypto.params.Argon2Parameters;
 
 /**
  * Configuration for the OPAQUE-3DH protocol.
@@ -88,11 +90,10 @@ public record OpaqueConfig(
     @Override
     public byte[] stretch(byte[] input, OpaqueConfig config) {
       // Defer to OpaqueCrypto to avoid circular import — compute inline here
-      org.bouncycastle.crypto.generators.Argon2BytesGenerator gen =
-          new org.bouncycastle.crypto.generators.Argon2BytesGenerator();
-      org.bouncycastle.crypto.params.Argon2Parameters params =
-          new org.bouncycastle.crypto.params.Argon2Parameters.Builder(
-              org.bouncycastle.crypto.params.Argon2Parameters.ARGON2_id)
+      Argon2BytesGenerator gen = new Argon2BytesGenerator();
+      Argon2Parameters params =
+          new Argon2Parameters.Builder(
+              Argon2Parameters.ARGON2_id)
               .withSalt(new byte[Nn]) // 32-byte zero salt
               .withMemoryAsKB(config.argon2Memory())
               .withIterations(config.argon2Iterations())

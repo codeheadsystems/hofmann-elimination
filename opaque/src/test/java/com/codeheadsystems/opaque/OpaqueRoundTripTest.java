@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.codeheadsystems.opaque.config.OpaqueConfig;
+import com.codeheadsystems.opaque.internal.OpaqueCrypto;
 import com.codeheadsystems.opaque.model.AuthResult;
 import com.codeheadsystems.opaque.model.ClientAuthState;
 import com.codeheadsystems.opaque.model.ClientRegistrationState;
@@ -30,6 +31,26 @@ class OpaqueRoundTripTest {
   private OpaqueClient client;
   private OpaqueServer server;
 
+  /**
+   * Serializes a KE2 to its full wire format for use with {@link KE2#deserialize}.
+   */
+  private static byte[] serializeKE2(KE2 ke2) {
+    byte[] cr = ke2.serializeCredentialResponse(); // evaluatedElement || maskingNonce || maskedResponse
+    byte[] sn = ke2.serverNonce();
+    byte[] sp = ke2.serverAkePublicKey();
+    byte[] sm = ke2.serverMac();
+    byte[] out = new byte[cr.length + sn.length + sp.length + sm.length];
+    int off = 0;
+    System.arraycopy(cr, 0, out, off, cr.length);
+    off += cr.length;
+    System.arraycopy(sn, 0, out, off, sn.length);
+    off += sn.length;
+    System.arraycopy(sp, 0, out, off, sp.length);
+    off += sp.length;
+    System.arraycopy(sm, 0, out, off, sm.length);
+    return out;
+  }
+
   @BeforeEach
   void setUp() {
     client = new OpaqueClient(CONFIG);
@@ -46,6 +67,8 @@ class OpaqueRoundTripTest {
     return client.finalizeRegistration(regState, response, serverIdentity, clientIdentity);
   }
 
+  // ─── Tests ────────────────────────────────────────────────────────────────
+
   private AuthResult authenticate(RegistrationRecord record, byte[] password,
                                   byte[] serverIdentity, byte[] clientIdentity) {
     ClientAuthState authState = client.generateKE1(password);
@@ -53,8 +76,6 @@ class OpaqueRoundTripTest {
     KE2 ke2 = (KE2) ke2Result[1];
     return client.generateKE3(authState, clientIdentity, serverIdentity, ke2);
   }
-
-  // ─── Tests ────────────────────────────────────────────────────────────────
 
   @Test
   void registrationThenSuccessfulAuthentication() {
@@ -194,8 +215,8 @@ class OpaqueRoundTripTest {
 
     // Impersonator presents the real server's public key (so envelope recovery succeeds)
     // but uses a different private key (so the 3DH outputs differ).
-    byte[] fakePrivateKey = com.codeheadsystems.opaque.internal.OpaqueCrypto.randomBytes(32);
-    byte[] fakeOprfSeed = com.codeheadsystems.opaque.internal.OpaqueCrypto.randomBytes(32);
+    byte[] fakePrivateKey = OpaqueCrypto.randomBytes(32);
+    byte[] fakeOprfSeed = OpaqueCrypto.randomBytes(32);
     OpaqueServer impersonator = new OpaqueServer(fakePrivateKey, realServerPublicKey, fakeOprfSeed, CONFIG);
 
     assertThatThrownBy(() -> {
@@ -270,6 +291,8 @@ class OpaqueRoundTripTest {
     assertThat(result1.sessionKey()).isNotEqualTo(result2.sessionKey());
   }
 
+  // ─── Additional coverage ──────────────────────────────────────────────────
+
   @Test
   void multipleIndependentUsers() {
     // Two distinct users can register and authenticate on the same server without interference.
@@ -304,8 +327,6 @@ class OpaqueRoundTripTest {
     assertThat(res1.sessionKey()).isNotEqualTo(res2.sessionKey());
   }
 
-  // ─── Additional coverage ──────────────────────────────────────────────────
-
   @Test
   void argon2idKsfRoundTrip() {
     // OpaqueConfig.DEFAULT uses Argon2id but all other tests use IdentityKsf.
@@ -337,7 +358,7 @@ class OpaqueRoundTripTest {
       Object[] r = argon2Server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, bad.ke1(), null);
       argon2Client.generateKE3(bad, null, null, (KE2) r[1]);
     }).isInstanceOf(SecurityException.class)
-      .hasMessageContaining("auth_tag mismatch");
+        .hasMessageContaining("auth_tag mismatch");
   }
 
   @Test
@@ -388,7 +409,7 @@ class OpaqueRoundTripTest {
       Object[] ke2Result = serverA.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
       clientB.generateKE3(authState, null, null, (KE2) ke2Result[1]);
     }).isInstanceOf(SecurityException.class)
-      .hasMessageContaining("Server MAC verification failed");
+        .hasMessageContaining("Server MAC verification failed");
   }
 
   @Test
@@ -411,7 +432,7 @@ class OpaqueRoundTripTest {
     // If the server looks up the wrong credential identifier when evaluating the OPRF,
     // it derives a different OPRF key → different randomized_pwd → envelope auth_tag mismatch.
     byte[] aliceCredId = "alice@example.com".getBytes(StandardCharsets.UTF_8);
-    byte[] bobCredId   = "bob@example.com".getBytes(StandardCharsets.UTF_8);
+    byte[] bobCredId = "bob@example.com".getBytes(StandardCharsets.UTF_8);
 
     ClientRegistrationState regState = client.createRegistrationRequest(PASSWORD_CORRECT);
     RegistrationRecord record = client.finalizeRegistration(regState,
@@ -423,7 +444,7 @@ class OpaqueRoundTripTest {
       Object[] ke2Result = server.generateKE2(null, record, bobCredId, authState.ke1(), null);
       client.generateKE3(authState, null, null, (KE2) ke2Result[1]);
     }).isInstanceOf(SecurityException.class)
-      .hasMessageContaining("auth_tag mismatch");
+        .hasMessageContaining("auth_tag mismatch");
   }
 
   @Test
@@ -460,7 +481,7 @@ class OpaqueRoundTripTest {
     // server B: the OPRF evaluation differs → different randomized_pwd → envelope auth_tag mismatch.
     //
     // A deterministic key pair is used so the only variable between the two servers is the seed.
-    Object[] kp = com.codeheadsystems.opaque.internal.OpaqueCrypto.deriveAkeKeyPairFull(new byte[32]);
+    Object[] kp = OpaqueCrypto.deriveAkeKeyPairFull(new byte[32]);
     java.math.BigInteger sharedSk = (java.math.BigInteger) kp[0];
     byte[] sharedPk = (byte[]) kp[1];
     byte[] rawSk = sharedSk.toByteArray();
@@ -471,8 +492,8 @@ class OpaqueRoundTripTest {
       System.arraycopy(rawSk, 0, skFixed, 32 - rawSk.length, rawSk.length);
     }
 
-    byte[] seedA = com.codeheadsystems.opaque.internal.OpaqueCrypto.randomBytes(32);
-    byte[] seedB = com.codeheadsystems.opaque.internal.OpaqueCrypto.randomBytes(32);
+    byte[] seedA = OpaqueCrypto.randomBytes(32);
+    byte[] seedB = OpaqueCrypto.randomBytes(32);
     OpaqueServer serverA = new OpaqueServer(skFixed, sharedPk, seedA, CONFIG);
     OpaqueServer serverB = new OpaqueServer(skFixed, sharedPk, seedB, CONFIG);
 
@@ -485,8 +506,10 @@ class OpaqueRoundTripTest {
       Object[] ke2Result = serverB.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
       client.generateKE3(authState, null, null, (KE2) ke2Result[1]);
     }).isInstanceOf(SecurityException.class)
-      .hasMessageContaining("auth_tag mismatch");
+        .hasMessageContaining("auth_tag mismatch");
   }
+
+  // ─── Additional tests ────────────────────────────────────────────────────
 
   @Test
   void registrationRequestsAreUnique() {
@@ -498,8 +521,6 @@ class OpaqueRoundTripTest {
     assertThat(state1.request().blindedElement())
         .isNotEqualTo(state2.request().blindedElement());
   }
-
-  // ─── Additional tests ────────────────────────────────────────────────────
 
   @Test
   void maskingKeyIsDeterministicForSamePassword() {
@@ -595,7 +616,7 @@ class OpaqueRoundTripTest {
     // the fake response flows through the same preamble path as a real one.
     byte[] serverIdentity = "server.example.com".getBytes(StandardCharsets.UTF_8);
     byte[] clientIdentity = "alice@example.com".getBytes(StandardCharsets.UTF_8);
-    byte[] unknownCredId  = "unknown@example.com".getBytes(StandardCharsets.UTF_8);
+    byte[] unknownCredId = "unknown@example.com".getBytes(StandardCharsets.UTF_8);
 
     ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
     Object[] ke2Result = server.generateFakeKE2(
@@ -670,6 +691,8 @@ class OpaqueRoundTripTest {
     assertThat(sessionKey1).isEqualTo(sessionKey2);
   }
 
+  // ─── Helpers ─────────────────────────────────────────────────────────────
+
   @Test
   void registrationResponseContainsServerPublicKey() {
     // The server's long-term public key must be embedded in the registration response
@@ -678,22 +701,5 @@ class OpaqueRoundTripTest {
     RegistrationResponse response = server.createRegistrationResponse(regState.request(), CREDENTIAL_IDENTIFIER);
 
     assertThat(response.serverPublicKey()).isEqualTo(server.getServerPublicKey());
-  }
-
-  // ─── Helpers ─────────────────────────────────────────────────────────────
-
-  /** Serializes a KE2 to its full wire format for use with {@link KE2#deserialize}. */
-  private static byte[] serializeKE2(KE2 ke2) {
-    byte[] cr = ke2.serializeCredentialResponse(); // evaluatedElement || maskingNonce || maskedResponse
-    byte[] sn = ke2.serverNonce();
-    byte[] sp = ke2.serverAkePublicKey();
-    byte[] sm = ke2.serverMac();
-    byte[] out = new byte[cr.length + sn.length + sp.length + sm.length];
-    int off = 0;
-    System.arraycopy(cr, 0, out, off, cr.length); off += cr.length;
-    System.arraycopy(sn, 0, out, off, sn.length); off += sn.length;
-    System.arraycopy(sp, 0, out, off, sp.length); off += sp.length;
-    System.arraycopy(sm, 0, out, off, sm.length);
-    return out;
   }
 }

@@ -205,14 +205,14 @@ public class OpaqueServer {
    * @return [ServerAuthState, KE2]
    */
   public Object[] generateFakeKE2Deterministic(KE1 ke1,
-                                                byte[] credentialIdentifier,
-                                                byte[] serverIdentity,
-                                                byte[] clientIdentity,
-                                                byte[] fakeClientPublicKey,
-                                                byte[] fakeMaskingKey,
-                                                byte[] maskingNonce,
-                                                byte[] serverAkeKeySeed,
-                                                byte[] serverNonce) {
+                                               byte[] credentialIdentifier,
+                                               byte[] serverIdentity,
+                                               byte[] clientIdentity,
+                                               byte[] fakeClientPublicKey,
+                                               byte[] fakeMaskingKey,
+                                               byte[] maskingNonce,
+                                               byte[] serverAkeKeySeed,
+                                               byte[] serverNonce) {
     Envelope fakeEnvelope = new Envelope(new byte[OpaqueConfig.Nn], new byte[OpaqueConfig.Nm]);
     RegistrationRecord fakeRecord = new RegistrationRecord(fakeClientPublicKey, fakeMaskingKey, fakeEnvelope);
     return OpaqueAke.generateKE2Deterministic(

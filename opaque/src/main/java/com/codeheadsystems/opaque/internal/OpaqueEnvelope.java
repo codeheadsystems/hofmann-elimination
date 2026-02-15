@@ -3,6 +3,7 @@ package com.codeheadsystems.opaque.internal;
 import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.model.CleartextCredentials;
 import com.codeheadsystems.opaque.model.Envelope;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
@@ -62,7 +63,7 @@ public class OpaqueEnvelope {
     byte[] seed = expand(randomizedPwd, concat(nonce, "PrivateKey"), OpaqueConfig.Nsk);
 
     Object[] keyPair = OpaqueCrypto.deriveAkeKeyPairFull(seed);
-    java.math.BigInteger clientSk = (java.math.BigInteger) keyPair[0];
+    BigInteger clientSk = (BigInteger) keyPair[0];
     byte[] clientPublicKey = (byte[]) keyPair[1];
 
     CleartextCredentials cleartext = CleartextCredentials.create(
@@ -112,10 +113,10 @@ public class OpaqueEnvelope {
   /**
    * Result of the Recover operation.
    *
-   * @param clientPrivateKey     recovered client private key scalar bytes (32)
-   * @param clientPublicKey      recovered client public key (33)
-   * @param cleartextCredentials recovered cleartext credentials
-   * @param exportKey            32-byte export key
+   * @param clientPrivateKeyBytes recovered client private key scalar bytes (32)
+   * @param clientPublicKey       recovered client public key (33)
+   * @param cleartextCredentials  recovered cleartext credentials
+   * @param exportKey             32-byte export key
    */
   public record RecoverResult(byte[] clientPrivateKeyBytes, byte[] clientPublicKey,
                               CleartextCredentials cleartextCredentials, byte[] exportKey) {

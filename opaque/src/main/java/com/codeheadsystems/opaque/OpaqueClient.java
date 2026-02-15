@@ -5,6 +5,7 @@ import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.internal.OpaqueAke;
 import com.codeheadsystems.opaque.internal.OpaqueCredentials;
 import com.codeheadsystems.opaque.internal.OpaqueCrypto;
+import com.codeheadsystems.opaque.internal.OpaqueOprf;
 import com.codeheadsystems.opaque.model.AuthResult;
 import com.codeheadsystems.opaque.model.ClientAuthState;
 import com.codeheadsystems.opaque.model.ClientRegistrationState;
@@ -58,7 +59,7 @@ public class OpaqueClient {
    */
   public ClientAuthState generateKE1(byte[] password) {
     BigInteger blind = Curve.P256_CURVE.randomScalar();
-    byte[] blindedElement = com.codeheadsystems.opaque.internal.OpaqueOprf.blind(password, blind);
+    byte[] blindedElement = OpaqueOprf.blind(password, blind);
     CredentialRequest credReq = new CredentialRequest(blindedElement);
 
     // Derive ephemeral AKE key pair from random seed
@@ -119,7 +120,7 @@ public class OpaqueClient {
                                                   BigInteger blind,
                                                   byte[] clientNonce,
                                                   byte[] clientAkeKeySeed) {
-    byte[] blindedElement = com.codeheadsystems.opaque.internal.OpaqueOprf.blind(password, blind);
+    byte[] blindedElement = OpaqueOprf.blind(password, blind);
     CredentialRequest credReq = new CredentialRequest(blindedElement);
 
     Object[] kp = OpaqueCrypto.deriveAkeKeyPairFull(clientAkeKeySeed);
