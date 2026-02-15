@@ -1,4 +1,4 @@
 package com.codeheadsystems.hofmann.model;
 
-public record OprfRequest() {
+public record OprfRequest(String hexCodedEcPoint, String requestId) {
 }

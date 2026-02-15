@@ -1,4 +1,4 @@
 package com.codeheadsystems.hofmann.client.model;
 
-public record HashResult(String hash, String processIdentifier, String serverIdentifier) {
+public record HashResult(ServerIdentifier serverIdentifier, String processIdentifier, String requestId, byte[] hash) {
 }
