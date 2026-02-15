@@ -10,6 +10,8 @@ import org.bouncycastle.math.ec.ECPoint;
 import org.bouncycastle.util.encoders.Hex;
 import org.junit.jupiter.api.Test;
 
+// Constants verified against RFC 9497 §4.1 and Appendix A.3
+
 /**
  * Test vectors from RFC 9497 Appendix A.1.1: OPRF(P-256, SHA-256) mode 0.
  * <p>
@@ -53,8 +55,18 @@ public class OprfVectorsTest {
     // Client: blind
     ECPoint blindedElement = P.multiply(blind).normalize();
 
+    // RFC 9497 A.3.1 Vector 1: BlindedElement (client→server message, 33-byte compressed point)
+    assertThat(Hex.toHexString(blindedElement.getEncoded(true)))
+        .as("blindedElement")
+        .isEqualTo("03723a1e5c09b8b9c18d1dcbca29e8007e95f14f4732d9346d490ffc195110368d");
+
     // Server: evaluate
     ECPoint evaluatedElement = blindedElement.multiply(SK_S).normalize();
+
+    // RFC 9497 A.3.1 Vector 1: EvaluationElement (server→client message, 33-byte compressed point)
+    assertThat(Hex.toHexString(evaluatedElement.getEncoded(true)))
+        .as("evaluationElement")
+        .isEqualTo("030de02ffec47a1fd53efcdd1c6faf5bdc270912b8749e783c7ca75bb412958832");
 
     // Client: finalize
     byte[] output = OprfSuite.finalize(input, blind, evaluatedElement);
@@ -90,5 +102,25 @@ public class OprfVectorsTest {
 
     assertThat(Hex.toHexString(output))
         .isEqualTo("c748ca6dd327f0ce85f4ae3a8cd6d4d5390bbb804c9e12dcf94f853fece3dcce");
+  }
+
+  @Test
+  void testOprfSuiteConstants() {
+    // contextString = "OPRFV1-" || I2OSP(0, 1) || "-P256-SHA256" per RFC 9497 §4.1
+    // The null byte at position 7 is critical and easily missed in typos.
+    assertThat(Hex.toHexString(OprfSuite.CONTEXT_STRING))
+        .isEqualTo("4f50524656312d002d503235362d534841323536");
+
+    // HashToGroup-<contextString>
+    assertThat(Hex.toHexString(OprfSuite.HASH_TO_GROUP_DST))
+        .isEqualTo("48617368546f47726f75702d4f50524656312d002d503235362d534841323536");
+
+    // HashToScalar-<contextString>
+    assertThat(Hex.toHexString(OprfSuite.HASH_TO_SCALAR_DST))
+        .isEqualTo("48617368546f5363616c61722d4f50524656312d002d503235362d534841323536");
+
+    // DeriveKeyPair<contextString> — note: no dash between "DeriveKeyPair" and contextString
+    assertThat(Hex.toHexString(OprfSuite.DERIVE_KEY_PAIR_DST))
+        .isEqualTo("4465726976654b6579506169724f50524656312d002d503235362d534841323536");
   }
 }
