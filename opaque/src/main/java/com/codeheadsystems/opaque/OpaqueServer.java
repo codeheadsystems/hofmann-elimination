@@ -1,6 +1,7 @@
 package com.codeheadsystems.opaque;
 
 import com.codeheadsystems.hofmann.curve.Curve;
+import com.codeheadsystems.hofmann.curve.OctetStringUtils;
 import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.internal.OpaqueAke;
 import com.codeheadsystems.opaque.internal.OpaqueCredentials;
@@ -12,6 +13,7 @@ import com.codeheadsystems.opaque.model.RegistrationRecord;
 import com.codeheadsystems.opaque.model.RegistrationRequest;
 import com.codeheadsystems.opaque.model.RegistrationResponse;
 import com.codeheadsystems.opaque.model.ServerAuthState;
+import com.codeheadsystems.opaque.model.ServerKE2Result;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -94,9 +96,9 @@ public class OpaqueServer {
    * @param credentialIdentifier credential identifier for this user
    * @param ke1                  client's KE1 message
    * @param clientIdentity       client identity bytes (null = use clientPublicKey from record)
-   * @return [ServerAuthState, KE2]
+   * @return ServerKE2Result containing serverAuthState and ke2
    */
-  public Object[] generateKE2(byte[] serverIdentity,
+  public ServerKE2Result generateKE2(byte[] serverIdentity,
                               RegistrationRecord record,
                               byte[] credentialIdentifier,
                               KE1 ke1,
@@ -137,9 +139,9 @@ public class OpaqueServer {
    * @param credentialIdentifier credential identifier for the unknown user
    * @param serverIdentity       server identity bytes (null = use serverPublicKey)
    * @param clientIdentity       client identity bytes (null = use fake clientPublicKey)
-   * @return [ServerAuthState, KE2]
+   * @return ServerKE2Result containing serverAuthState and ke2
    */
-  public Object[] generateFakeKE2(KE1 ke1,
+  public ServerKE2Result generateFakeKE2(KE1 ke1,
                                   byte[] credentialIdentifier,
                                   byte[] serverIdentity,
                                   byte[] clientIdentity) {
@@ -156,14 +158,14 @@ public class OpaqueServer {
   private RegistrationRecord createFakeRecord(byte[] credentialIdentifier) {
     byte[] fakeClientSkSeed = OpaqueCrypto.hkdfExpand(
         oprfSeed,
-        OpaqueCrypto.concat(credentialIdentifier, "FakeClientKey".getBytes(StandardCharsets.US_ASCII)),
+        OctetStringUtils.concat(credentialIdentifier, "FakeClientKey".getBytes(StandardCharsets.US_ASCII)),
         OpaqueConfig.Nsk);
-    Object[] fakeKp = OpaqueCrypto.deriveAkeKeyPairFull(fakeClientSkSeed);
-    byte[] fakeClientPk = (byte[]) fakeKp[1];
+    OpaqueCrypto.AkeKeyPair fakeKp = OpaqueCrypto.deriveAkeKeyPair(fakeClientSkSeed);
+    byte[] fakeClientPk = fakeKp.publicKeyBytes();
 
     byte[] fakeMaskingKey = OpaqueCrypto.hkdfExpand(
         oprfSeed,
-        OpaqueCrypto.concat(credentialIdentifier, "FakeMaskingKey".getBytes(StandardCharsets.US_ASCII)),
+        OctetStringUtils.concat(credentialIdentifier, "FakeMaskingKey".getBytes(StandardCharsets.US_ASCII)),
         OpaqueConfig.Nh);
 
     Envelope fakeEnvelope = new Envelope(new byte[OpaqueConfig.Nn], new byte[OpaqueConfig.Nm]);
@@ -175,7 +177,7 @@ public class OpaqueServer {
   /**
    * Generates KE2 with deterministic nonces and seeds (for test vectors).
    */
-  public Object[] generateKE2Deterministic(byte[] serverIdentity,
+  public ServerKE2Result generateKE2Deterministic(byte[] serverIdentity,
                                            RegistrationRecord record,
                                            byte[] credentialIdentifier,
                                            KE1 ke1,
@@ -202,9 +204,9 @@ public class OpaqueServer {
    * @param maskingNonce         32-byte masking nonce
    * @param serverAkeKeySeed     32-byte server ephemeral AKE key seed
    * @param serverNonce          32-byte server nonce
-   * @return [ServerAuthState, KE2]
+   * @return ServerKE2Result containing serverAuthState and ke2
    */
-  public Object[] generateFakeKE2Deterministic(KE1 ke1,
+  public ServerKE2Result generateFakeKE2Deterministic(KE1 ke1,
                                                byte[] credentialIdentifier,
                                                byte[] serverIdentity,
                                                byte[] clientIdentity,

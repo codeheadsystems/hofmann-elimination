@@ -1,5 +1,6 @@
 package com.codeheadsystems.opaque.internal;
 
+import com.codeheadsystems.hofmann.curve.OctetStringUtils;
 import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.model.CleartextCredentials;
 import com.codeheadsystems.opaque.model.Envelope;
@@ -32,17 +33,17 @@ public class OpaqueEnvelope {
                                   byte[] serverIdentity, byte[] clientIdentity,
                                   byte[] envelopeNonce) {
     byte[] maskingKey = expand(randomizedPwd, "MaskingKey".getBytes(StandardCharsets.US_ASCII), OpaqueConfig.Nh);
-    byte[] authKey = expand(randomizedPwd, concat(envelopeNonce, "AuthKey"), OpaqueConfig.Nh);
-    byte[] exportKey = expand(randomizedPwd, concat(envelopeNonce, "ExportKey"), OpaqueConfig.Nh);
-    byte[] seed = expand(randomizedPwd, concat(envelopeNonce, "PrivateKey"), OpaqueConfig.Nsk);
+    byte[] authKey = expand(randomizedPwd, OctetStringUtils.concat(envelopeNonce, "AuthKey".getBytes(StandardCharsets.US_ASCII)), OpaqueConfig.Nh);
+    byte[] exportKey = expand(randomizedPwd, OctetStringUtils.concat(envelopeNonce, "ExportKey".getBytes(StandardCharsets.US_ASCII)), OpaqueConfig.Nh);
+    byte[] seed = expand(randomizedPwd, OctetStringUtils.concat(envelopeNonce, "PrivateKey".getBytes(StandardCharsets.US_ASCII)), OpaqueConfig.Nsk);
 
-    Object[] keyPair = OpaqueCrypto.deriveAkeKeyPairFull(seed);
-    byte[] clientPublicKey = (byte[]) keyPair[1];
+    OpaqueCrypto.AkeKeyPair keyPair = OpaqueCrypto.deriveAkeKeyPair(seed);
+    byte[] clientPublicKey = keyPair.publicKeyBytes();
 
     CleartextCredentials cleartext = CleartextCredentials.create(
         serverPublicKey, clientPublicKey, serverIdentity, clientIdentity);
 
-    byte[] authInput = OpaqueCrypto.concat(envelopeNonce, cleartext.serialize());
+    byte[] authInput = OctetStringUtils.concat(envelopeNonce, cleartext.serialize());
     byte[] authTag = OpaqueCrypto.hmacSha256(authKey, authInput);
 
     Envelope envelope = new Envelope(envelopeNonce, authTag);
@@ -58,18 +59,18 @@ public class OpaqueEnvelope {
                                       Envelope envelope, byte[] serverIdentity,
                                       byte[] clientIdentity) {
     byte[] nonce = envelope.envelopeNonce();
-    byte[] authKey = expand(randomizedPwd, concat(nonce, "AuthKey"), OpaqueConfig.Nh);
-    byte[] exportKey = expand(randomizedPwd, concat(nonce, "ExportKey"), OpaqueConfig.Nh);
-    byte[] seed = expand(randomizedPwd, concat(nonce, "PrivateKey"), OpaqueConfig.Nsk);
+    byte[] authKey = expand(randomizedPwd, OctetStringUtils.concat(nonce, "AuthKey".getBytes(StandardCharsets.US_ASCII)), OpaqueConfig.Nh);
+    byte[] exportKey = expand(randomizedPwd, OctetStringUtils.concat(nonce, "ExportKey".getBytes(StandardCharsets.US_ASCII)), OpaqueConfig.Nh);
+    byte[] seed = expand(randomizedPwd, OctetStringUtils.concat(nonce, "PrivateKey".getBytes(StandardCharsets.US_ASCII)), OpaqueConfig.Nsk);
 
-    Object[] keyPair = OpaqueCrypto.deriveAkeKeyPairFull(seed);
-    BigInteger clientSk = (BigInteger) keyPair[0];
-    byte[] clientPublicKey = (byte[]) keyPair[1];
+    OpaqueCrypto.AkeKeyPair keyPair = OpaqueCrypto.deriveAkeKeyPair(seed);
+    BigInteger clientSk = keyPair.privateKey();
+    byte[] clientPublicKey = keyPair.publicKeyBytes();
 
     CleartextCredentials cleartext = CleartextCredentials.create(
         serverPublicKey, clientPublicKey, serverIdentity, clientIdentity);
 
-    byte[] authInput = OpaqueCrypto.concat(nonce, cleartext.serialize());
+    byte[] authInput = OctetStringUtils.concat(nonce, cleartext.serialize());
     byte[] expectedTag = OpaqueCrypto.hmacSha256(authKey, authInput);
 
     if (!Arrays.equals(expectedTag, envelope.authTag())) {
@@ -89,14 +90,6 @@ public class OpaqueEnvelope {
 
   private static byte[] expand(byte[] prk, byte[] info, int len) {
     return OpaqueCrypto.hkdfExpand(prk, info, len);
-  }
-
-  private static byte[] concat(byte[] a, String b) {
-    return OpaqueCrypto.concat(a, b.getBytes(StandardCharsets.US_ASCII));
-  }
-
-  private static byte[] concat(byte[] a, byte[] b) {
-    return OpaqueCrypto.concat(a, b);
   }
 
   /**

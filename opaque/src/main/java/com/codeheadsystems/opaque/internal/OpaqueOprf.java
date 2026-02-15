@@ -1,5 +1,6 @@
 package com.codeheadsystems.opaque.internal;
 
+import com.codeheadsystems.hofmann.curve.OctetStringUtils;
 import com.codeheadsystems.hofmann.rfc9380.HashToCurve;
 import com.codeheadsystems.hofmann.rfc9497.OprfSuite;
 import java.math.BigInteger;
@@ -68,7 +69,7 @@ public class OpaqueOprf {
    */
   public static BigInteger deriveOprfKey(byte[] oprfSeed, byte[] credentialIdentifier) {
     // Per CFRG reference: info = credential_identifier || "OprfKey"
-    byte[] info = OpaqueCrypto.concat(
+    byte[] info = OctetStringUtils.concat(
         credentialIdentifier,
         "OprfKey".getBytes(StandardCharsets.US_ASCII)
     );

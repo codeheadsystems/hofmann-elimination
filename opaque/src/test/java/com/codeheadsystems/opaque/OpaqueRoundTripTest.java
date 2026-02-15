@@ -14,6 +14,7 @@ import com.codeheadsystems.opaque.model.KE3;
 import com.codeheadsystems.opaque.model.RegistrationRecord;
 import com.codeheadsystems.opaque.model.RegistrationResponse;
 import com.codeheadsystems.opaque.model.ServerAuthState;
+import com.codeheadsystems.opaque.model.ServerKE2Result;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -72,8 +73,8 @@ class OpaqueRoundTripTest {
   private AuthResult authenticate(RegistrationRecord record, byte[] password,
                                   byte[] serverIdentity, byte[] clientIdentity) {
     ClientAuthState authState = client.generateKE1(password);
-    Object[] ke2Result = server.generateKE2(serverIdentity, record, CREDENTIAL_IDENTIFIER, authState.ke1(), clientIdentity);
-    KE2 ke2 = (KE2) ke2Result[1];
+    ServerKE2Result ke2Result = server.generateKE2(serverIdentity, record, CREDENTIAL_IDENTIFIER, authState.ke1(), clientIdentity);
+    KE2 ke2 = ke2Result.ke2();
     return client.generateKE3(authState, clientIdentity, serverIdentity, ke2);
   }
 
@@ -92,9 +93,9 @@ class OpaqueRoundTripTest {
     RegistrationRecord record = register(PASSWORD_CORRECT);
 
     ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
-    Object[] ke2Result = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
-    KE2 ke2 = (KE2) ke2Result[1];
-    ServerAuthState serverAuthState = (ServerAuthState) ke2Result[0];
+    ServerKE2Result ke2Result = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
+    KE2 ke2 = ke2Result.ke2();
+    ServerAuthState serverAuthState = ke2Result.serverAuthState();
 
     AuthResult clientResult = client.generateKE3(authState, null, null, ke2);
     byte[] serverSessionKey = server.serverFinish(serverAuthState, clientResult.ke3());
@@ -126,9 +127,9 @@ class OpaqueRoundTripTest {
     RegistrationRecord record = register(PASSWORD_CORRECT);
 
     ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
-    Object[] ke2Result = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
-    KE2 ke2 = (KE2) ke2Result[1];
-    ServerAuthState serverAuthState = (ServerAuthState) ke2Result[0];
+    ServerKE2Result ke2Result = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
+    KE2 ke2 = ke2Result.ke2();
+    ServerAuthState serverAuthState = ke2Result.serverAuthState();
 
     // Tamper with KE3
     KE3 tamperedKE3 = new KE3(new byte[32]); // all-zeros MAC
@@ -156,10 +157,10 @@ class OpaqueRoundTripTest {
     RegistrationRecord record = register(PASSWORD_CORRECT, serverIdentity, clientIdentity);
 
     ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
-    Object[] ke2Result = server.generateKE2(serverIdentity, record, CREDENTIAL_IDENTIFIER,
+    ServerKE2Result ke2Result = server.generateKE2(serverIdentity, record, CREDENTIAL_IDENTIFIER,
         authState.ke1(), clientIdentity);
-    KE2 ke2 = (KE2) ke2Result[1];
-    ServerAuthState serverAuthState = (ServerAuthState) ke2Result[0];
+    KE2 ke2 = ke2Result.ke2();
+    ServerAuthState serverAuthState = ke2Result.serverAuthState();
 
     AuthResult clientResult = client.generateKE3(authState, clientIdentity, serverIdentity, ke2);
     byte[] serverSessionKey = server.serverFinish(serverAuthState, clientResult.ke3());
@@ -179,9 +180,9 @@ class OpaqueRoundTripTest {
     // Client registers with correctServerIdentity but authenticates with wrongServerIdentity
     assertThatThrownBy(() -> {
       ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
-      Object[] ke2Result = server.generateKE2(wrongServerIdentity, record, CREDENTIAL_IDENTIFIER,
+      ServerKE2Result ke2Result = server.generateKE2(wrongServerIdentity, record, CREDENTIAL_IDENTIFIER,
           authState.ke1(), clientIdentity);
-      KE2 ke2 = (KE2) ke2Result[1];
+      KE2 ke2 = ke2Result.ke2();
       client.generateKE3(authState, clientIdentity, wrongServerIdentity, ke2);
     }).isInstanceOf(SecurityException.class);
   }
@@ -199,9 +200,9 @@ class OpaqueRoundTripTest {
     // and preamble mismatch (wrong identity in transcript).
     assertThatThrownBy(() -> {
       ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
-      Object[] ke2Result = server.generateKE2(serverIdentity, record, CREDENTIAL_IDENTIFIER,
+      ServerKE2Result ke2Result = server.generateKE2(serverIdentity, record, CREDENTIAL_IDENTIFIER,
           authState.ke1(), correctClientIdentity);
-      KE2 ke2 = (KE2) ke2Result[1];
+      KE2 ke2 = ke2Result.ke2();
       client.generateKE3(authState, wrongClientIdentity, serverIdentity, ke2);
     }).isInstanceOf(SecurityException.class);
   }
@@ -223,9 +224,9 @@ class OpaqueRoundTripTest {
       ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
       // Impersonator must also use the real masking key from record; since it uses a fake OPRF seed
       // the OPRF evaluation differs, so the client will fail at envelope auth_tag or server MAC.
-      Object[] ke2Result = impersonator.generateKE2(null, record, CREDENTIAL_IDENTIFIER,
+      ServerKE2Result ke2Result = impersonator.generateKE2(null, record, CREDENTIAL_IDENTIFIER,
           authState.ke1(), null);
-      KE2 ke2 = (KE2) ke2Result[1];
+      KE2 ke2 = ke2Result.ke2();
       client.generateKE3(authState, null, null, ke2);
     }).isInstanceOf(SecurityException.class);
   }
@@ -237,8 +238,8 @@ class OpaqueRoundTripTest {
     // (same point and exception as a wrong-password attempt).
     byte[] unknownCredentialId = "unknown@example.com".getBytes(StandardCharsets.UTF_8);
     ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
-    Object[] ke2Result = server.generateFakeKE2(authState.ke1(), unknownCredentialId, null, null);
-    KE2 ke2 = (KE2) ke2Result[1];
+    ServerKE2Result ke2Result = server.generateFakeKE2(authState.ke1(), unknownCredentialId, null, null);
+    KE2 ke2 = ke2Result.ke2();
 
     assertThatThrownBy(() -> client.generateKE3(authState, null, null, ke2))
         .isInstanceOf(SecurityException.class)
@@ -255,8 +256,8 @@ class OpaqueRoundTripTest {
     SecurityException wrongPwdEx = null;
     try {
       ClientAuthState a = client.generateKE1(PASSWORD_WRONG);
-      Object[] r = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, a.ke1(), null);
-      client.generateKE3(a, null, null, (KE2) r[1]);
+      ServerKE2Result r = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, a.ke1(), null);
+      client.generateKE3(a, null, null, r.ke2());
     } catch (SecurityException e) {
       wrongPwdEx = e;
     }
@@ -266,8 +267,8 @@ class OpaqueRoundTripTest {
     SecurityException fakeUserEx = null;
     try {
       ClientAuthState a = client.generateKE1(PASSWORD_CORRECT);
-      Object[] r = server.generateFakeKE2(a.ke1(), unknownCredId, null, null);
-      client.generateKE3(a, null, null, (KE2) r[1]);
+      ServerKE2Result r = server.generateFakeKE2(a.ke1(), unknownCredId, null, null);
+      client.generateKE3(a, null, null, r.ke2());
     } catch (SecurityException e) {
       fakeUserEx = e;
     }
@@ -311,16 +312,16 @@ class OpaqueRoundTripTest {
 
     // User 1 authenticates
     ClientAuthState a1 = client.generateKE1(pwd1);
-    Object[] ke2r1 = server.generateKE2(null, r1, cred1, a1.ke1(), null);
-    AuthResult res1 = client.generateKE3(a1, null, null, (KE2) ke2r1[1]);
-    byte[] serverKey1 = server.serverFinish((ServerAuthState) ke2r1[0], res1.ke3());
+    ServerKE2Result ke2r1 = server.generateKE2(null, r1, cred1, a1.ke1(), null);
+    AuthResult res1 = client.generateKE3(a1, null, null, ke2r1.ke2());
+    byte[] serverKey1 = server.serverFinish(ke2r1.serverAuthState(), res1.ke3());
     assertThat(res1.sessionKey()).isEqualTo(serverKey1);
 
     // User 2 authenticates independently
     ClientAuthState a2 = client.generateKE1(pwd2);
-    Object[] ke2r2 = server.generateKE2(null, r2, cred2, a2.ke1(), null);
-    AuthResult res2 = client.generateKE3(a2, null, null, (KE2) ke2r2[1]);
-    byte[] serverKey2 = server.serverFinish((ServerAuthState) ke2r2[0], res2.ke3());
+    ServerKE2Result ke2r2 = server.generateKE2(null, r2, cred2, a2.ke1(), null);
+    AuthResult res2 = client.generateKE3(a2, null, null, ke2r2.ke2());
+    byte[] serverKey2 = server.serverFinish(ke2r2.serverAuthState(), res2.ke3());
     assertThat(res2.sessionKey()).isEqualTo(serverKey2);
 
     // Their session keys are independent
@@ -343,9 +344,9 @@ class OpaqueRoundTripTest {
         null, null);
 
     ClientAuthState authState = argon2Client.generateKE1(PASSWORD_CORRECT);
-    Object[] ke2Result = argon2Server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
-    KE2 ke2 = (KE2) ke2Result[1];
-    ServerAuthState serverAuthState = (ServerAuthState) ke2Result[0];
+    ServerKE2Result ke2Result = argon2Server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
+    KE2 ke2 = ke2Result.ke2();
+    ServerAuthState serverAuthState = ke2Result.serverAuthState();
 
     AuthResult result = argon2Client.generateKE3(authState, null, null, ke2);
     byte[] serverKey = argon2Server.serverFinish(serverAuthState, result.ke3());
@@ -355,8 +356,8 @@ class OpaqueRoundTripTest {
     // Wrong password must still fail under Argon2id.
     assertThatThrownBy(() -> {
       ClientAuthState bad = argon2Client.generateKE1(PASSWORD_WRONG);
-      Object[] r = argon2Server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, bad.ke1(), null);
-      argon2Client.generateKE3(bad, null, null, (KE2) r[1]);
+      ServerKE2Result r = argon2Server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, bad.ke1(), null);
+      argon2Client.generateKE3(bad, null, null, r.ke2());
     }).isInstanceOf(SecurityException.class)
         .hasMessageContaining("auth_tag mismatch");
   }
@@ -368,8 +369,8 @@ class OpaqueRoundTripTest {
     // This simulates a MITM that relays a valid credential response with a forged MAC.
     RegistrationRecord record = register(PASSWORD_CORRECT);
     ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
-    Object[] ke2Result = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
-    KE2 realKe2 = (KE2) ke2Result[1];
+    ServerKE2Result ke2Result = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
+    KE2 realKe2 = ke2Result.ke2();
 
     // Keep the real credential response so envelope recovery succeeds; tamper only the server MAC.
     KE2 tamperedKe2 = new KE2(
@@ -406,8 +407,8 @@ class OpaqueRoundTripTest {
 
     assertThatThrownBy(() -> {
       ClientAuthState authState = clientB.generateKE1(PASSWORD_CORRECT);
-      Object[] ke2Result = serverA.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
-      clientB.generateKE3(authState, null, null, (KE2) ke2Result[1]);
+      ServerKE2Result ke2Result = serverA.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
+      clientB.generateKE3(authState, null, null, ke2Result.ke2());
     }).isInstanceOf(SecurityException.class)
         .hasMessageContaining("Server MAC verification failed");
   }
@@ -441,8 +442,8 @@ class OpaqueRoundTripTest {
     assertThatThrownBy(() -> {
       ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
       // Server accidentally uses bob's credentialIdentifier for alice's record.
-      Object[] ke2Result = server.generateKE2(null, record, bobCredId, authState.ke1(), null);
-      client.generateKE3(authState, null, null, (KE2) ke2Result[1]);
+      ServerKE2Result ke2Result = server.generateKE2(null, record, bobCredId, authState.ke1(), null);
+      client.generateKE3(authState, null, null, ke2Result.ke2());
     }).isInstanceOf(SecurityException.class)
         .hasMessageContaining("auth_tag mismatch");
   }
@@ -465,9 +466,9 @@ class OpaqueRoundTripTest {
         null, null);
 
     ClientAuthState authState = c.generateKE1(PASSWORD_CORRECT);
-    Object[] ke2Result = generated.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
-    KE2 ke2 = (KE2) ke2Result[1];
-    ServerAuthState sas = (ServerAuthState) ke2Result[0];
+    ServerKE2Result ke2Result = generated.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
+    KE2 ke2 = ke2Result.ke2();
+    ServerAuthState sas = ke2Result.serverAuthState();
 
     AuthResult result = c.generateKE3(authState, null, null, ke2);
     byte[] serverKey = generated.serverFinish(sas, result.ke3());
@@ -481,9 +482,9 @@ class OpaqueRoundTripTest {
     // server B: the OPRF evaluation differs → different randomized_pwd → envelope auth_tag mismatch.
     //
     // A deterministic key pair is used so the only variable between the two servers is the seed.
-    Object[] kp = OpaqueCrypto.deriveAkeKeyPairFull(new byte[32]);
-    java.math.BigInteger sharedSk = (java.math.BigInteger) kp[0];
-    byte[] sharedPk = (byte[]) kp[1];
+    OpaqueCrypto.AkeKeyPair kp = OpaqueCrypto.deriveAkeKeyPair(new byte[32]);
+    java.math.BigInteger sharedSk = kp.privateKey();
+    byte[] sharedPk = kp.publicKeyBytes();
     byte[] rawSk = sharedSk.toByteArray();
     byte[] skFixed = new byte[32];
     if (rawSk.length > 32) {
@@ -503,8 +504,8 @@ class OpaqueRoundTripTest {
 
     assertThatThrownBy(() -> {
       ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
-      Object[] ke2Result = serverB.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
-      client.generateKE3(authState, null, null, (KE2) ke2Result[1]);
+      ServerKE2Result ke2Result = serverB.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
+      client.generateKE3(authState, null, null, ke2Result.ke2());
     }).isInstanceOf(SecurityException.class)
         .hasMessageContaining("auth_tag mismatch");
   }
@@ -542,8 +543,8 @@ class OpaqueRoundTripTest {
     // Corrupting any byte produces wrong envelope data, causing auth_tag mismatch.
     RegistrationRecord record = register(PASSWORD_CORRECT);
     ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
-    Object[] ke2Result = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
-    KE2 realKe2 = (KE2) ke2Result[1];
+    ServerKE2Result ke2Result = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
+    KE2 realKe2 = ke2Result.ke2();
 
     // Byte 50 falls in the masked envelope-nonce region (bytes 33–64 after unmasking),
     // so it corrupts the recovered envelopeNonce without risking an invalid-point parse.
@@ -573,8 +574,8 @@ class OpaqueRoundTripTest {
     // after unblinding, diverging the OPRF output from the registered value.
     RegistrationRecord record = register(PASSWORD_CORRECT);
     ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
-    Object[] ke2Result = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
-    KE2 realKe2 = (KE2) ke2Result[1];
+    ServerKE2Result ke2Result = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
+    KE2 realKe2 = ke2Result.ke2();
 
     byte[] evaluatedElement = realKe2.credentialResponse().evaluatedElement().clone();
     evaluatedElement[0] ^= 0x01; // 0x02 ↔ 0x03: negated point, valid but wrong
@@ -599,8 +600,8 @@ class OpaqueRoundTripTest {
     // resulting object must be immediately usable for a successful authentication.
     RegistrationRecord record = register(PASSWORD_CORRECT);
     ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
-    Object[] ke2Result = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
-    KE2 original = (KE2) ke2Result[1];
+    ServerKE2Result ke2Result = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
+    KE2 original = ke2Result.ke2();
 
     byte[] wireBytes = serializeKE2(original);
     KE2 deserialized = KE2.deserialize(wireBytes);
@@ -619,9 +620,9 @@ class OpaqueRoundTripTest {
     byte[] unknownCredId = "unknown@example.com".getBytes(StandardCharsets.UTF_8);
 
     ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
-    Object[] ke2Result = server.generateFakeKE2(
+    ServerKE2Result ke2Result = server.generateFakeKE2(
         authState.ke1(), unknownCredId, serverIdentity, clientIdentity);
-    KE2 ke2 = (KE2) ke2Result[1];
+    KE2 ke2 = ke2Result.ke2();
 
     assertThatThrownBy(() -> client.generateKE3(authState, clientIdentity, serverIdentity, ke2))
         .isInstanceOf(SecurityException.class)
@@ -639,11 +640,11 @@ class OpaqueRoundTripTest {
     ClientAuthState authState1 = client.generateKE1(PASSWORD_CORRECT);
     ClientAuthState authState2 = client.generateKE1(PASSWORD_CORRECT);
 
-    Object[] ke2Result1 = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState1.ke1(), null);
-    Object[] ke2Result2 = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState2.ke1(), null);
+    ServerKE2Result ke2Result1 = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState1.ke1(), null);
+    ServerKE2Result ke2Result2 = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState2.ke1(), null);
 
-    AuthResult result1 = client.generateKE3(authState1, null, null, (KE2) ke2Result1[1]);
-    AuthResult result2 = client.generateKE3(authState2, null, null, (KE2) ke2Result2[1]);
+    AuthResult result1 = client.generateKE3(authState1, null, null, ke2Result1.ke2());
+    AuthResult result2 = client.generateKE3(authState2, null, null, ke2Result2.ke2());
 
     assertThat(result1.sessionKey()).isNotNull().hasSize(32);
     assertThat(result2.sessionKey()).isNotNull().hasSize(32);
@@ -681,9 +682,9 @@ class OpaqueRoundTripTest {
     // same ServerAuthState and KE3 must return the same session key both times.
     RegistrationRecord record = register(PASSWORD_CORRECT);
     ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
-    Object[] ke2Result = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
-    ServerAuthState serverAuthState = (ServerAuthState) ke2Result[0];
-    AuthResult clientResult = client.generateKE3(authState, null, null, (KE2) ke2Result[1]);
+    ServerKE2Result ke2Result = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
+    ServerAuthState serverAuthState = ke2Result.serverAuthState();
+    AuthResult clientResult = client.generateKE3(authState, null, null, ke2Result.ke2());
 
     byte[] sessionKey1 = server.serverFinish(serverAuthState, clientResult.ke3());
     byte[] sessionKey2 = server.serverFinish(serverAuthState, clientResult.ke3());

@@ -1,6 +1,7 @@
 package com.codeheadsystems.opaque.internal;
 
 import com.codeheadsystems.hofmann.curve.Curve;
+import com.codeheadsystems.hofmann.curve.OctetStringUtils;
 import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.internal.OpaqueEnvelope.RecoverResult;
 import com.codeheadsystems.opaque.internal.OpaqueEnvelope.StoreResult;
@@ -110,14 +111,14 @@ public class OpaqueCredentials {
     byte[] evaluatedElement = OpaqueOprf.blindEvaluate(oprfKey, request.blindedElement());
 
     // pad = HKDF-Expand(masking_key, masking_nonce || "CredentialResponsePad", Npk + Nn + Nm)
-    byte[] padInfo = OpaqueCrypto.concat(
+    byte[] padInfo = OctetStringUtils.concat(
         maskingNonce,
         "CredentialResponsePad".getBytes(StandardCharsets.US_ASCII)
     );
     byte[] pad = OpaqueCrypto.hkdfExpand(record.maskingKey(), padInfo, OpaqueConfig.MASKED_RESPONSE_SIZE);
 
     // plaintext = server_public_key || envelope_nonce || auth_tag
-    byte[] plaintext = OpaqueCrypto.concat(serverPublicKey, record.envelope().serialize());
+    byte[] plaintext = OctetStringUtils.concat(serverPublicKey, record.envelope().serialize());
     byte[] maskedResponse = OpaqueCrypto.xor(pad, plaintext);
 
     return new CredentialResponse(evaluatedElement, maskingNonce, maskedResponse);
@@ -140,7 +141,7 @@ public class OpaqueCredentials {
         "MaskingKey".getBytes(StandardCharsets.US_ASCII), OpaqueConfig.Nh);
 
     // Unmask: pad = HKDF-Expand(masking_key, masking_nonce || "CredentialResponsePad", ...)
-    byte[] padInfo = OpaqueCrypto.concat(
+    byte[] padInfo = OctetStringUtils.concat(
         response.maskingNonce(),
         "CredentialResponsePad".getBytes(StandardCharsets.US_ASCII)
     );
@@ -165,6 +166,6 @@ public class OpaqueCredentials {
                                            byte[] evaluatedElement, OpaqueConfig config) {
     byte[] oprfOutput = OpaqueOprf.finalize(password, blind, evaluatedElement);
     byte[] stretchedOutput = config.ksf().stretch(oprfOutput, config);
-    return OpaqueCrypto.hkdfExtract(new byte[0], OpaqueCrypto.concat(oprfOutput, stretchedOutput));
+    return OpaqueCrypto.hkdfExtract(new byte[0], OctetStringUtils.concat(oprfOutput, stretchedOutput));
   }
 }

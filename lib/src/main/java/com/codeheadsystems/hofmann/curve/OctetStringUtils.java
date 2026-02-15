@@ -46,4 +46,21 @@ public class OctetStringUtils {
     return curve.params().getCurve().decodePoint(Hex.decode(hex));
   }
 
+  /**
+   * Concatenates multiple byte arrays into a single array.
+   */
+  public static byte[] concat(byte[]... arrays) {
+    int totalLength = 0;
+    for (byte[] arr : arrays) {
+      totalLength += arr.length;
+    }
+    byte[] result = new byte[totalLength];
+    int offset = 0;
+    for (byte[] arr : arrays) {
+      System.arraycopy(arr, 0, result, offset, arr.length);
+      offset += arr.length;
+    }
+    return result;
+  }
+
 }

@@ -140,7 +140,7 @@ pwd
                                             dh1=eskS·epkU, dh2=skS·epkU, dh3=eskS·pkU
                                             ikm=dh1||dh2||dh3; derive sessionKey, serverMAC
                                             KE2 = (evaluatedMsg, nonceS, epkS, maskedResponse, serverMAC)
-             ◄──────────────────────────   KE2
+              ◄──────────────────────────   KE2
 3. oprfOutput = Finalize(pwd, blind, evaluatedMsg)
    randomizedPwd = HKDF-Extract("", oprfOutput || Stretch(oprfOutput))
    maskingKey = HKDF-Expand(randomizedPwd, "MaskingKey", Nh)

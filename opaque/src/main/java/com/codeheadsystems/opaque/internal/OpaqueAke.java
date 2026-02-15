@@ -12,6 +12,7 @@ import com.codeheadsystems.opaque.model.KE2;
 import com.codeheadsystems.opaque.model.KE3;
 import com.codeheadsystems.opaque.model.RegistrationRecord;
 import com.codeheadsystems.opaque.model.ServerAuthState;
+import com.codeheadsystems.opaque.model.ServerKE2Result;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -37,7 +38,7 @@ public class OpaqueAke {
                                      byte[] serverIdentity, CredentialResponse credentialResponse,
                                      byte[] serverNonce, byte[] serverAkePublicKey) {
     byte[] prefix = "OPAQUEv1-".getBytes(StandardCharsets.US_ASCII);
-    return OpaqueCrypto.concat(
+    return OctetStringUtils.concat(
         prefix,
         encodeVector(context),
         encodeVector(clientIdentity),
@@ -90,9 +91,9 @@ public class OpaqueAke {
    * @param clientIdentity       client identity bytes (or clientPublicKey if null)
    * @param maskingNonce         provided masking nonce (null = random)
    * @param serverAkeKeySeed     provided server ephemeral AKE seed (null = random)
-   * @return [ServerAuthState, KE2]
+   * @return ServerKE2Result containing serverAuthState and ke2
    */
-  public static Object[] generateKE2(byte[] context, byte[] serverIdentity, BigInteger serverPrivateKey,
+  public static ServerKE2Result generateKE2(byte[] context, byte[] serverIdentity, BigInteger serverPrivateKey,
                                      byte[] serverPublicKey, RegistrationRecord record,
                                      byte[] credentialIdentifier, byte[] oprfSeed,
                                      KE1 ke1, byte[] clientIdentity,
@@ -109,9 +110,9 @@ public class OpaqueAke {
 
     // Server ephemeral AKE key pair
     byte[] seed = (serverAkeKeySeed != null) ? serverAkeKeySeed : OpaqueCrypto.randomBytes(OpaqueConfig.Nsk);
-    Object[] serverAkeKp = OpaqueCrypto.deriveAkeKeyPairFull(seed);
-    BigInteger serverAkeSk = (BigInteger) serverAkeKp[0];
-    byte[] serverAkePk = (byte[]) serverAkeKp[1];
+    OpaqueCrypto.AkeKeyPair serverAkeKp = OpaqueCrypto.deriveAkeKeyPair(seed);
+    BigInteger serverAkeSk = serverAkeKp.privateKey();
+    byte[] serverAkePk = serverAkeKp.publicKeyBytes();
 
     byte[] serverNonce = OpaqueCrypto.randomBytes(OpaqueConfig.Nn);
 
@@ -125,22 +126,22 @@ public class OpaqueAke {
     byte[] dh1 = OpaqueCrypto.dhP256(serverAkeSk, clientAkePk);
     byte[] dh2 = OpaqueCrypto.dhP256(serverPrivateKey, clientAkePk);
     byte[] dh3 = OpaqueCrypto.dhP256(serverAkeSk, clientLongTermPk);
-    byte[] ikm = OpaqueCrypto.concat(dh1, dh2, dh3);
+    byte[] ikm = OctetStringUtils.concat(dh1, dh2, dh3);
 
     DerivedKeys keys = deriveKeys(ikm, preamble);
     byte[] serverMac = OpaqueCrypto.hmacSha256(keys.km2(), preambleHash);
     byte[] expectedClientMac = OpaqueCrypto.hmacSha256(keys.km3(),
-        OpaqueCrypto.sha256(OpaqueCrypto.concat(preamble, serverMac)));
+        OpaqueCrypto.sha256(OctetStringUtils.concat(preamble, serverMac)));
 
     ServerAuthState authState = new ServerAuthState(expectedClientMac, keys.sessionKey());
     KE2 ke2 = new KE2(credResponse, serverNonce, serverAkePk, serverMac);
-    return new Object[]{authState, ke2};
+    return new ServerKE2Result(authState, ke2);
   }
 
   /**
    * Server GenerateKE2 with deterministic server nonce (for testing).
    */
-  public static Object[] generateKE2Deterministic(byte[] context, byte[] serverIdentity,
+  public static ServerKE2Result generateKE2Deterministic(byte[] context, byte[] serverIdentity,
                                                   BigInteger serverPrivateKey, byte[] serverPublicKey,
                                                   RegistrationRecord record, byte[] credentialIdentifier,
                                                   byte[] oprfSeed, KE1 ke1, byte[] clientIdentity,
@@ -154,9 +155,9 @@ public class OpaqueAke {
     CredentialResponse credResponse = OpaqueCredentials.createCredentialResponseWithNonce(
         credReq, serverPublicKey, record, credentialIdentifier, oprfSeed, mn);
 
-    Object[] serverAkeKp = OpaqueCrypto.deriveAkeKeyPairFull(serverAkeKeySeed);
-    BigInteger serverAkeSk = (BigInteger) serverAkeKp[0];
-    byte[] serverAkePk = (byte[]) serverAkeKp[1];
+    OpaqueCrypto.AkeKeyPair serverAkeKp = OpaqueCrypto.deriveAkeKeyPair(serverAkeKeySeed);
+    BigInteger serverAkeSk = serverAkeKp.privateKey();
+    byte[] serverAkePk = serverAkeKp.publicKeyBytes();
 
     byte[] preamble = buildPreamble(context, cId, ke1, sId, credResponse, serverNonce, serverAkePk);
     byte[] preambleHash = OpaqueCrypto.sha256(preamble);
@@ -166,16 +167,16 @@ public class OpaqueAke {
     byte[] dh1 = OpaqueCrypto.dhP256(serverAkeSk, clientAkePk);
     byte[] dh2 = OpaqueCrypto.dhP256(serverPrivateKey, clientAkePk);
     byte[] dh3 = OpaqueCrypto.dhP256(serverAkeSk, clientLongTermPk);
-    byte[] ikm = OpaqueCrypto.concat(dh1, dh2, dh3);
+    byte[] ikm = OctetStringUtils.concat(dh1, dh2, dh3);
 
     DerivedKeys keys = deriveKeys(ikm, preamble);
     byte[] serverMac = OpaqueCrypto.hmacSha256(keys.km2(), preambleHash);
     byte[] expectedClientMac = OpaqueCrypto.hmacSha256(keys.km3(),
-        OpaqueCrypto.sha256(OpaqueCrypto.concat(preamble, serverMac)));
+        OpaqueCrypto.sha256(OctetStringUtils.concat(preamble, serverMac)));
 
     ServerAuthState authState = new ServerAuthState(expectedClientMac, keys.sessionKey());
     KE2 ke2 = new KE2(credResponse, serverNonce, serverAkePk, serverMac);
-    return new Object[]{authState, ke2};
+    return new ServerKE2Result(authState, ke2);
   }
 
   /**
@@ -220,7 +221,7 @@ public class OpaqueAke {
     byte[] dh1 = OpaqueCrypto.dhP256(state.clientAkePrivateKey(), serverAkePk);
     byte[] dh2 = OpaqueCrypto.dhP256(state.clientAkePrivateKey(), serverLongTermPk);
     byte[] dh3 = OpaqueCrypto.dhP256(clientSk, serverAkePk);
-    byte[] ikm = OpaqueCrypto.concat(dh1, dh2, dh3);
+    byte[] ikm = OctetStringUtils.concat(dh1, dh2, dh3);
 
     DerivedKeys keys = deriveKeys(ikm, preamble);
 
@@ -232,17 +233,17 @@ public class OpaqueAke {
 
     // Compute client MAC: MAC(Km3, Hash(preamble || server_mac))
     byte[] clientMac = OpaqueCrypto.hmacSha256(keys.km3(),
-        OpaqueCrypto.sha256(OpaqueCrypto.concat(preamble, ke2.serverMac())));
+        OpaqueCrypto.sha256(OctetStringUtils.concat(preamble, ke2.serverMac())));
 
     return new AuthResult(new KE3(clientMac), keys.sessionKey(), recovered.exportKey());
   }
 
   private static byte[] encodeVector(byte[] data) {
-    return OpaqueCrypto.concat(OctetStringUtils.I2OSP(data.length, 2), data);
+    return OctetStringUtils.concat(OctetStringUtils.I2OSP(data.length, 2), data);
   }
 
   private static byte[] serializeCredentialResponse(CredentialResponse cr) {
-    return OpaqueCrypto.concat(cr.evaluatedElement(), cr.maskingNonce(), cr.maskedResponse());
+    return OctetStringUtils.concat(cr.evaluatedElement(), cr.maskingNonce(), cr.maskedResponse());
   }
 
   /**

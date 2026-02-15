@@ -2,6 +2,7 @@ package com.codeheadsystems.opaque;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.codeheadsystems.hofmann.curve.OctetStringUtils;
 import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.internal.OpaqueCredentials;
 import com.codeheadsystems.opaque.model.AuthResult;
@@ -13,6 +14,7 @@ import com.codeheadsystems.opaque.model.KE2;
 import com.codeheadsystems.opaque.model.RegistrationRecord;
 import com.codeheadsystems.opaque.model.RegistrationResponse;
 import com.codeheadsystems.opaque.model.ServerAuthState;
+import com.codeheadsystems.opaque.model.ServerKE2Result;
 import java.math.BigInteger;
 import java.util.Arrays;
 import org.bouncycastle.util.encoders.Hex;
@@ -98,18 +100,6 @@ class OpaqueVectorsTest {
   // Tests RFC 9807 §7.1.2 user-enumeration protection.
   // The fake vector uses a different server key pair and oprf_seed than vectors 1 and 2.
 
-  private static byte[] concat(byte[]... parts) {
-    int total = 0;
-    for (byte[] p : parts) total += p.length;
-    byte[] out = new byte[total];
-    int off = 0;
-    for (byte[] p : parts) {
-      System.arraycopy(p, 0, out, off, p.length);
-      off += p.length;
-    }
-    return out;
-  }
-
   /**
    * Deserializes a KE1 from its 98-byte wire format (blindedElement || clientNonce || clientAkePk).
    */
@@ -124,7 +114,7 @@ class OpaqueVectorsTest {
    * Serialize KE2: credentialResponse || serverNonce || serverAkePk || serverMac
    */
   private static byte[] concatKE2(KE2 ke2) {
-    return concat(
+    return OctetStringUtils.concat(
         ke2.serializeCredentialResponse(),
         ke2.serverNonce(),
         ke2.serverAkePublicKey(),
@@ -149,7 +139,7 @@ class OpaqueVectorsTest {
     RegistrationResponse response = server.createRegistrationResponse(state.request(), CREDENTIAL_IDENTIFIER);
 
     // registration_response = evaluatedElement || serverPublicKey
-    byte[] expected = concat(response.evaluatedElement(), response.serverPublicKey());
+    byte[] expected = OctetStringUtils.concat(response.evaluatedElement(), response.serverPublicKey());
     assertThat(expected).isEqualTo(EXPECTED_REGISTRATION_RESPONSE);
   }
 
@@ -164,7 +154,7 @@ class OpaqueVectorsTest {
         regState, response, null, null, ENVELOPE_NONCE);
 
     // registration_upload = clientPublicKey || maskingKey || envelope_nonce || auth_tag
-    byte[] actual = concat(record.clientPublicKey(), record.maskingKey(), record.envelope().serialize());
+    byte[] actual = OctetStringUtils.concat(record.clientPublicKey(), record.maskingKey(), record.envelope().serialize());
     assertThat(actual).isEqualTo(EXPECTED_REGISTRATION_UPLOAD);
   }
 
@@ -206,10 +196,10 @@ class OpaqueVectorsTest {
         PASSWORD, BLIND_LOGIN, CLIENT_NONCE, CLIENT_KEYSHARE_SEED);
 
     // Auth: KE2
-    Object[] ke2Result = server.generateKE2Deterministic(
+    ServerKE2Result ke2Result = server.generateKE2Deterministic(
         null, record, CREDENTIAL_IDENTIFIER, authState.ke1(),
         null, MASKING_NONCE, SERVER_KEYSHARE_SEED, SERVER_NONCE);
-    KE2 ke2 = (KE2) ke2Result[1];
+    KE2 ke2 = ke2Result.ke2();
 
     // Serialize KE2: credentialResponse || serverNonce || serverAkePk || serverMac
     byte[] actual = concatKE2(ke2);
@@ -230,10 +220,10 @@ class OpaqueVectorsTest {
     // Auth
     ClientAuthState authState = client.generateKE1Deterministic(
         PASSWORD, BLIND_LOGIN, CLIENT_NONCE, CLIENT_KEYSHARE_SEED);
-    Object[] ke2Result = server.generateKE2Deterministic(
+    ServerKE2Result ke2Result = server.generateKE2Deterministic(
         null, record, CREDENTIAL_IDENTIFIER, authState.ke1(),
         null, MASKING_NONCE, SERVER_KEYSHARE_SEED, SERVER_NONCE);
-    KE2 ke2 = (KE2) ke2Result[1];
+    KE2 ke2 = ke2Result.ke2();
 
     AuthResult authResult = client.generateKE3(authState, null, null, ke2);
     assertThat(authResult.ke3().clientMac()).isEqualTo(EXPECTED_KE3);
@@ -253,11 +243,11 @@ class OpaqueVectorsTest {
 
     ClientAuthState authState = client.generateKE1Deterministic(
         PASSWORD, BLIND_LOGIN, CLIENT_NONCE, CLIENT_KEYSHARE_SEED);
-    Object[] ke2Result = server.generateKE2Deterministic(
+    ServerKE2Result ke2Result = server.generateKE2Deterministic(
         null, record, CREDENTIAL_IDENTIFIER, authState.ke1(),
         null, MASKING_NONCE, SERVER_KEYSHARE_SEED, SERVER_NONCE);
-    KE2 ke2 = (KE2) ke2Result[1];
-    ServerAuthState serverAuthState = (ServerAuthState) ke2Result[0];
+    KE2 ke2 = ke2Result.ke2();
+    ServerAuthState serverAuthState = ke2Result.serverAuthState();
 
     AuthResult authResult = client.generateKE3(authState, null, null, ke2);
     byte[] serverSessionKey = server.serverFinish(serverAuthState, authResult.ke3());
@@ -275,7 +265,7 @@ class OpaqueVectorsTest {
     RegistrationRecord record = client.finalizeRegistrationDeterministic(
         regState, response, SERVER_IDENTITY, CLIENT_IDENTITY, ENVELOPE_NONCE);
 
-    byte[] actual = concat(record.clientPublicKey(), record.maskingKey(), record.envelope().serialize());
+    byte[] actual = OctetStringUtils.concat(record.clientPublicKey(), record.maskingKey(), record.envelope().serialize());
     assertThat(actual).isEqualTo(EXPECTED_REGISTRATION_UPLOAD_V2);
   }
 
@@ -293,10 +283,10 @@ class OpaqueVectorsTest {
     // Auth
     ClientAuthState authState = client.generateKE1Deterministic(
         PASSWORD, BLIND_LOGIN, CLIENT_NONCE, CLIENT_KEYSHARE_SEED);
-    Object[] ke2Result = server.generateKE2Deterministic(
+    ServerKE2Result ke2Result = server.generateKE2Deterministic(
         SERVER_IDENTITY, record, CREDENTIAL_IDENTIFIER, authState.ke1(),
         CLIENT_IDENTITY, MASKING_NONCE, SERVER_KEYSHARE_SEED, SERVER_NONCE);
-    KE2 ke2 = (KE2) ke2Result[1];
+    KE2 ke2 = ke2Result.ke2();
 
     byte[] actualKe2 = concatKE2(ke2);
     assertThat(actualKe2).isEqualTo(EXPECTED_KE2_V2);
@@ -312,11 +302,11 @@ class OpaqueVectorsTest {
     OpaqueServer server = new OpaqueServer(V3_SERVER_PRIVATE_KEY, V3_SERVER_PUBLIC_KEY, V3_OPRF_SEED, CONFIG);
     KE1 ke1 = parseKE1(V3_KE1);
 
-    Object[] ke2Result = server.generateFakeKE2Deterministic(ke1, V3_CREDENTIAL_ID,
+    ServerKE2Result ke2Result = server.generateFakeKE2Deterministic(ke1, V3_CREDENTIAL_ID,
         V3_SERVER_IDENTITY, V3_CLIENT_IDENTITY,
         V3_FAKE_CLIENT_PK, V3_FAKE_MASKING_KEY,
         V3_MASKING_NONCE, V3_SERVER_KEYSHARE_SEED, V3_SERVER_NONCE);
-    KE2 ke2 = (KE2) ke2Result[1];
+    KE2 ke2 = ke2Result.ke2();
 
     assertThat(concatKE2(ke2)).isEqualTo(V3_EXPECTED_KE2);
   }
@@ -333,12 +323,12 @@ class OpaqueVectorsTest {
 
     ClientAuthState authState = client.generateKE1Deterministic(
         PASSWORD, BLIND_LOGIN, CLIENT_NONCE, CLIENT_KEYSHARE_SEED);
-    Object[] ke2Result = server.generateKE2Deterministic(
+    ServerKE2Result ke2Result = server.generateKE2Deterministic(
         SERVER_IDENTITY, record, CREDENTIAL_IDENTIFIER, authState.ke1(),
         CLIENT_IDENTITY, MASKING_NONCE, SERVER_KEYSHARE_SEED, SERVER_NONCE);
-    KE2 ke2 = (KE2) ke2Result[1];
+    KE2 ke2 = ke2Result.ke2();
     ServerAuthState serverAuthState =
-        (ServerAuthState) ke2Result[0];
+        ke2Result.serverAuthState();
 
     AuthResult authResult = client.generateKE3(authState, CLIENT_IDENTITY, SERVER_IDENTITY, ke2);
     byte[] serverSessionKey = server.serverFinish(serverAuthState, authResult.ke3());

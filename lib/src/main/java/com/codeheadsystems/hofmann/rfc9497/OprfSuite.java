@@ -20,18 +20,18 @@ public class OprfSuite {
   // contextString = "OPRFV1-\x00-P256-SHA256"
   public static final byte[] CONTEXT_STRING = buildContextString();
 
-  public static final byte[] HASH_TO_GROUP_DST = concat(
+  public static final byte[] HASH_TO_GROUP_DST = OctetStringUtils.concat(
       "HashToGroup-".getBytes(StandardCharsets.UTF_8), CONTEXT_STRING);
 
-  public static final byte[] HASH_TO_SCALAR_DST = concat(
+  public static final byte[] HASH_TO_SCALAR_DST = OctetStringUtils.concat(
       "HashToScalar-".getBytes(StandardCharsets.UTF_8), CONTEXT_STRING);
 
-  public static final byte[] DERIVE_KEY_PAIR_DST = concat(
+  public static final byte[] DERIVE_KEY_PAIR_DST = OctetStringUtils.concat(
       "DeriveKeyPair".getBytes(StandardCharsets.UTF_8), CONTEXT_STRING);
 
   private static byte[] buildContextString() {
     // "OPRFV1-" + 0x00 + "-P256-SHA256"
-    return concat(
+    return OctetStringUtils.concat(
         "OPRFV1-".getBytes(StandardCharsets.UTF_8),
         new byte[]{0x00},
         "-P256-SHA256".getBytes(StandardCharsets.UTF_8)
@@ -61,7 +61,7 @@ public class OprfSuite {
    */
   public static BigInteger deriveKeyPair(byte[] seed, byte[] info) {
     // deriveInput = seed || I2OSP(len(info), 2) || info
-    byte[] deriveInput = concat(seed, OctetStringUtils.I2OSP(info.length, 2), info);
+    byte[] deriveInput = OctetStringUtils.concat(seed, OctetStringUtils.I2OSP(info.length, 2), info);
 
     int counter = 0;
     BigInteger skS = BigInteger.ZERO;
@@ -69,7 +69,7 @@ public class OprfSuite {
       if (counter > 255) {
         throw new RuntimeException("DeriveKeyPair: exceeded counter limit");
       }
-      byte[] counterInput = concat(deriveInput, OctetStringUtils.I2OSP(counter, 1));
+      byte[] counterInput = OctetStringUtils.concat(deriveInput, OctetStringUtils.I2OSP(counter, 1));
       skS = hashToScalar(counterInput, DERIVE_KEY_PAIR_DST);
       counter++;
     }
@@ -98,7 +98,7 @@ public class OprfSuite {
 
     // hashInput = I2OSP(len(input),2) || input || I2OSP(len(unblindedElement),2) || unblindedElement || "Finalize"
     byte[] finalizeLabel = "Finalize".getBytes(StandardCharsets.UTF_8);
-    byte[] hashInput = concat(
+    byte[] hashInput = OctetStringUtils.concat(
         OctetStringUtils.I2OSP(input.length, 2),
         input,
         OctetStringUtils.I2OSP(unblindedElement.length, 2),
@@ -114,17 +114,4 @@ public class OprfSuite {
     }
   }
 
-  private static byte[] concat(byte[]... arrays) {
-    int totalLength = 0;
-    for (byte[] arr : arrays) {
-      totalLength += arr.length;
-    }
-    byte[] result = new byte[totalLength];
-    int offset = 0;
-    for (byte[] arr : arrays) {
-      System.arraycopy(arr, 0, result, offset, arr.length);
-      offset += arr.length;
-    }
-    return result;
-  }
 }

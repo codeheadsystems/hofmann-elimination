@@ -1,5 +1,7 @@
 package com.codeheadsystems.opaque.internal;
 
+import static com.codeheadsystems.hofmann.curve.OctetStringUtils.concat;
+
 import com.codeheadsystems.hofmann.curve.Curve;
 import com.codeheadsystems.hofmann.curve.OctetStringUtils;
 import com.codeheadsystems.hofmann.rfc9497.OprfSuite;
@@ -114,25 +116,22 @@ public class OpaqueCrypto {
   }
 
   /**
-   * Derives a P-256 AKE key pair from a seed using OPAQUE-DeriveAuthKeyPair info.
-   * Returns [privateKey, publicKeyBytes(33)].
+   * A derived P-256 AKE key pair.
+   *
+   * @param privateKey     the private key scalar
+   * @param publicKeyBytes 33-byte compressed SEC1 public key
    */
-  public static BigInteger[] deriveAkeKeyPair(byte[] seed) {
-    BigInteger sk = OprfSuite.deriveKeyPair(seed, "OPAQUE-DeriveDiffieHellmanKeyPair".getBytes(
-        StandardCharsets.US_ASCII));
-    ECPoint pk = Curve.P256_CURVE.g().multiply(sk).normalize();
-    return new BigInteger[]{sk, null}; // pk returned separately via serializePoint
+  public record AkeKeyPair(BigInteger privateKey, byte[] publicKeyBytes) {
   }
 
   /**
    * Derives a P-256 AKE key pair from a seed.
-   * Returns {privateKey (BigInteger), publicKeyBytes (byte[33])}.
    */
-  public static Object[] deriveAkeKeyPairFull(byte[] seed) {
+  public static AkeKeyPair deriveAkeKeyPair(byte[] seed) {
     BigInteger sk = OprfSuite.deriveKeyPair(seed, "OPAQUE-DeriveDiffieHellmanKeyPair".getBytes(
         StandardCharsets.US_ASCII));
     ECPoint pk = Curve.P256_CURVE.g().multiply(sk).normalize();
-    return new Object[]{sk, pk.getEncoded(true)};
+    return new AkeKeyPair(sk, pk.getEncoded(true));
   }
 
   /**
@@ -163,20 +162,6 @@ public class OpaqueCrypto {
    */
   public static BigInteger scalarFromBytes(byte[] bytes) {
     return new BigInteger(1, bytes); // positive big-endian
-  }
-
-  public static byte[] concat(byte[]... arrays) {
-    int totalLength = 0;
-    for (byte[] arr : arrays) {
-      totalLength += arr.length;
-    }
-    byte[] result = new byte[totalLength];
-    int offset = 0;
-    for (byte[] arr : arrays) {
-      System.arraycopy(arr, 0, result, offset, arr.length);
-      offset += arr.length;
-    }
-    return result;
   }
 
   /**

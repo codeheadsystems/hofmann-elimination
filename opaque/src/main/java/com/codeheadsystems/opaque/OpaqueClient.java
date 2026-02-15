@@ -64,9 +64,9 @@ public class OpaqueClient {
 
     // Derive ephemeral AKE key pair from random seed
     byte[] seed = OpaqueCrypto.randomBytes(OpaqueConfig.Nsk);
-    Object[] kp = OpaqueCrypto.deriveAkeKeyPairFull(seed);
-    BigInteger clientAkeSk = (BigInteger) kp[0];
-    byte[] clientAkePk = (byte[]) kp[1];
+    OpaqueCrypto.AkeKeyPair kp = OpaqueCrypto.deriveAkeKeyPair(seed);
+    BigInteger clientAkeSk = kp.privateKey();
+    byte[] clientAkePk = kp.publicKeyBytes();
 
     byte[] clientNonce = OpaqueCrypto.randomBytes(OpaqueConfig.Nn);
     KE1 ke1 = new KE1(credReq, clientNonce, clientAkePk);
@@ -123,9 +123,9 @@ public class OpaqueClient {
     byte[] blindedElement = OpaqueOprf.blind(password, blind);
     CredentialRequest credReq = new CredentialRequest(blindedElement);
 
-    Object[] kp = OpaqueCrypto.deriveAkeKeyPairFull(clientAkeKeySeed);
-    BigInteger clientAkeSk = (BigInteger) kp[0];
-    byte[] clientAkePk = (byte[]) kp[1];
+    OpaqueCrypto.AkeKeyPair kp = OpaqueCrypto.deriveAkeKeyPair(clientAkeKeySeed);
+    BigInteger clientAkeSk = kp.privateKey();
+    byte[] clientAkePk = kp.publicKeyBytes();
 
     KE1 ke1 = new KE1(credReq, clientNonce, clientAkePk);
     return new ClientAuthState(blind, password, ke1, clientAkeSk);
