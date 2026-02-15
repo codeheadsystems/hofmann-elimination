@@ -7,7 +7,7 @@ repositories {
 }
 
 dependencies {
-    api(project(":lib"))
+    api(project(":oprf"))
     implementation(libs.bundles.core)
     testImplementation(libs.bundles.test)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
