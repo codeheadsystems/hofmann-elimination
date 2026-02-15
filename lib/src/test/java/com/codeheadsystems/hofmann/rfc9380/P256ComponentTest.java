@@ -7,11 +7,11 @@ import org.bouncycastle.math.ec.ECPoint;
 import org.junit.jupiter.api.Test;
 /**
  * Debug tests to verify each stage of the RFC 9380 hash-to-curve pipeline for P-256.
- * Uses intermediate test vectors from RFC 9380 Appendix J.3.1.
+ * Uses intermediate test vectors from RFC 9380 Appendix J.2.1.
  */
 public class P256ComponentTest {
   private static final byte[] DST = "QUUX-V01-CS02-with-P256_XMD:SHA-256_SSWU_RO_".getBytes(StandardCharsets.UTF_8);
-  // Test vector 1: msg = "" (empty string) from RFC 9380 Appendix J.3.1
+  // Test vector 1: msg = "" (empty string) from RFC 9380 Appendix J.2.1
   private static final BigInteger EXPECTED_U0 = new BigInteger("ad5342c66a6dd0ff080df1da0ea1c04b96e0330dd89406465eeba11582515009", 16);
   private static final BigInteger EXPECTED_U1 = new BigInteger("8c0f1d43204bd6f6ea70ae8013070a1518b43873bcd850aafa0a9e220e2eea5a", 16);
   // Q0 and Q1 are after SWU (on P-256, no isogeny needed)

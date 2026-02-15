@@ -7,11 +7,15 @@ reusable identifiers across multiple clients without sharing the
 key data used to make up that identifier. This results in an identifier that can
 be used with services without those services knowing the origins of the data used.
 Useful when that data is based on information one does not want to expose
-outside of the owning client. This implements the Oblivious Pseudorandom Function (OPRF)
+outside the owning client. This implements the Oblivious Pseudorandom Function (OPRF)
 protocol, specifically **RFC 9497 OPRF(P-256, SHA-256) mode 0**, using
-RFC 9380 hash-to-curve techniques to achieve this goal.
+RFC 9380 hash-to-curve techniques to achieve this goal, with an example client/server
+implementation in Java. These security primitives are then used to implement the
+OPAQUE Augmented Password-Authenticated Key Exchange (aPAKE) protocol (RFC 9807), 
+which allows for secure password-based authentication without revealing the 
+password to the server.
 
-# Protocol
+# OPRF Protocol
 
 The protocol relies on the following data types:
 - `P`: A point on P-256 derived from the input text using RFC 9497 HashToGroup.
@@ -60,6 +64,110 @@ Client                          Service
 - `OprfSuite` : RFC 9497 P256-SHA256 cipher suite constants and algorithms.
 - `RoundTripTest` : Examples of how it works and to verify the code is sound.
 - `OprfVectorsTest` : RFC 9497 Appendix A test vectors for P256-SHA256 OPRF mode.
+
+# OPAQUE Protocol
+
+  OPAQUE (RFC 9807) is an Augmented Password-Authenticated Key Exchange (aPAKE) protocol
+  built on top of OPRF. It enables password-based client authentication where the server
+  never sees the password, and a compromised server database does not expose the password
+  to offline dictionary attacks.
+
+  The protocol relies on the following data types:
+    - `pwd`: The client's password — never transmitted or stored in recoverable form.
+    - `skS`/`pkS`: The server's long-term static key pair.
+    - `skU`/`pkU`: The client's long-term key pair, derived deterministically during registration.
+    - `blind`: A random scalar blinding factor used in the OPRF sub-protocol (same role as `r` in OPRF).
+    - `oprfOutput`: The unblinded OPRF result; the root of all credential key material.
+    - `randomizedPwd`: A hardened key derived from `oprfOutput` via HKDF `Extract`.
+    - `maskingKey`: Derived from `randomizedPwd`; protects stored credentials during authentication.
+    - `envelope`: A server-stored record containing a random nonce and an HMAC authentication tag; contains no plaintext key material.
+    - `nonce`: A random value in the envelope; combined with `randomizedPwd` to deterministically re-derive `skU`.
+    - `sessionKey`: The shared symmetric secret established after successful mutual authentication.
+
+  OPAQUE has two phases: **Registration** (run once per user) and **Authentication** (run each login).
+
+## Registration Flow
+```
+Client                                      Server
+────────                                    ───────
+pwd
+1. blind, blindedMsg = Blind(pwd)
+2. Send blindedMsg  ─────────────────────►  evaluatedMsg = Evaluate(skS, blindedMsg)
+                    ◄─────────────────────  evaluatedMsg, pkS
+3. oprfOutput = Finalize(pwd, blind, evaluatedMsg)
+4. randomizedPwd = HKDF-Extract("", oprfOutput || Stretch(oprfOutput))
+   nonce = Random(32)
+   (skU, pkU) = DeriveAuthKeyPair(randomizedPwd, nonce)
+5. authKey    = HKDF-Expand(randomizedPwd, nonce || "AuthKey",    Nh)
+   maskingKey = HKDF-Expand(randomizedPwd, "MaskingKey",          Nh)
+   authTag = HMAC(authKey, nonce || pkS || identities)
+   envelope = nonce || authTag
+6. Send (pkU, maskingKey, envelope) ──────► Store(credential_id → pkU, maskingKey, envelope)
+```
+
+### Details for each step
+
+  1. **Blind**: The client blinds `pwd` via the OPRF sub-protocol (same mechanism as standalone OPRF), producing `blindedMsg`. The raw password never leaves the client.
+  2. **Evaluate**: The server evaluates `blindedMsg` with its OPRF secret key `skS`, returning `evaluatedMsg` and its long-term public key `pkS`.
+  3. **Finalize**: The client unblinds and hashes to produce `oprfOutput`. This value will be reproduced identically on every future login with the correct password.
+  4. **Key derivation**: `randomizedPwd` is derived by concatenating `oprfOutput` with `Stretch(oprfOutput)` (KSF) and applying `HKDF-Extract`. A fresh random `nonce` is generated, and the client's long-term key pair `(skU, pkU)` is derived
+     deterministically — no private key is ever stored in plaintext.
+  5. **Envelope creation**: `authKey` and `maskingKey` are derived from `randomizedPwd`. An `authTag` authenticates `nonce`, `pkS`, and the parties' identities under `authKey`. The
+     envelope is simply `nonce || authTag`.
+  6. **Upload**: The client sends `pkU`, `maskingKey`, and `envelope` to the server. The server stores this as the user's credential record. The server holds `maskingKey` but can learn
+     nothing about `pwd` from it.
+
+## Authentication Flow
+```
+Client                                      Server
+────────                                    ───────
+pwd
+1. blind, blindedMsg = Blind(pwd)
+   (eskU, epkU) = GenerateEphemeralKeyPair()
+   nonceU = Random(32)
+   KE1 = (blindedMsg, nonceU, epkU)
+2. Send KE1  ────────────────────────────►  evaluatedMsg = Evaluate(skS, blindedMsg)
+                                            (eskS, epkS) = GenerateEphemeralKeyPair()
+                                            nonceS = Random(32)
+                                            pad = HKDF-Expand(maskingKey, nonceS || "CredentialResponsePad", len(pkS) + len(envelope))
+                                            maskedResponse = pad XOR (pkS || envelope)
+                                            dh1=eskS·epkU, dh2=skS·epkU, dh3=eskS·pkU
+                                            ikm=dh1||dh2||dh3; derive sessionKey, serverMAC
+                                            KE2 = (evaluatedMsg, nonceS, epkS, maskedResponse, serverMAC)
+             ◄──────────────────────────   KE2
+3. oprfOutput = Finalize(pwd, blind, evaluatedMsg)
+   randomizedPwd = HKDF-Extract("", oprfOutput || Stretch(oprfOutput))
+   maskingKey = HKDF-Expand(randomizedPwd, "MaskingKey", Nh)
+   pad = HKDF-Expand(maskingKey, nonceS || "CredentialResponsePad", ...)
+   (pkS, envelope) = pad XOR maskedResponse
+   (skU, pkU) = DeriveAuthKeyPair(randomizedPwd, nonce)  // nonce from envelope
+   Verify serverMAC
+4. dh1=eskU·epkS, dh2=eskU·pkS, dh3=skU·epkS
+   ikm=dh1||dh2||dh3; derive sessionKey, clientMAC
+   KE3 = clientMAC
+5. Send KE3 ────────────────────────────►  Verify clientMAC
+                                            ✓  Both parties hold sessionKey
+```
+### Details for each step
+
+    1. **KE1**: The client blinds `pwd` and generates a fresh ephemeral key pair and random nonce. These form `KE1`.
+    2. **KE2**: The server evaluates the OPRF, generates its own ephemeral key pair and nonce, and uses `maskingKey` with `nonceS` to XOR-pad the stored `pkS || envelope`, hiding credential
+       details from passive observers. It performs three DH operations — `eskS·epkU`, `skS·epkU`, `eskS·pkU` — concatenates them as ikm, then derives
+       `sessionKey` and `serverMAC` from the full transcript.
+    3. **Credential recovery**: The client finalizes the OPRF, re-derives `randomizedPwd` (via KSF then `HKDF-Extract`) and `maskingKey`, unmasks the credential response to recover `pkS` and `envelope`, then re-derives
+       `skU` from `randomizedPwd` and the nonce in the envelope. It then verifies `serverMAC` over the transcript, confirming the server holds the correct `skS`.
+    4. **KE3**: The client performs three DH operations — `eskU·epkS`, `eskU·pkS`, `skU·epkS` — concatenates them as ikm and derives the matching `sessionKey` and `clientMAC`, forming `KE3`.
+    5. **Mutual verification**: The client sends `KE3` to the server. The server verifies `clientMAC`. Both parties now hold the same authenticated `sessionKey`, completing the handshake.
+
+## Cipher Suite: RFC 9807 OPAQUE-3DH (P-256)
+
+    - **OPRF**: RFC 9497 OPRF(P-256, SHA-256) mode 0 (same as above)
+    - **KDF**: HKDF-SHA-256
+    - **MAC**: HMAC-SHA-256
+    - **Hash**: SHA-256
+    - **KSF**: Identity (no additional key stretching; scrypt or Argon2 may be substituted)
+    - **AKE**: OPAQUE-3DH over P-256
+    - **Envelope mode**: Internal (client key pair is derived from `randomizedPwd` + `nonce`, not stored)
 
 # References
 
