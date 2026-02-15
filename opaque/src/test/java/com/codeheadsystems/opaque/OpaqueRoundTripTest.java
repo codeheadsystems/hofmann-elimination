@@ -7,6 +7,7 @@ import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.model.AuthResult;
 import com.codeheadsystems.opaque.model.ClientAuthState;
 import com.codeheadsystems.opaque.model.ClientRegistrationState;
+import com.codeheadsystems.opaque.model.CredentialResponse;
 import com.codeheadsystems.opaque.model.KE2;
 import com.codeheadsystems.opaque.model.KE3;
 import com.codeheadsystems.opaque.model.RegistrationRecord;
@@ -496,5 +497,203 @@ class OpaqueRoundTripTest {
 
     assertThat(state1.request().blindedElement())
         .isNotEqualTo(state2.request().blindedElement());
+  }
+
+  // ─── Additional tests ────────────────────────────────────────────────────
+
+  @Test
+  void maskingKeyIsDeterministicForSamePassword() {
+    // maskingKey = HKDF-Expand(randomized_pwd, "MaskingKey", 32) depends only on
+    // the password + server OPRF seed + credential identifier, not the envelope nonce.
+    // Two registrations with the same password must produce the same masking key so
+    // the server can unmask the credential response on each authentication.
+    RegistrationRecord record1 = register(PASSWORD_CORRECT);
+    RegistrationRecord record2 = register(PASSWORD_CORRECT);
+
+    assertThat(record1.maskingKey()).isEqualTo(record2.maskingKey());
+    // Sanity check: envelopes are still fresh (different nonces each registration)
+    assertThat(record1.envelope().envelopeNonce()).isNotEqualTo(record2.envelope().envelopeNonce());
+  }
+
+  @Test
+  void tamperedMaskedResponseCausesAuthFailure() {
+    // The maskedResponse XOR-decrypts to serverPublicKey || envelopeNonce || authTag.
+    // Corrupting any byte produces wrong envelope data, causing auth_tag mismatch.
+    RegistrationRecord record = register(PASSWORD_CORRECT);
+    ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
+    Object[] ke2Result = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
+    KE2 realKe2 = (KE2) ke2Result[1];
+
+    // Byte 50 falls in the masked envelope-nonce region (bytes 33–64 after unmasking),
+    // so it corrupts the recovered envelopeNonce without risking an invalid-point parse.
+    byte[] maskedResponse = realKe2.credentialResponse().maskedResponse().clone();
+    maskedResponse[50] ^= 0xFF;
+
+    KE2 tamperedKe2 = new KE2(
+        new CredentialResponse(
+            realKe2.credentialResponse().evaluatedElement(),
+            realKe2.credentialResponse().maskingNonce(),
+            maskedResponse),
+        realKe2.serverNonce(),
+        realKe2.serverAkePublicKey(),
+        realKe2.serverMac());
+
+    assertThatThrownBy(() -> client.generateKE3(authState, null, null, tamperedKe2))
+        .isInstanceOf(SecurityException.class)
+        .hasMessageContaining("auth_tag mismatch");
+  }
+
+  @Test
+  void tamperedEvaluatedElementCausesEnvelopeFailure() {
+    // A modified OPRF evaluated element produces the wrong randomized_pwd after unblinding,
+    // which produces wrong envelope keys, causing auth_tag mismatch.
+    // Flipping the sign byte (0x02 ↔ 0x03) gives the negated P-256 point — still a valid
+    // curve point, so no deserialization error — but yields a different compressed encoding
+    // after unblinding, diverging the OPRF output from the registered value.
+    RegistrationRecord record = register(PASSWORD_CORRECT);
+    ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
+    Object[] ke2Result = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
+    KE2 realKe2 = (KE2) ke2Result[1];
+
+    byte[] evaluatedElement = realKe2.credentialResponse().evaluatedElement().clone();
+    evaluatedElement[0] ^= 0x01; // 0x02 ↔ 0x03: negated point, valid but wrong
+
+    KE2 tamperedKe2 = new KE2(
+        new CredentialResponse(
+            evaluatedElement,
+            realKe2.credentialResponse().maskingNonce(),
+            realKe2.credentialResponse().maskedResponse()),
+        realKe2.serverNonce(),
+        realKe2.serverAkePublicKey(),
+        realKe2.serverMac());
+
+    assertThatThrownBy(() -> client.generateKE3(authState, null, null, tamperedKe2))
+        .isInstanceOf(SecurityException.class)
+        .hasMessageContaining("auth_tag mismatch");
+  }
+
+  @Test
+  void ke2DeserializationRoundTrip() {
+    // KE2.deserialize() must reconstruct all fields from the wire format and the
+    // resulting object must be immediately usable for a successful authentication.
+    RegistrationRecord record = register(PASSWORD_CORRECT);
+    ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
+    Object[] ke2Result = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
+    KE2 original = (KE2) ke2Result[1];
+
+    byte[] wireBytes = serializeKE2(original);
+    KE2 deserialized = KE2.deserialize(wireBytes);
+
+    AuthResult result = client.generateKE3(authState, null, null, deserialized);
+    assertThat(result.sessionKey()).isNotNull().hasSize(32);
+    assertThat(result.exportKey()).isNotNull().hasSize(32);
+  }
+
+  @Test
+  void fakeKE2WithExplicitIdentitiesFailsAuthentication() {
+    // User-enumeration protection must work even when explicit identities are supplied;
+    // the fake response flows through the same preamble path as a real one.
+    byte[] serverIdentity = "server.example.com".getBytes(StandardCharsets.UTF_8);
+    byte[] clientIdentity = "alice@example.com".getBytes(StandardCharsets.UTF_8);
+    byte[] unknownCredId  = "unknown@example.com".getBytes(StandardCharsets.UTF_8);
+
+    ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
+    Object[] ke2Result = server.generateFakeKE2(
+        authState.ke1(), unknownCredId, serverIdentity, clientIdentity);
+    KE2 ke2 = (KE2) ke2Result[1];
+
+    assertThatThrownBy(() -> client.generateKE3(authState, clientIdentity, serverIdentity, ke2))
+        .isInstanceOf(SecurityException.class)
+        .hasMessageContaining("auth_tag mismatch");
+  }
+
+  @Test
+  void concurrentAuthSessionsForSameUser() {
+    // Two in-flight auth sessions for the same registered record must each complete
+    // successfully and independently: same export key (deterministic per registration),
+    // but distinct session keys (fresh ephemeral nonces each run).
+    RegistrationRecord record = register(PASSWORD_CORRECT);
+
+    // Both KE1s generated before either KE2 is processed
+    ClientAuthState authState1 = client.generateKE1(PASSWORD_CORRECT);
+    ClientAuthState authState2 = client.generateKE1(PASSWORD_CORRECT);
+
+    Object[] ke2Result1 = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState1.ke1(), null);
+    Object[] ke2Result2 = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState2.ke1(), null);
+
+    AuthResult result1 = client.generateKE3(authState1, null, null, (KE2) ke2Result1[1]);
+    AuthResult result2 = client.generateKE3(authState2, null, null, (KE2) ke2Result2[1]);
+
+    assertThat(result1.sessionKey()).isNotNull().hasSize(32);
+    assertThat(result2.sessionKey()).isNotNull().hasSize(32);
+    assertThat(result1.sessionKey()).isNotEqualTo(result2.sessionKey());
+    assertThat(result1.exportKey()).isEqualTo(result2.exportKey());
+  }
+
+  @Test
+  void exportKeyIsIndependentOfSessionKey() {
+    // RFC §10.7: export_key and session_key are derived via different HKDF-ExpandLabel
+    // calls with different labels and inputs; they must never be the same value.
+    RegistrationRecord record = register(PASSWORD_CORRECT);
+    AuthResult result = authenticate(record, PASSWORD_CORRECT, null, null);
+
+    assertThat(result.exportKey()).isNotNull().hasSize(32);
+    assertThat(result.sessionKey()).isNotNull().hasSize(32);
+    assertThat(result.exportKey()).isNotEqualTo(result.sessionKey());
+  }
+
+  @Test
+  void emptyPasswordRoundTrip() {
+    // The protocol imposes no minimum password length; a zero-length password must
+    // complete registration and authentication without error.
+    byte[] emptyPassword = new byte[0];
+    RegistrationRecord record = register(emptyPassword);
+    AuthResult result = authenticate(record, emptyPassword, null, null);
+
+    assertThat(result.sessionKey()).isNotNull().hasSize(32);
+    assertThat(result.exportKey()).isNotNull().hasSize(32);
+  }
+
+  @Test
+  void serverFinishCalledTwiceReturnsSameKey() {
+    // serverFinish is a stateless MAC-verification step; calling it twice with the
+    // same ServerAuthState and KE3 must return the same session key both times.
+    RegistrationRecord record = register(PASSWORD_CORRECT);
+    ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);
+    Object[] ke2Result = server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
+    ServerAuthState serverAuthState = (ServerAuthState) ke2Result[0];
+    AuthResult clientResult = client.generateKE3(authState, null, null, (KE2) ke2Result[1]);
+
+    byte[] sessionKey1 = server.serverFinish(serverAuthState, clientResult.ke3());
+    byte[] sessionKey2 = server.serverFinish(serverAuthState, clientResult.ke3());
+
+    assertThat(sessionKey1).isEqualTo(sessionKey2);
+  }
+
+  @Test
+  void registrationResponseContainsServerPublicKey() {
+    // The server's long-term public key must be embedded in the registration response
+    // so the client can include it in the envelope for later server authentication.
+    ClientRegistrationState regState = client.createRegistrationRequest(PASSWORD_CORRECT);
+    RegistrationResponse response = server.createRegistrationResponse(regState.request(), CREDENTIAL_IDENTIFIER);
+
+    assertThat(response.serverPublicKey()).isEqualTo(server.getServerPublicKey());
+  }
+
+  // ─── Helpers ─────────────────────────────────────────────────────────────
+
+  /** Serializes a KE2 to its full wire format for use with {@link KE2#deserialize}. */
+  private static byte[] serializeKE2(KE2 ke2) {
+    byte[] cr = ke2.serializeCredentialResponse(); // evaluatedElement || maskingNonce || maskedResponse
+    byte[] sn = ke2.serverNonce();
+    byte[] sp = ke2.serverAkePublicKey();
+    byte[] sm = ke2.serverMac();
+    byte[] out = new byte[cr.length + sn.length + sp.length + sm.length];
+    int off = 0;
+    System.arraycopy(cr, 0, out, off, cr.length); off += cr.length;
+    System.arraycopy(sn, 0, out, off, sn.length); off += sn.length;
+    System.arraycopy(sp, 0, out, off, sp.length); off += sp.length;
+    System.arraycopy(sm, 0, out, off, sm.length);
+    return out;
   }
 }
