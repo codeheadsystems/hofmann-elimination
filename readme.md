@@ -1,4 +1,4 @@
-# the Hofmann Elimination
+# the Hofmann Elimination (tHE)
 
 ## Purpose
 
@@ -194,6 +194,11 @@ pwd
 - `OprfSuite` : RFC 9497 P256-SHA256 cipher suite constants and algorithms.
 - `RoundTripTest` : Examples of how it works and to verify the code is sound.
 - `OprfVectorsTest` : RFC 9497 Appendix A test vectors for P256-SHA256 OPRF mode.
+
+### Package naming
+
+The top-level package is `com.codeheadsystems.the` which stands for "the Hofmann Elimination".
+The word "the" is used as a namespace to avoid conflicts with other libraries, and keeps the package name short.
 
 ## References
 
