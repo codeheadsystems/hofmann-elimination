@@ -1,4 +1,9 @@
-# the Hofmann Elimination (tHE)
+# the Hofmann Elimination (overview)
+
+## tl;dr
+
+This project implements the OPRF and OPAQUE security protocols to provide a way 
+for common services to reduce their attack surfaces.
 
 ## Purpose
 
@@ -13,6 +18,15 @@ used to implement the OPAQUE Augmented Password-Authenticated Key Exchange (aPAK
 (RFC 9807), enabling secure password-based authentication where the password is never revealed
 to the server.
 
+## Why use this?
+
+If a server is compromised, attackers can steal credentials or secure elements 
+and use them for offline dictionary attacks or other malicious activities. 
+By using OPRF and OPAQUE, services can authenticate users without ever storing 
+or transmitting the actual password or private key material. This significantly 
+reduces the attack surface and protects user credentials even in the event of a 
+server breach.
+
 ## RFC Implementation
 
 This project implements the following RFCs:
@@ -21,21 +35,30 @@ This project implements the following RFCs:
 - [RFC 9497](https://www.rfc-editor.org/rfc/rfc9497.html): Oblivious Pseudorandom Functions (OPRFs)
 - [RFC 9807](https://www.rfc-editor.org/rfc/rfc9807.html): OPAQUE: An Asymmetric PAKE Protocol
 
+## ☢ Security Considerations ☢
+
+As of February 2026, This implementation itself has not undergone a formal security audit.
+
+## Status
+![the Hofmann Elimination Build](https://github.com/wolpert/hofmann-elimination/actions/workflows/gradle.yml/badge.svg)
+
 ## Building
 
 Requires Java 21.
 
 ```
-./gradlew test
+./gradlew clean build test
 ```
 
 ## Module Structure
 
-| Module    | Contents |
-|-----------|----------|
-| `api/`    | Core protocol classes; RFC 9380 (hash-to-curve) and RFC 9497 (OPRF) implementations |
-| `oprf/`   | `Client`, `Server` API, `ServerImpl`, and round-trip tests |
-| `opaque/` | RFC 9807 OPAQUE-3DH implementation |
+| Module                | Contents                                                                            |
+|-----------------------|-------------------------------------------------------------------------------------|
+| `oprf/`               | Core protocol classes; RFC 9380 (hash-to-curve) and RFC 9497 (OPRF) implementations |
+| `opaque/`             | RFC 9807 OPAQUE-3DH implementation                                                  |
+| `hofmann/`            | Client/Server files needed for OPRF/OPAQUE integration.                             |
+| `hofmann-dropwizard/` | Integration files specific for dropwizard.                                          |
+| `hofmann-sprintboot/` | Integration files specific for springboot.                                          |
 
 ## OPRF Protocol
 
@@ -184,21 +207,6 @@ pwd
 - **KSF**: Identity (no additional key stretching; scrypt or Argon2 may be substituted)
 - **AKE**: OPAQUE-3DH over P-256
 - **Envelope mode**: Internal (client key pair is derived from `randomizedPwd` + `nonce`, not stored)
-
-## Useful Classes
-
-- `Client` : Shows in detail what the client is doing for the protocol. See `convertToIdentityKey()` for the main workflow.
-- `Server` : The API requirements for a basic system to allow for clients to create new keys.
-- `ServerImpl` : Naive implementation that implements the protocol in a basic way.
-- `Curve` : Default behavior needed from any Curve implementation. Uses BouncyCastle.
-- `OprfSuite` : RFC 9497 P256-SHA256 cipher suite constants and algorithms.
-- `RoundTripTest` : Examples of how it works and to verify the code is sound.
-- `OprfVectorsTest` : RFC 9497 Appendix A test vectors for P256-SHA256 OPRF mode.
-
-### Package naming
-
-The top-level package is `com.codeheadsystems.the` which stands for "the Hofmann Elimination".
-The word "the" is used as a namespace to avoid conflicts with other libraries, and keeps the package name short.
 
 ## References
 
