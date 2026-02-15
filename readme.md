@@ -35,14 +35,34 @@ This project implements the following RFCs:
 - [RFC 9497](https://www.rfc-editor.org/rfc/rfc9497.html): Oblivious Pseudorandom Functions (OPRFs)
 - [RFC 9807](https://www.rfc-editor.org/rfc/rfc9807.html): OPAQUE: An Asymmetric PAKE Protocol
 
-## ☢ Security Considerations ☢
+## Implementation Notes
+
+Included here are general notes about the implementation. Other documents will
+give specifics design considerations. This project is still under heavy development
+so expect radical changes at this time.
+
+### Status
+![the Hofmann Elimination Build](https://github.com/wolpert/hofmann-elimination/actions/workflows/gradle.yml/badge.svg)
+
+### ☢ Security Considerations ☢
 
 As of February 2026, This implementation itself has not undergone a formal security audit.
 
-## Status
-![the Hofmann Elimination Build](https://github.com/wolpert/hofmann-elimination/actions/workflows/gradle.yml/badge.svg)
+### AI usages
 
-## Building
+Initial RFC implementations were generated with the help of AI and humans (Ned)
+alike. This includes test cases and test vectors used to validate the 
+implementations. All RFC code has been reviewed and verified against the RFC 
+specifications by a human (Ned), though as of February 2026, OPAQUE still needs 
+further review.  Non-RFC code has been primarily human generated but has help 
+from AI tooling.
+
+AIs have been, and will continue to be, used to try to find direct or side-channel attacks.
+
+AIs used include:
+* [Claude](https://claude.ai/) Sonnet and Opus models
+
+### Building
 
 Requires Java 21.
 
