@@ -13,5 +13,7 @@ plugins {
 rootProject.name = "hofmann-elimination"
 include("oprf")
 include("opaque")
-include("hofmann")
+include("hofmann-common")
+include("hofmann-client")
+include("hofmann-server")
 

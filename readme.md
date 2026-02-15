@@ -56,7 +56,8 @@ Requires Java 21.
 |-----------------------|-------------------------------------------------------------------------------------|
 | `oprf/`               | Core protocol classes; RFC 9380 (hash-to-curve) and RFC 9497 (OPRF) implementations |
 | `opaque/`             | RFC 9807 OPAQUE-3DH implementation                                                  |
-| `hofmann/`            | Client/Server files needed for OPRF/OPAQUE integration.                             |
+| `hofmann-client/`     | Client files needed for OPRF/OPAQUE integration.                                    |
+| `hofmann-server/`     | Server files needed for OPRF/OPAQUE integration.                                    |
 | `hofmann-dropwizard/` | Integration files specific for dropwizard.                                          |
 | `hofmann-sprintboot/` | Integration files specific for springboot.                                          |
 
