@@ -12,6 +12,7 @@ import com.codeheadsystems.opaque.model.KE1;
 import com.codeheadsystems.opaque.model.KE2;
 import com.codeheadsystems.opaque.model.RegistrationRecord;
 import com.codeheadsystems.opaque.model.RegistrationResponse;
+import com.codeheadsystems.opaque.model.ServerAuthState;
 import java.math.BigInteger;
 import java.util.Arrays;
 import org.bouncycastle.util.encoders.Hex;
@@ -256,8 +257,7 @@ class OpaqueVectorsTest {
         null, record, CREDENTIAL_IDENTIFIER, authState.ke1(),
         null, MASKING_NONCE, SERVER_KEYSHARE_SEED, SERVER_NONCE);
     KE2 ke2 = (KE2) ke2Result[1];
-    com.codeheadsystems.opaque.model.ServerAuthState serverAuthState =
-        (com.codeheadsystems.opaque.model.ServerAuthState) ke2Result[0];
+    ServerAuthState serverAuthState = (ServerAuthState) ke2Result[0];
 
     AuthResult authResult = client.generateKE3(authState, null, null, ke2);
     byte[] serverSessionKey = server.serverFinish(serverAuthState, authResult.ke3());
@@ -337,8 +337,8 @@ class OpaqueVectorsTest {
         SERVER_IDENTITY, record, CREDENTIAL_IDENTIFIER, authState.ke1(),
         CLIENT_IDENTITY, MASKING_NONCE, SERVER_KEYSHARE_SEED, SERVER_NONCE);
     KE2 ke2 = (KE2) ke2Result[1];
-    com.codeheadsystems.opaque.model.ServerAuthState serverAuthState =
-        (com.codeheadsystems.opaque.model.ServerAuthState) ke2Result[0];
+    ServerAuthState serverAuthState =
+        (ServerAuthState) ke2Result[0];
 
     AuthResult authResult = client.generateKE3(authState, CLIENT_IDENTITY, SERVER_IDENTITY, ke2);
     byte[] serverSessionKey = server.serverFinish(serverAuthState, authResult.ke3());

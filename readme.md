@@ -8,12 +8,18 @@ key data used to make up that identifier. This results in an identifier that can
 be used with services without those services knowing the origins of the data used.
 Useful when that data is based on information one does not want to expose
 outside the owning client. This implements the Oblivious Pseudorandom Function (OPRF)
-protocol, specifically **RFC 9497 OPRF(P-256, SHA-256) mode 0**, using
+protocol, specifically RFC 9497 OPRF(P-256, SHA-256) mode 0, using
 RFC 9380 hash-to-curve techniques to achieve this goal, with an example client/server
 implementation in Java. These security primitives are then used to implement the
 OPAQUE Augmented Password-Authenticated Key Exchange (aPAKE) protocol (RFC 9807), 
 which allows for secure password-based authentication without revealing the 
 password to the server.
+
+## RFC Implementation
+This project implements the following RFCs:
+- [RFC 9380](https://www.rfc-editor.org/rfc/rfc9380.html): Hashing to Elliptic Curves
+- [RFC 9497](https://www.rfc-editor.org/rfc/rfc9497.html): Oblivious Pseudorandom Functions (OPRFs)
+- [RFC 9807](https://www.rfc-editor.org/rfc/rfc9807.html): OPAQUE: An Asymmetric PAKE Protocol
 
 # OPRF Protocol
 
