@@ -265,6 +265,68 @@ uniformly distributed on the curve. That uniform distribution is needed for secu
 Implements the [RFC 9380](https://www.rfc-editor.org/rfc/rfc9380.html) specification,
 validated against the RFC's own test vectors (Appendix J.7.1 for secp256k1 and Appendix A.1.1 for P-256).
 
+## Related Projects
+
+Several other projects implement OPRF or OPAQUE, but none cover the same combination
+of pure Java, final RFC compliance, P-256/SHA-256, and framework integration.
+
+### aldenml/ecc (`org.ssohub:ecc`)
+
+- **URL**: https://github.com/aldenml/ecc
+- **Language**: Java bindings over a C core (JNI)
+- **Protocols**: Pre-RFC OPRF (draft-irtf-cfrg-voprf-21) and pre-RFC OPAQUE (draft-irtf-cfrg-opaque-12)
+- **Cipher suite**: Ristretto255/SHA-512 only
+- **Status**: Stale — last release October 2023; has not tracked RFC 9497 or RFC 9807
+
+### stef/libopaque
+
+- **URL**: https://github.com/stef/libopaque
+- **Language**: C core with Java JNI bindings
+- **Protocols**: Pre-RFC OPAQUE draft; Ristretto25519 with Argon2id via libsodium
+- **Cipher suite**: Ristretto25519/SHA-512; does not support P-256
+- **Status**: Actively maintained (v1.0.1, February 2025), but requires manual native compilation
+  of libsodium and libopaque — cannot be distributed as a self-contained JAR
+
+### bytemare/opaque (Go)
+
+- **URL**: https://github.com/bytemare/opaque
+- **Language**: Go
+- **Protocols**: RFC 9497 OPRF + RFC 9807 OPAQUE (written by an RFC co-author; most compliant
+  implementation found)
+- **Cipher suites**: P256-SHA256, P384-SHA512, P521-SHA512, Ristretto255-SHA512
+- **Status**: Actively maintained; no Java bindings
+
+### oprf4j (pvriel/oprf4j)
+
+- **URL**: https://github.com/pvriel/oprf4j
+- **Language**: Pure Java
+- **Protocols**: Research-paper OPRF variants (KISS17, KALES19) for private set intersection —
+  not the IETF OPRF standard
+- **Status**: Archived May 2025; PhD research artifact only
+
+### facebook/opaque-ke (Rust)
+
+- **URL**: https://github.com/facebook/opaque-ke
+- **Language**: Rust
+- **Protocols**: Pre-RFC OPAQUE draft; Ristretto255 only
+- **Status**: Actively maintained; no Java bindings
+
+### How This Project Differs
+
+| Property | This project | aldenml/ecc | stef/libopaque | bytemare/opaque |
+|---|---|---|---|---|
+| Language | Pure Java | Java/JNI over C | Java/JNI over C | Go |
+| RFC 9497 OPRF | Yes | No (pre-RFC draft) | No (pre-RFC draft) | Yes |
+| RFC 9807 OPAQUE | Yes | No (pre-RFC draft) | No (pre-RFC draft) | Yes |
+| Cipher suite | P-256/SHA-256 | Ristretto255 | Ristretto25519 | Multiple incl. P-256 |
+| Self-contained JAR | Yes | Yes (JNI) | No (native deps) | N/A |
+| Maven/Gradle artifact | Yes (planned) | Yes | No | N/A |
+| Framework integrations | Planned (Dropwizard, Spring Boot) | None | None | None |
+
+The closest equivalent in terms of RFC compliance and P-256 support is `bytemare/opaque`,
+but it targets Go. This project is the only known pure-Java, RFC-compliant (9380 + 9497 + 9807)
+implementation using P-256/SHA-256 that is distributable as a standard Maven artifact.
+
 ## Origins of the name
 
 The [Hofmann Elimination](https://en.wikipedia.org/wiki/Hofmann_elimination) is a chemical reaction that involves the elimination of an
