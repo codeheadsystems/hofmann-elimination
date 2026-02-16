@@ -4,16 +4,22 @@
 [versions]
 assertj = "3.27.7"
 bouncy-castle = "1.83"
+jackson = '2.21.0'
+jackson-annotations = '2.21'
 junit-jupiter = "6.0.2"
 slf4j = '2.0.17'
 
 [libraries]
 assertj = { module = "org.assertj:assertj-core", version.ref = "assertj" }
 bouncy-castle = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncy-castle" }
-junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
+jackson-annotations = { module = "com.fasterxml.jackson.core:jackson-annotations", version.ref = "jackson-annotations" }
+jackson-core = { module = "com.fasterxml.jackson.core:jackson-core", version.ref = "jackson" }
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
 javax-inject = { module = "javax.inject:javax.inject", version = "1" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 
 [bundles]
 core = ["bouncy-castle", "slf4j-api"]
 test = ["junit-jupiter", "assertj"]
+jackson = ["jackson-core", "jackson-databind", "jackson-annotations"]

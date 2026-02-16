@@ -13,6 +13,7 @@ dependencies {
 
     implementation(libs.javax.inject)
     implementation(libs.bundles.core)
+    implementation(libs.bundles.jackson)
 
     testImplementation(libs.bundles.test)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

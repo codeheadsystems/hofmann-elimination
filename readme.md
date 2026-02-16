@@ -3,7 +3,8 @@
 ## tl;dr
 
 This project implements the OPRF and OPAQUE security protocols to provide a way 
-for common services to reduce their attack surfaces.
+for common services to reduce their attack surfaces. Usable with standard frameworks
+like Dropwizard and spring boot.
 
 ## Purpose
 
