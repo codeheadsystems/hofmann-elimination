@@ -1,6 +1,7 @@
 package com.codeheadsystems.oprf.rfc9380;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
 import org.bouncycastle.util.encoders.Hex;
@@ -221,6 +222,38 @@ public class ExpandMessageXmdTest {
             "78b53f2413f3c688f07732c10e5ced29a17c6a16f717179ffbe38d92d6c9ec296502eb9889af83a1928cd162e845b0d3c5"
                 + "424e83280fed3d10cffb2f8431f14e7a23f4c68819d40617589e4c41169d0b56e0e3535be1fd71fbb08bb70c5b5ffed95"
                 + "3d6c14bf7618b35fc1f4c4b30538236b4b08c9fbf90462447a8ada60be495");
+  }
+
+  // ── Input validation ─────────────────────────────────────────────────────
+
+  @Test
+  void expandRejectsZeroLenInBytes() {
+    assertThatThrownBy(() -> expand("msg", STANDARD_DST, 0))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("lenInBytes");
+  }
+
+  @Test
+  void expandRejectsNegativeLenInBytes() {
+    assertThatThrownBy(() -> expand("msg", STANDARD_DST, -1))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("lenInBytes");
+  }
+
+  @Test
+  void expandRejectsLenInBytesOver65535() {
+    assertThatThrownBy(() -> expand("msg", STANDARD_DST, 65536))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("lenInBytes");
+  }
+
+  @Test
+  void expandRejectsEllOver255_sha256() {
+    // For SHA-256, bInBytes=32 → ell = ceil(lenInBytes / 32).
+    // ell exceeds 255 when lenInBytes > 255 * 32 = 8160, i.e. 8161+.
+    assertThatThrownBy(() -> expand("msg", STANDARD_DST, 8161))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("lenInBytes too large");
   }
 
   private static byte[] expand(String msg, String dst, int lenInBytes) {
