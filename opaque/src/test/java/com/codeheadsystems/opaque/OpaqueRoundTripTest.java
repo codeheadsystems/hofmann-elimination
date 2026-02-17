@@ -4,7 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.codeheadsystems.opaque.config.OpaqueConfig;
+import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.opaque.internal.OpaqueCrypto;
+import java.util.stream.Stream;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import com.codeheadsystems.opaque.model.AuthResult;
 import com.codeheadsystems.opaque.model.ClientAuthState;
 import com.codeheadsystems.opaque.model.ClientRegistrationState;
@@ -391,9 +395,9 @@ class OpaqueRoundTripTest {
     // A client configured with a different context string cannot authenticate against a
     // server that used a different context — the preamble diverges → different km2 → server
     // MAC mismatch.  The envelope auth_tag is unaffected (context is not in the envelope).
-    OpaqueConfig configA = new OpaqueConfig(0, 0, 0,
+    OpaqueConfig configA = new OpaqueConfig(OpaqueCipherSuite.P256_SHA256, 0, 0, 0,
         "CONTEXT-A".getBytes(StandardCharsets.UTF_8), new OpaqueConfig.IdentityKsf());
-    OpaqueConfig configB = new OpaqueConfig(0, 0, 0,
+    OpaqueConfig configB = new OpaqueConfig(OpaqueCipherSuite.P256_SHA256, 0, 0, 0,
         "CONTEXT-B".getBytes(StandardCharsets.UTF_8), new OpaqueConfig.IdentityKsf());
 
     Server serverA = Server.generate(configA);
@@ -482,7 +486,7 @@ class OpaqueRoundTripTest {
     // server B: the OPRF evaluation differs → different randomized_pwd → envelope auth_tag mismatch.
     //
     // A deterministic key pair is used so the only variable between the two servers is the seed.
-    OpaqueCrypto.AkeKeyPair kp = OpaqueCrypto.deriveAkeKeyPair(new byte[32]);
+    OpaqueCrypto.AkeKeyPair kp = OpaqueCrypto.deriveAkeKeyPair(CONFIG.cipherSuite(), new byte[32]);
     java.math.BigInteger sharedSk = kp.privateKey();
     byte[] sharedPk = kp.publicKeyBytes();
     byte[] rawSk = sharedSk.toByteArray();
@@ -604,7 +608,7 @@ class OpaqueRoundTripTest {
     KE2 original = ke2Result.ke2();
 
     byte[] wireBytes = serializeKE2(original);
-    KE2 deserialized = KE2.deserialize(wireBytes);
+    KE2 deserialized = KE2.deserialize(CONFIG, wireBytes);
 
     AuthResult result = client.generateKE3(authState, null, null, deserialized);
     assertThat(result.sessionKey()).isNotNull().hasSize(32);
@@ -702,5 +706,59 @@ class OpaqueRoundTripTest {
     RegistrationResponse response = server.createRegistrationResponse(regState.request(), CREDENTIAL_IDENTIFIER);
 
     assertThat(response.serverPublicKey()).isEqualTo(server.getServerPublicKey());
+  }
+
+  // ─── Parameterized multi-suite round-trip tests ────────────────────────────
+
+  static Stream<OpaqueCipherSuite> allSuites() {
+    return Stream.of(
+        OpaqueCipherSuite.P256_SHA256,
+        OpaqueCipherSuite.P384_SHA384,
+        OpaqueCipherSuite.P521_SHA512
+    );
+  }
+
+  @ParameterizedTest(name = "fullRoundTrip_{0}")
+  @MethodSource("allSuites")
+  void fullRoundTripAllSuites(OpaqueCipherSuite suite) {
+    OpaqueConfig cfg = OpaqueConfig.forTesting(suite);
+    Server srv = Server.generate(cfg);
+    Client cli = new Client(cfg);
+
+    // Registration
+    ClientRegistrationState regState = cli.createRegistrationRequest(PASSWORD_CORRECT);
+    RegistrationResponse response = srv.createRegistrationResponse(regState.request(), CREDENTIAL_IDENTIFIER);
+    RegistrationRecord record = cli.finalizeRegistration(regState, response, null, null);
+
+    // Authentication
+    ClientAuthState authState = cli.generateKE1(PASSWORD_CORRECT);
+    ServerKE2Result ke2Result = srv.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
+    AuthResult clientResult = cli.generateKE3(authState, null, null, ke2Result.ke2());
+    byte[] serverSessionKey = srv.serverFinish(ke2Result.serverAuthState(), clientResult.ke3());
+
+    assertThat(clientResult.sessionKey()).isNotNull().hasSize(suite.Nh());
+    assertThat(clientResult.exportKey()).isNotNull().hasSize(suite.Nh());
+    assertThat(clientResult.ke3().clientMac()).isNotNull().hasSize(suite.Nm());
+    assertThat(clientResult.sessionKey()).isEqualTo(serverSessionKey);
+  }
+
+  @ParameterizedTest(name = "wrongPasswordFails_{0}")
+  @MethodSource("allSuites")
+  void wrongPasswordFailsAllSuites(OpaqueCipherSuite suite) {
+    OpaqueConfig cfg = OpaqueConfig.forTesting(suite);
+    Server srv = Server.generate(cfg);
+    Client cli = new Client(cfg);
+
+    // Registration with correct password
+    ClientRegistrationState regState = cli.createRegistrationRequest(PASSWORD_CORRECT);
+    RegistrationResponse response = srv.createRegistrationResponse(regState.request(), CREDENTIAL_IDENTIFIER);
+    RegistrationRecord record = cli.finalizeRegistration(regState, response, null, null);
+
+    // Authentication with wrong password must fail
+    ClientAuthState authState = cli.generateKE1(PASSWORD_WRONG);
+    ServerKE2Result ke2Result = srv.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
+
+    assertThatThrownBy(() -> cli.generateKE3(authState, null, null, ke2Result.ke2()))
+        .isInstanceOf(SecurityException.class);
   }
 }

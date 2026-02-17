@@ -1,19 +1,16 @@
 package com.codeheadsystems.opaque.internal;
 
 import com.codeheadsystems.oprf.curve.OctetStringUtils;
-import com.codeheadsystems.oprf.rfc9380.HashToCurve;
-import com.codeheadsystems.oprf.rfc9497.OprfSuite;
+import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import org.bouncycastle.math.ec.ECPoint;
 
 /**
  * OPRF operations used by OPAQUE.
- * Wraps the existing OPRF primitive (RFC 9497) for registration and authentication.
+ * All methods are suite-parameterized to support multiple cipher suites.
  */
 public class OpaqueOprf {
-
-  private static final HashToCurve H2C = HashToCurve.forP256();
 
   private OpaqueOprf() {
   }
@@ -21,12 +18,13 @@ public class OpaqueOprf {
   /**
    * Client blind: maps password to a curve point and applies a random blinding factor.
    *
+   * @param suite  cipher suite (determines hash-to-curve and DST)
    * @param password the client's password
    * @param blind    a randomly-chosen scalar (caller provides for deterministic testing)
-   * @return blindedElement as a 33-byte compressed EC point
+   * @return blindedElement as a compressed EC point
    */
-  public static byte[] blind(byte[] password, BigInteger blind) {
-    ECPoint H = H2C.hashToCurve(password, OprfSuite.HASH_TO_GROUP_DST);
+  public static byte[] blind(OpaqueCipherSuite suite, byte[] password, BigInteger blind) {
+    ECPoint H = suite.oprfSuite().hashToCurve().hashToCurve(password, suite.oprfSuite().hashToGroupDst());
     ECPoint blindedPoint = H.multiply(blind).normalize();
     return blindedPoint.getEncoded(true);
   }
@@ -34,12 +32,13 @@ public class OpaqueOprf {
   /**
    * Server OPRF evaluation: multiplies the blinded element by the OPRF key.
    *
+   * @param suite          cipher suite (determines curve for deserialization)
    * @param oprfKey        server OPRF private key scalar
-   * @param blindedElement 33-byte compressed EC point from client
-   * @return evaluatedElement as a 33-byte compressed EC point
+   * @param blindedElement compressed EC point from client
+   * @return evaluatedElement as a compressed EC point
    */
-  public static byte[] blindEvaluate(BigInteger oprfKey, byte[] blindedElement) {
-    ECPoint Q = OpaqueCrypto.deserializePoint(blindedElement);
+  public static byte[] blindEvaluate(OpaqueCipherSuite suite, BigInteger oprfKey, byte[] blindedElement) {
+    ECPoint Q = OpaqueCrypto.deserializePoint(suite, blindedElement);
     ECPoint evaluated = Q.multiply(oprfKey).normalize();
     return evaluated.getEncoded(true);
   }
@@ -47,33 +46,31 @@ public class OpaqueOprf {
   /**
    * Client OPRF finalize: unblinds the evaluated element and hashes to produce OPRF output.
    *
+   * @param suite            cipher suite
    * @param password         original client password bytes
    * @param blind            the blinding scalar used during blind()
-   * @param evaluatedElement 33-byte compressed EC point from server
-   * @return 32-byte OPRF output
+   * @param evaluatedElement compressed EC point from server
+   * @return Nh-byte OPRF output
    */
-  public static byte[] finalize(byte[] password, BigInteger blind, byte[] evaluatedElement) {
-    ECPoint evalPoint = OpaqueCrypto.deserializePoint(evaluatedElement);
-    return OprfSuite.finalize(password, blind, evalPoint);
+  public static byte[] finalize(OpaqueCipherSuite suite, byte[] password, BigInteger blind, byte[] evaluatedElement) {
+    ECPoint evalPoint = OpaqueCrypto.deserializePoint(suite, evaluatedElement);
+    return suite.oprfSuite().finalize(password, blind, evalPoint);
   }
 
   /**
    * Server: derives per-credential OPRF key from oprf_seed and credential identifier.
-   * Per RFC 9807 §3.3.1.1:
-   * seed = HKDF-Expand(oprf_seed, "OprfKey" || I2OSP(len(credential_identifier), 2) || credential_identifier, Nok)
-   * oprf_key = DeriveKeyPair(seed, "OPAQUE-DeriveKeyPair")
    *
-   * @param oprfSeed             32-byte server OPRF seed
+   * @param suite                cipher suite
+   * @param oprfSeed             server OPRF seed
    * @param credentialIdentifier credential identifier bytes
    * @return OPRF private key scalar
    */
-  public static BigInteger deriveOprfKey(byte[] oprfSeed, byte[] credentialIdentifier) {
-    // Per CFRG reference: info = credential_identifier || "OprfKey"
+  public static BigInteger deriveOprfKey(OpaqueCipherSuite suite, byte[] oprfSeed, byte[] credentialIdentifier) {
     byte[] info = OctetStringUtils.concat(
         credentialIdentifier,
         "OprfKey".getBytes(StandardCharsets.US_ASCII)
     );
-    byte[] seed = OpaqueCrypto.hkdfExpand(oprfSeed, info, 32);
-    return OprfSuite.deriveKeyPair(seed, "OPAQUE-DeriveKeyPair".getBytes(StandardCharsets.US_ASCII));
+    byte[] seed = OpaqueCrypto.hkdfExpand(suite, oprfSeed, info, suite.Nok());
+    return suite.oprfSuite().deriveKeyPair(seed, "OPAQUE-DeriveKeyPair".getBytes(StandardCharsets.US_ASCII));
   }
 }

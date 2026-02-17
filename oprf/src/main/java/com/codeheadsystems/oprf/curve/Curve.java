@@ -11,6 +11,8 @@ import org.bouncycastle.math.ec.ECPoint;
 public record Curve(ECDomainParameters params, ECCurve curve, ECPoint g, BigInteger n, BigInteger h) {
 
   public static final Curve P256_CURVE = loadCurve("P-256");
+  public static final Curve P384_CURVE = loadCurve("P-384");
+  public static final Curve P521_CURVE = loadCurve("P-521");
   public static final Curve SECP256K1_CURVE = loadCurve("secp256k1");
   private static final SecureRandom RANDOM = new SecureRandom();
 

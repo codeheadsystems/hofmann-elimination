@@ -1,8 +1,8 @@
 package com.codeheadsystems.opaque.internal;
 
-import com.codeheadsystems.oprf.curve.Curve;
 import com.codeheadsystems.oprf.curve.OctetStringUtils;
 import com.codeheadsystems.opaque.config.OpaqueConfig;
+import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.opaque.internal.OpaqueEnvelope.RecoverResult;
 import com.codeheadsystems.opaque.internal.OpaqueEnvelope.StoreResult;
 import com.codeheadsystems.opaque.model.ClientRegistrationState;
@@ -27,8 +27,8 @@ public class OpaqueCredentials {
    * Client creates a registration request by blinding the password.
    */
   public static ClientRegistrationState createRegistrationRequest(byte[] password, OpaqueConfig config) {
-    BigInteger blind = Curve.P256_CURVE.randomScalar();
-    byte[] blindedElement = OpaqueOprf.blind(password, blind);
+    BigInteger blind = config.cipherSuite().oprfSuite().curve().randomScalar();
+    byte[] blindedElement = OpaqueOprf.blind(config.cipherSuite(), password, blind);
     RegistrationRequest request = new RegistrationRequest(blindedElement);
     return new ClientRegistrationState(blind, password, request);
   }
@@ -39,7 +39,7 @@ public class OpaqueCredentials {
   public static ClientRegistrationState createRegistrationRequestWithBlind(byte[] password,
                                                                            BigInteger blind,
                                                                            OpaqueConfig config) {
-    byte[] blindedElement = OpaqueOprf.blind(password, blind);
+    byte[] blindedElement = OpaqueOprf.blind(config.cipherSuite(), password, blind);
     RegistrationRequest request = new RegistrationRequest(blindedElement);
     return new ClientRegistrationState(blind, password, request);
   }
@@ -47,12 +47,13 @@ public class OpaqueCredentials {
   /**
    * Server creates a registration response: evaluates OPRF and includes server public key.
    */
-  public static RegistrationResponse createRegistrationResponse(RegistrationRequest request,
+  public static RegistrationResponse createRegistrationResponse(OpaqueConfig config,
+                                                                RegistrationRequest request,
                                                                 byte[] serverPublicKey,
                                                                 byte[] credentialIdentifier,
                                                                 byte[] oprfSeed) {
-    BigInteger oprfKey = OpaqueOprf.deriveOprfKey(oprfSeed, credentialIdentifier);
-    byte[] evaluatedElement = OpaqueOprf.blindEvaluate(oprfKey, request.blindedElement());
+    BigInteger oprfKey = OpaqueOprf.deriveOprfKey(config.cipherSuite(), oprfSeed, credentialIdentifier);
+    byte[] evaluatedElement = OpaqueOprf.blindEvaluate(config.cipherSuite(), oprfKey, request.blindedElement());
     return new RegistrationResponse(evaluatedElement, serverPublicKey);
   }
 
@@ -80,42 +81,44 @@ public class OpaqueCredentials {
     byte[] randomizedPwd = deriveRandomizedPwd(state.password(), state.blind(),
         response.evaluatedElement(), config);
 
-    StoreResult stored = OpaqueEnvelope.store(
+    StoreResult stored = OpaqueEnvelope.store(config,
         randomizedPwd, response.serverPublicKey(), serverIdentity, clientIdentity, envelopeNonce);
     return new RegistrationRecord(stored.clientPublicKey(), stored.maskingKey(), stored.envelope());
   }
 
   /**
    * Server creates a credential response for authentication.
-   * Evaluates OPRF and masks the server public key + envelope.
    */
-  public static CredentialResponse createCredentialResponse(CredentialRequest request,
+  public static CredentialResponse createCredentialResponse(OpaqueConfig config,
+                                                            CredentialRequest request,
                                                             byte[] serverPublicKey,
                                                             RegistrationRecord record,
                                                             byte[] credentialIdentifier,
                                                             byte[] oprfSeed) {
-    return createCredentialResponseWithNonce(request, serverPublicKey, record,
+    return createCredentialResponseWithNonce(config, request, serverPublicKey, record,
         credentialIdentifier, oprfSeed, OpaqueCrypto.randomBytes(OpaqueConfig.Nn));
   }
 
   /**
    * Server creates a credential response with a provided masking nonce (for deterministic testing).
    */
-  public static CredentialResponse createCredentialResponseWithNonce(CredentialRequest request,
+  public static CredentialResponse createCredentialResponseWithNonce(OpaqueConfig config,
+                                                                     CredentialRequest request,
                                                                      byte[] serverPublicKey,
                                                                      RegistrationRecord record,
                                                                      byte[] credentialIdentifier,
                                                                      byte[] oprfSeed,
                                                                      byte[] maskingNonce) {
-    BigInteger oprfKey = OpaqueOprf.deriveOprfKey(oprfSeed, credentialIdentifier);
-    byte[] evaluatedElement = OpaqueOprf.blindEvaluate(oprfKey, request.blindedElement());
+    OpaqueCipherSuite suite = config.cipherSuite();
+    BigInteger oprfKey = OpaqueOprf.deriveOprfKey(suite, oprfSeed, credentialIdentifier);
+    byte[] evaluatedElement = OpaqueOprf.blindEvaluate(suite, oprfKey, request.blindedElement());
 
     // pad = HKDF-Expand(masking_key, masking_nonce || "CredentialResponsePad", Npk + Nn + Nm)
     byte[] padInfo = OctetStringUtils.concat(
         maskingNonce,
         "CredentialResponsePad".getBytes(StandardCharsets.US_ASCII)
     );
-    byte[] pad = OpaqueCrypto.hkdfExpand(record.maskingKey(), padInfo, OpaqueConfig.MASKED_RESPONSE_SIZE);
+    byte[] pad = OpaqueCrypto.hkdfExpand(suite, record.maskingKey(), padInfo, config.maskedResponseSize());
 
     // plaintext = server_public_key || envelope_nonce || auth_tag
     byte[] plaintext = OctetStringUtils.concat(serverPublicKey, record.envelope().serialize());
@@ -126,46 +129,43 @@ public class OpaqueCredentials {
 
   /**
    * Client recovers credentials from the credential response during authentication.
-   *
-   * @return RecoverResult with clientPrivateKeyBytes, clientPublicKey, cleartextCredentials, exportKey
    */
   public static RecoverResult recoverCredentials(byte[] password, BigInteger blind,
                                                  CredentialResponse response,
                                                  byte[] serverIdentity,
                                                  byte[] clientIdentity,
                                                  OpaqueConfig config) {
+    OpaqueCipherSuite suite = config.cipherSuite();
     byte[] randomizedPwd = deriveRandomizedPwd(password, blind, response.evaluatedElement(), config);
 
     // Recover masking_key = Expand(randomized_pwd, "MaskingKey", Nh)
-    byte[] maskingKey = OpaqueCrypto.hkdfExpand(randomizedPwd,
-        "MaskingKey".getBytes(StandardCharsets.US_ASCII), OpaqueConfig.Nh);
+    byte[] maskingKey = OpaqueCrypto.hkdfExpand(suite, randomizedPwd,
+        "MaskingKey".getBytes(StandardCharsets.US_ASCII), config.Nh());
 
     // Unmask: pad = HKDF-Expand(masking_key, masking_nonce || "CredentialResponsePad", ...)
     byte[] padInfo = OctetStringUtils.concat(
         response.maskingNonce(),
         "CredentialResponsePad".getBytes(StandardCharsets.US_ASCII)
     );
-    byte[] pad = OpaqueCrypto.hkdfExpand(maskingKey, padInfo, OpaqueConfig.MASKED_RESPONSE_SIZE);
+    byte[] pad = OpaqueCrypto.hkdfExpand(suite, maskingKey, padInfo, config.maskedResponseSize());
     byte[] plaintext = OpaqueCrypto.xor(pad, response.maskedResponse());
 
     // Extract server_public_key || envelope
-    byte[] serverPublicKey = new byte[OpaqueConfig.Npk];
-    System.arraycopy(plaintext, 0, serverPublicKey, 0, OpaqueConfig.Npk);
-    Envelope envelope = Envelope.deserialize(plaintext, OpaqueConfig.Npk, OpaqueConfig.Nn, OpaqueConfig.Nm);
+    byte[] serverPublicKey = new byte[config.Npk()];
+    System.arraycopy(plaintext, 0, serverPublicKey, 0, config.Npk());
+    Envelope envelope = Envelope.deserialize(plaintext, config.Npk(), OpaqueConfig.Nn, config.Nm());
 
-    return OpaqueEnvelope.recover(randomizedPwd, serverPublicKey, envelope, serverIdentity, clientIdentity);
+    return OpaqueEnvelope.recover(config, randomizedPwd, serverPublicKey, envelope, serverIdentity, clientIdentity);
   }
 
   /**
    * Derives randomized password from OPRF output.
-   * oprfOutput = OPRF.finalize(password, blind, evaluatedElement)
-   * stretchedOutput = config.ksf.stretch(oprfOutput)
-   * randomizedPwd = HKDF-Extract("", oprfOutput || stretchedOutput)
    */
   public static byte[] deriveRandomizedPwd(byte[] password, BigInteger blind,
                                            byte[] evaluatedElement, OpaqueConfig config) {
-    byte[] oprfOutput = OpaqueOprf.finalize(password, blind, evaluatedElement);
+    byte[] oprfOutput = OpaqueOprf.finalize(config.cipherSuite(), password, blind, evaluatedElement);
     byte[] stretchedOutput = config.ksf().stretch(oprfOutput, config);
-    return OpaqueCrypto.hkdfExtract(new byte[0], OctetStringUtils.concat(oprfOutput, stretchedOutput));
+    return OpaqueCrypto.hkdfExtract(config.cipherSuite(), new byte[0],
+        OctetStringUtils.concat(oprfOutput, stretchedOutput));
   }
 }

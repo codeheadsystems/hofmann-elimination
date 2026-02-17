@@ -8,6 +8,7 @@ import com.codeheadsystems.hofmann.model.OprfRequest;
 import com.codeheadsystems.hofmann.model.OprfResponse;
 import com.codeheadsystems.oprf.curve.Curve;
 import com.codeheadsystems.oprf.curve.OctetStringUtils;
+import com.codeheadsystems.oprf.rfc9497.OprfCipherSuite;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.http.HttpClient;
@@ -35,7 +36,7 @@ public class OprfAccessor {
                       final ObjectMapper objectMapper,
                       final Map<ServerIdentifier, ServerConnectionInfo> serverConnections) {
     log.info("OprfAccessor({})", oprfConfig);
-    this.curve = oprfConfig.curve();
+    this.curve = oprfConfig.suite().curve();
     this.httpClient = httpClient;
     this.objectMapper = objectMapper;
     this.serverConnections = serverConnections;

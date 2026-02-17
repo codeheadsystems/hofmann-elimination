@@ -1,6 +1,5 @@
 package com.codeheadsystems.opaque;
 
-import com.codeheadsystems.oprf.curve.Curve;
 import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.internal.OpaqueAke;
 import com.codeheadsystems.opaque.internal.OpaqueCredentials;
@@ -38,12 +37,6 @@ public class Client {
 
   /**
    * Finalizes registration given the server's response.
-   *
-   * @param state          state from createRegistrationRequest
-   * @param response       server's registration response
-   * @param serverIdentity server identity (null = use serverPublicKey)
-   * @param clientIdentity client identity (null = use clientPublicKey)
-   * @return registration record to send to server for storage
    */
   public RegistrationRecord finalizeRegistration(ClientRegistrationState state,
                                                  RegistrationResponse response,
@@ -58,13 +51,12 @@ public class Client {
    * Generates KE1 (first AKE message) by blinding the password and creating a client ephemeral key pair.
    */
   public ClientAuthState generateKE1(byte[] password) {
-    BigInteger blind = Curve.P256_CURVE.randomScalar();
-    byte[] blindedElement = OpaqueOprf.blind(password, blind);
+    BigInteger blind = config.cipherSuite().oprfSuite().curve().randomScalar();
+    byte[] blindedElement = OpaqueOprf.blind(config.cipherSuite(), password, blind);
     CredentialRequest credReq = new CredentialRequest(blindedElement);
 
-    // Derive ephemeral AKE key pair from random seed
-    byte[] seed = OpaqueCrypto.randomBytes(OpaqueConfig.Nsk);
-    OpaqueCrypto.AkeKeyPair kp = OpaqueCrypto.deriveAkeKeyPair(seed);
+    byte[] seed = OpaqueCrypto.randomBytes(config.Nsk());
+    OpaqueCrypto.AkeKeyPair kp = OpaqueCrypto.deriveAkeKeyPair(config.cipherSuite(), seed);
     BigInteger clientAkeSk = kp.privateKey();
     byte[] clientAkePk = kp.publicKeyBytes();
 
@@ -75,13 +67,6 @@ public class Client {
 
   /**
    * Generates KE3 (final client authentication message) and produces session/export keys.
-   *
-   * @param state          client auth state from generateKE1
-   * @param clientIdentity client identity bytes (null = use clientPublicKey from record)
-   * @param serverIdentity server identity bytes (null = use serverPublicKey from credential response)
-   * @param ke2            server's KE2 message
-   * @return AuthResult containing KE3, sessionKey, and exportKey
-   * @throws SecurityException if server MAC verification fails
    */
   public AuthResult generateKE3(ClientAuthState state,
                                 byte[] clientIdentity,
@@ -120,10 +105,10 @@ public class Client {
                                                   BigInteger blind,
                                                   byte[] clientNonce,
                                                   byte[] clientAkeKeySeed) {
-    byte[] blindedElement = OpaqueOprf.blind(password, blind);
+    byte[] blindedElement = OpaqueOprf.blind(config.cipherSuite(), password, blind);
     CredentialRequest credReq = new CredentialRequest(blindedElement);
 
-    OpaqueCrypto.AkeKeyPair kp = OpaqueCrypto.deriveAkeKeyPair(clientAkeKeySeed);
+    OpaqueCrypto.AkeKeyPair kp = OpaqueCrypto.deriveAkeKeyPair(config.cipherSuite(), clientAkeKeySeed);
     BigInteger clientAkeSk = kp.privateKey();
     byte[] clientAkePk = kp.publicKeyBytes();
 

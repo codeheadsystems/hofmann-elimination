@@ -14,58 +14,83 @@ public class HashToField {
   private final BigInteger p; // Prime field modulus
   private final int L; // Length parameter in bytes
   private final int m; // Extension degree (1 for prime fields)
+  private final ExpandMessageXmd xmd;
 
   /**
    * Creates a HashToField instance for a specific prime field.
    *
-   * @param p Prime field modulus
-   * @param L Length parameter (must be >= ceil((ceil(log2(p)) + k) / 8) where k is security parameter)
+   * @param p   Prime field modulus
+   * @param L   Length parameter
+   * @param xmd ExpandMessageXmd instance (determines hash algorithm)
    */
-  private HashToField(BigInteger p, int L) {
+  private HashToField(BigInteger p, int L, ExpandMessageXmd xmd) {
     this.p = p;
     this.L = L;
-    this.m = 1; // secp256k1 is a prime field, not an extension field
+    this.m = 1; // prime field, not an extension field
+    this.xmd = xmd;
   }
 
   /**
    * Factory method for secp256k1 field parameters.
-   * <p>
-   * For secp256k1:
-   * - p = 2^256 - 2^32 - 2^9 - 2^8 - 2^7 - 2^6 - 2^4 - 1
-   * - k = 128 (security level)
-   * - L = 48 (chosen to satisfy L >= ceil((ceil(log2(p)) + k) / 8))
-   *
-   * @return HashToField instance configured for secp256k1
+   * L = 48, SHA-256.
    */
   public static HashToField forSecp256k1() {
-    // secp256k1 field prime
     BigInteger p = new BigInteger(
         "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F",
         16
     );
-    // L = 48 bytes (for 128-bit security with 256-bit field)
-    return new HashToField(p, 48);
+    return new HashToField(p, 48, ExpandMessageXmd.forSha256());
   }
 
   /**
    * Factory method for P-256 base field parameters.
-   * Used for hash_to_curve (HashToGroup) operations on P-256.
-   *
-   * @return HashToField instance configured for P-256 field arithmetic
+   * L = 48, SHA-256.
    */
   public static HashToField forP256() {
     BigInteger p = Curve.P256_CURVE.curve().getField().getCharacteristic();
-    return new HashToField(p, 48);
+    return new HashToField(p, 48, ExpandMessageXmd.forSha256());
   }
 
   /**
-   * Factory method for P-256 scalar field parameters.
-   * Used for HashToScalar operations (modulus is group order n, not field prime).
-   *
-   * @return HashToField instance configured for P-256 group order
+   * Factory method for P-256 scalar field parameters (group order as modulus).
+   * L = 48, SHA-256.
    */
   public static HashToField forP256Scalar() {
-    return new HashToField(Curve.P256_CURVE.n(), 48);
+    return new HashToField(Curve.P256_CURVE.n(), 48, ExpandMessageXmd.forSha256());
+  }
+
+  /**
+   * Factory method for P-384 base field parameters.
+   * L = 72, SHA-384.
+   */
+  public static HashToField forP384() {
+    BigInteger p = Curve.P384_CURVE.curve().getField().getCharacteristic();
+    return new HashToField(p, 72, ExpandMessageXmd.forSha384());
+  }
+
+  /**
+   * Factory method for P-384 scalar field parameters (group order as modulus).
+   * L = 72, SHA-384.
+   */
+  public static HashToField forP384Scalar() {
+    return new HashToField(Curve.P384_CURVE.n(), 72, ExpandMessageXmd.forSha384());
+  }
+
+  /**
+   * Factory method for P-521 base field parameters.
+   * L = 98, SHA-512.
+   */
+  public static HashToField forP521() {
+    BigInteger p = Curve.P521_CURVE.curve().getField().getCharacteristic();
+    return new HashToField(p, 98, ExpandMessageXmd.forSha512());
+  }
+
+  /**
+   * Factory method for P-521 scalar field parameters (group order as modulus).
+   * L = 98, SHA-512.
+   */
+  public static HashToField forP521Scalar() {
+    return new HashToField(Curve.P521_CURVE.n(), 98, ExpandMessageXmd.forSha512());
   }
 
   /**
@@ -83,7 +108,7 @@ public class HashToField {
 
     int lenInBytes = count * m * L;
 
-    byte[] uniformBytes = ExpandMessageXmd.expand(msg, dst, lenInBytes);
+    byte[] uniformBytes = xmd.expand(msg, dst, lenInBytes);
 
     // Convert uniform_bytes to field elements
     BigInteger[] fieldElements = new BigInteger[count];

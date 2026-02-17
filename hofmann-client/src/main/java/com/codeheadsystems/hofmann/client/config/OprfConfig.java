@@ -1,11 +1,10 @@
 package com.codeheadsystems.hofmann.client.config;
 
-import com.codeheadsystems.oprf.curve.Curve;
-import com.codeheadsystems.oprf.rfc9380.HashToCurve;
+import com.codeheadsystems.oprf.rfc9497.OprfCipherSuite;
 
-public record OprfConfig(Curve curve, HashToCurve hashToCurve) {
+public record OprfConfig(OprfCipherSuite suite) {
 
   public OprfConfig() {
-    this(Curve.P256_CURVE, HashToCurve.forP256());
+    this(OprfCipherSuite.P256_SHA256);
   }
 }
