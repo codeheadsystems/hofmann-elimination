@@ -5,7 +5,6 @@ import static com.codeheadsystems.oprf.curve.OctetStringUtils.concat;
 import com.codeheadsystems.oprf.curve.Curve;
 import com.codeheadsystems.oprf.curve.OctetStringUtils;
 import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
-import com.codeheadsystems.oprf.rfc9497.OprfSuite;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
