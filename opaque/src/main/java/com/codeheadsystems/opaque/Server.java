@@ -1,6 +1,5 @@
 package com.codeheadsystems.opaque;
 
-import com.codeheadsystems.oprf.curve.Curve;
 import com.codeheadsystems.oprf.curve.OctetStringUtils;
 import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.internal.OpaqueAke;
@@ -31,9 +30,9 @@ public class Server {
   /**
    * Constructs an OpaqueServer with explicit key material.
    *
-   * @param serverPrivateKeyBytes 32-byte big-endian P-256 private key
-   * @param serverPublicKey       33-byte compressed SEC1 P-256 public key
-   * @param oprfSeed              32-byte OPRF seed
+   * @param serverPrivateKeyBytes big-endian server private key
+   * @param serverPublicKey       compressed SEC1 server public key
+   * @param oprfSeed              OPRF seed
    * @param config                OPAQUE configuration
    */
   public Server(byte[] serverPrivateKeyBytes,
@@ -47,25 +46,26 @@ public class Server {
   }
 
   /**
-   * Generates a new OpaqueServer with a random P-256 key pair and random OPRF seed.
+   * Generates a new OpaqueServer with a random key pair and random OPRF seed.
    */
   public static Server generate(OpaqueConfig config) {
-    BigInteger sk = Curve.P256_CURVE.randomScalar();
-    byte[] pk = Curve.P256_CURVE.g().multiply(sk).normalize().getEncoded(true);
-    byte[] seed = OpaqueCrypto.randomBytes(OpaqueConfig.Nok);
-    // Convert sk to 32-byte big-endian
+    BigInteger sk = config.cipherSuite().oprfSuite().curve().randomScalar();
+    byte[] pk = config.cipherSuite().oprfSuite().curve().g().multiply(sk).normalize().getEncoded(true);
+    byte[] seed = OpaqueCrypto.randomBytes(config.Nok());
+
+    int nsk = config.Nsk();
     byte[] skBytes = sk.toByteArray();
-    byte[] skFixed = new byte[32];
-    if (skBytes.length > 32) {
-      System.arraycopy(skBytes, skBytes.length - 32, skFixed, 0, 32);
+    byte[] skFixed = new byte[nsk];
+    if (skBytes.length > nsk) {
+      System.arraycopy(skBytes, skBytes.length - nsk, skFixed, 0, nsk);
     } else {
-      System.arraycopy(skBytes, 0, skFixed, 32 - skBytes.length, skBytes.length);
+      System.arraycopy(skBytes, 0, skFixed, nsk - skBytes.length, skBytes.length);
     }
     return new Server(skFixed, pk, seed, config);
   }
 
   /**
-   * Returns the server's public key (33 bytes).
+   * Returns the server's public key.
    */
   public byte[] getServerPublicKey() {
     return serverPublicKey;
@@ -75,49 +75,32 @@ public class Server {
 
   /**
    * Creates a registration response: evaluates the OPRF and returns the server's public key.
-   *
-   * @param request              client's registration request
-   * @param credentialIdentifier unique credential identifier for this user
-   * @return registration response to send to the client
    */
   public RegistrationResponse createRegistrationResponse(RegistrationRequest request,
                                                          byte[] credentialIdentifier) {
     return OpaqueCredentials.createRegistrationResponse(
-        request, serverPublicKey, credentialIdentifier, oprfSeed);
+        config, request, serverPublicKey, credentialIdentifier, oprfSeed);
   }
 
   // ─── Authentication ────────────────────────────────────────────────────────
 
   /**
    * Generates KE2: evaluates OPRF, masks credentials, performs server-side AKE.
-   *
-   * @param serverIdentity       server identity bytes (null = use serverPublicKey)
-   * @param record               stored registration record for this user
-   * @param credentialIdentifier credential identifier for this user
-   * @param ke1                  client's KE1 message
-   * @param clientIdentity       client identity bytes (null = use clientPublicKey from record)
-   * @return ServerKE2Result containing serverAuthState and ke2
    */
   public ServerKE2Result generateKE2(byte[] serverIdentity,
-                              RegistrationRecord record,
-                              byte[] credentialIdentifier,
-                              KE1 ke1,
-                              byte[] clientIdentity) {
+                                     RegistrationRecord record,
+                                     byte[] credentialIdentifier,
+                                     KE1 ke1,
+                                     byte[] clientIdentity) {
     return OpaqueAke.generateKE2(
-        config.context(), serverIdentity, serverPrivateKey, serverPublicKey,
+        config, serverIdentity, serverPrivateKey, serverPublicKey,
         record, credentialIdentifier, oprfSeed, ke1, clientIdentity, null, null);
   }
 
   /**
    * Finalizes server-side authentication: verifies the client MAC and returns the session key.
-   *
-   * @param state state from generateKE2
-   * @param ke3   client's final message
-   * @return session key
-   * @throws SecurityException if client MAC verification fails
    */
-  public byte[] serverFinish(ServerAuthState state,
-                             KE3 ke3) {
+  public byte[] serverFinish(ServerAuthState state, KE3 ke3) {
     if (!Arrays.equals(state.expectedClientMac(), ke3.clientMac())) {
       throw new SecurityException("Client MAC verification failed");
     }
@@ -128,47 +111,31 @@ public class Server {
 
   /**
    * Generates a fake KE2 for an unregistered credential identifier.
-   * Produces a response indistinguishable from a real KE2, preventing user
-   * enumeration attacks. The fake record fields are derived deterministically
-   * from oprfSeed so no per-user fake record storage is required.
-   *
-   * <p>Per RFC 9807 §7.1.2, the server SHOULD respond identically for registered
-   * and unregistered users.
-   *
-   * @param ke1                  client's KE1 message
-   * @param credentialIdentifier credential identifier for the unknown user
-   * @param serverIdentity       server identity bytes (null = use serverPublicKey)
-   * @param clientIdentity       client identity bytes (null = use fake clientPublicKey)
-   * @return ServerKE2Result containing serverAuthState and ke2
    */
   public ServerKE2Result generateFakeKE2(KE1 ke1,
-                                  byte[] credentialIdentifier,
-                                  byte[] serverIdentity,
-                                  byte[] clientIdentity) {
+                                         byte[] credentialIdentifier,
+                                         byte[] serverIdentity,
+                                         byte[] clientIdentity) {
     RegistrationRecord fakeRecord = createFakeRecord(credentialIdentifier);
     return OpaqueAke.generateKE2(
-        config.context(), serverIdentity, serverPrivateKey, serverPublicKey,
+        config, serverIdentity, serverPrivateKey, serverPublicKey,
         fakeRecord, credentialIdentifier, oprfSeed, ke1, clientIdentity, null, null);
   }
 
-  /**
-   * Derives a fake RegistrationRecord deterministically from oprfSeed and
-   * credentialIdentifier. Independent from any real client's randomized_password.
-   */
   private RegistrationRecord createFakeRecord(byte[] credentialIdentifier) {
-    byte[] fakeClientSkSeed = OpaqueCrypto.hkdfExpand(
+    byte[] fakeClientSkSeed = OpaqueCrypto.hkdfExpand(config.cipherSuite(),
         oprfSeed,
         OctetStringUtils.concat(credentialIdentifier, "FakeClientKey".getBytes(StandardCharsets.US_ASCII)),
-        OpaqueConfig.Nsk);
-    OpaqueCrypto.AkeKeyPair fakeKp = OpaqueCrypto.deriveAkeKeyPair(fakeClientSkSeed);
+        config.Nsk());
+    OpaqueCrypto.AkeKeyPair fakeKp = OpaqueCrypto.deriveAkeKeyPair(config.cipherSuite(), fakeClientSkSeed);
     byte[] fakeClientPk = fakeKp.publicKeyBytes();
 
-    byte[] fakeMaskingKey = OpaqueCrypto.hkdfExpand(
+    byte[] fakeMaskingKey = OpaqueCrypto.hkdfExpand(config.cipherSuite(),
         oprfSeed,
         OctetStringUtils.concat(credentialIdentifier, "FakeMaskingKey".getBytes(StandardCharsets.US_ASCII)),
-        OpaqueConfig.Nh);
+        config.Nh());
 
-    Envelope fakeEnvelope = new Envelope(new byte[OpaqueConfig.Nn], new byte[OpaqueConfig.Nm]);
+    Envelope fakeEnvelope = new Envelope(new byte[OpaqueConfig.Nn], new byte[config.Nm()]);
     return new RegistrationRecord(fakeClientPk, fakeMaskingKey, fakeEnvelope);
   }
 
@@ -178,47 +145,35 @@ public class Server {
    * Generates KE2 with deterministic nonces and seeds (for test vectors).
    */
   public ServerKE2Result generateKE2Deterministic(byte[] serverIdentity,
-                                           RegistrationRecord record,
-                                           byte[] credentialIdentifier,
-                                           KE1 ke1,
-                                           byte[] clientIdentity,
-                                           byte[] maskingNonce,
-                                           byte[] serverAkeKeySeed,
-                                           byte[] serverNonce) {
+                                                  RegistrationRecord record,
+                                                  byte[] credentialIdentifier,
+                                                  KE1 ke1,
+                                                  byte[] clientIdentity,
+                                                  byte[] maskingNonce,
+                                                  byte[] serverAkeKeySeed,
+                                                  byte[] serverNonce) {
     return OpaqueAke.generateKE2Deterministic(
-        config.context(), serverIdentity, serverPrivateKey, serverPublicKey,
+        config, serverIdentity, serverPrivateKey, serverPublicKey,
         record, credentialIdentifier, oprfSeed, ke1, clientIdentity,
         maskingNonce, serverAkeKeySeed, serverNonce);
   }
 
   /**
-   * Generates a fake KE2 with explicit fake record fields and deterministic nonces
-   * (for RFC test vector verification).
-   *
-   * @param ke1                  client's KE1 message
-   * @param credentialIdentifier credential identifier for the unknown user
-   * @param serverIdentity       server identity bytes (null = use serverPublicKey)
-   * @param clientIdentity       client identity bytes (null = use fakeClientPublicKey)
-   * @param fakeClientPublicKey  33-byte compressed fake client public key
-   * @param fakeMaskingKey       32-byte fake masking key
-   * @param maskingNonce         32-byte masking nonce
-   * @param serverAkeKeySeed     32-byte server ephemeral AKE key seed
-   * @param serverNonce          32-byte server nonce
-   * @return ServerKE2Result containing serverAuthState and ke2
+   * Generates a fake KE2 with explicit fake record fields and deterministic nonces.
    */
   public ServerKE2Result generateFakeKE2Deterministic(KE1 ke1,
-                                               byte[] credentialIdentifier,
-                                               byte[] serverIdentity,
-                                               byte[] clientIdentity,
-                                               byte[] fakeClientPublicKey,
-                                               byte[] fakeMaskingKey,
-                                               byte[] maskingNonce,
-                                               byte[] serverAkeKeySeed,
-                                               byte[] serverNonce) {
-    Envelope fakeEnvelope = new Envelope(new byte[OpaqueConfig.Nn], new byte[OpaqueConfig.Nm]);
+                                                      byte[] credentialIdentifier,
+                                                      byte[] serverIdentity,
+                                                      byte[] clientIdentity,
+                                                      byte[] fakeClientPublicKey,
+                                                      byte[] fakeMaskingKey,
+                                                      byte[] maskingNonce,
+                                                      byte[] serverAkeKeySeed,
+                                                      byte[] serverNonce) {
+    Envelope fakeEnvelope = new Envelope(new byte[OpaqueConfig.Nn], new byte[config.Nm()]);
     RegistrationRecord fakeRecord = new RegistrationRecord(fakeClientPublicKey, fakeMaskingKey, fakeEnvelope);
     return OpaqueAke.generateKE2Deterministic(
-        config.context(), serverIdentity, serverPrivateKey, serverPublicKey,
+        config, serverIdentity, serverPrivateKey, serverPublicKey,
         fakeRecord, credentialIdentifier, oprfSeed, ke1, clientIdentity,
         maskingNonce, serverAkeKeySeed, serverNonce);
   }

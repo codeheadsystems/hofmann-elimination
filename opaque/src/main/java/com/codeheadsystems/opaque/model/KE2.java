@@ -10,23 +10,23 @@ public record KE2(CredentialResponse credentialResponse, byte[] serverNonce,
                   byte[] serverAkePublicKey, byte[] serverMac) {
 
   /**
-   * Deserializes KE2 from wire bytes.
-   * Layout: evaluatedElement(Noe) || maskingNonce(Nn) || maskedResponse(Npk+Nn+Nm) ||
+   * Deserializes KE2 from wire bytes using config-provided size constants.
+   * Layout: evaluatedElement(Noe) || maskingNonce(Nn) || maskedResponse(maskedResponseSize) ||
    * serverNonce(Nn) || serverAkePk(Npk) || serverMac(Nm)
    */
-  public static KE2 deserialize(byte[] bytes) {
+  public static KE2 deserialize(OpaqueConfig config, byte[] bytes) {
     int off = 0;
-    byte[] evaluatedElement = slice(bytes, off, OpaqueConfig.Noe);
-    off += OpaqueConfig.Noe;
+    byte[] evaluatedElement = slice(bytes, off, config.Noe());
+    off += config.Noe();
     byte[] maskingNonce = slice(bytes, off, OpaqueConfig.Nn);
     off += OpaqueConfig.Nn;
-    byte[] maskedResponse = slice(bytes, off, OpaqueConfig.MASKED_RESPONSE_SIZE);
-    off += OpaqueConfig.MASKED_RESPONSE_SIZE;
+    byte[] maskedResponse = slice(bytes, off, config.maskedResponseSize());
+    off += config.maskedResponseSize();
     byte[] serverNonce = slice(bytes, off, OpaqueConfig.Nn);
     off += OpaqueConfig.Nn;
-    byte[] serverAkePk = slice(bytes, off, OpaqueConfig.Npk);
-    off += OpaqueConfig.Npk;
-    byte[] serverMac = slice(bytes, off, OpaqueConfig.Nm);
+    byte[] serverAkePk = slice(bytes, off, config.Npk());
+    off += config.Npk();
+    byte[] serverMac = slice(bytes, off, config.Nm());
     return new KE2(
         new CredentialResponse(evaluatedElement, maskingNonce, maskedResponse),
         serverNonce, serverAkePk, serverMac

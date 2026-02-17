@@ -224,7 +224,7 @@ public class ExpandMessageXmdTest {
   }
 
   private static byte[] expand(String msg, String dst, int lenInBytes) {
-    return ExpandMessageXmd.expand(
+    return ExpandMessageXmd.forSha256().expand(
         msg.getBytes(StandardCharsets.UTF_8),
         dst.getBytes(StandardCharsets.UTF_8),
         lenInBytes);

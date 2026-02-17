@@ -89,6 +89,32 @@ public class HashToCurve {
   }
 
   /**
+   * Factory method to create a HashToCurve instance for P-384.
+   * Uses the standard parameters from RFC 9380 Section 8.3.
+   * No isogeny is needed since P-384 has A != 0.
+   *
+   * @return HashToCurve instance configured for P384_XMD:SHA-384_SSWU_RO_
+   */
+  public static HashToCurve forP384() {
+    HashToField hashToField = HashToField.forP384();
+    SimplifiedSWU simplifiedSWU = SimplifiedSWU.forP384();
+    return new HashToCurve(hashToField, simplifiedSWU, Curve.P384_CURVE.curve());
+  }
+
+  /**
+   * Factory method to create a HashToCurve instance for P-521.
+   * Uses the standard parameters from RFC 9380 Section 8.4.
+   * No isogeny is needed since P-521 has A != 0.
+   *
+   * @return HashToCurve instance configured for P521_XMD:SHA-512_SSWU_RO_
+   */
+  public static HashToCurve forP521() {
+    HashToField hashToField = HashToField.forP521();
+    SimplifiedSWU simplifiedSWU = SimplifiedSWU.forP521();
+    return new HashToCurve(hashToField, simplifiedSWU, Curve.P521_CURVE.curve());
+  }
+
+  /**
    * Hashes a message to a point on the curve (uniform encoding, random oracle).
    *
    * @param message Message to hash

@@ -84,6 +84,36 @@ public class SimplifiedSWU {
   }
 
   /**
+   * Factory method for P-384 curve parameters.
+   * For P-384, A != 0, so Simplified SWU maps directly to the curve (no isogeny needed).
+   * Parameters from RFC 9380 Section 8.3.
+   *
+   * @return SimplifiedSWU instance configured for P-384
+   */
+  public static SimplifiedSWU forP384() {
+    BigInteger APrime = Curve.P384_CURVE.curve().getA().toBigInteger();
+    BigInteger BPrime = Curve.P384_CURVE.curve().getB().toBigInteger();
+    // Z = -12 mod p (from RFC 9380 Section 8.3, Table 6)
+    BigInteger ZValue = BigInteger.valueOf(-12);
+    return new SimplifiedSWU(Curve.P384_CURVE.params(), APrime, BPrime, ZValue);
+  }
+
+  /**
+   * Factory method for P-521 curve parameters.
+   * For P-521, A != 0, so Simplified SWU maps directly to the curve (no isogeny needed).
+   * Parameters from RFC 9380 Section 8.4.
+   *
+   * @return SimplifiedSWU instance configured for P-521
+   */
+  public static SimplifiedSWU forP521() {
+    BigInteger APrime = Curve.P521_CURVE.curve().getA().toBigInteger();
+    BigInteger BPrime = Curve.P521_CURVE.curve().getB().toBigInteger();
+    // Z = -4 mod p (from RFC 9380 Section 8.4, Table 7)
+    BigInteger ZValue = BigInteger.valueOf(-4);
+    return new SimplifiedSWU(Curve.P521_CURVE.params(), APrime, BPrime, ZValue);
+  }
+
+  /**
    * Maps a field element u to a point on the isogenous curve E'.
    * Implements the Simplified SWU algorithm from RFC 9380 Section 6.6.2.
    * <p>

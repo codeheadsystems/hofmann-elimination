@@ -4,61 +4,49 @@ import static com.codeheadsystems.oprf.curve.OctetStringUtils.concat;
 
 import com.codeheadsystems.oprf.curve.Curve;
 import com.codeheadsystems.oprf.curve.OctetStringUtils;
+import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.oprf.rfc9497.OprfSuite;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
-import org.bouncycastle.crypto.digests.SHA256Digest;
-import org.bouncycastle.crypto.macs.HMac;
-import org.bouncycastle.crypto.params.KeyParameter;
 import org.bouncycastle.math.ec.ECPoint;
 
 /**
  * Low-level cryptographic primitives for OPAQUE.
- * Wraps BouncyCastle HKDF, HMAC, SHA-256, and EC operations.
+ * All suite-dependent operations accept an {@link OpaqueCipherSuite} as the first parameter.
  */
 public class OpaqueCrypto {
 
   private static final SecureRandom RANDOM = new SecureRandom();
-  private static final byte[] EMPTY_SALT = new byte[32]; // HashLen zeros per RFC 5869
 
   private OpaqueCrypto() {
   }
 
+  // ─── Suite-aware core methods ────────────────────────────────────────────────
+
   /**
-   * HKDF-Extract(salt, ikm) = HMAC-SHA256(salt, ikm). Empty salt uses 32 zero bytes.
+   * HKDF-Extract(salt, ikm) = HMAC-H(salt, ikm).
+   * Empty salt uses HashLen zeros per RFC 5869.
    */
-  public static byte[] hkdfExtract(byte[] salt, byte[] ikm) {
-    byte[] actualSalt = (salt == null || salt.length == 0) ? EMPTY_SALT : salt;
-    HMac hmac = new HMac(new SHA256Digest());
-    hmac.init(new KeyParameter(actualSalt));
-    hmac.update(ikm, 0, ikm.length);
-    byte[] prk = new byte[32];
-    hmac.doFinal(prk, 0);
-    return prk;
+  public static byte[] hkdfExtract(OpaqueCipherSuite suite, byte[] salt, byte[] ikm) {
+    byte[] emptySalt = new byte[suite.Nh()];
+    byte[] actualSalt = (salt == null || salt.length == 0) ? emptySalt : salt;
+    return suite.oprfSuite().hmac(actualSalt, ikm);
   }
 
   /**
    * HKDF-Expand(prk, info, len) per RFC 5869 §2.3.
-   * Implemented directly via HMAC to avoid BouncyCastle API variations.
    */
-  public static byte[] hkdfExpand(byte[] prk, byte[] info, int len) {
-    HMac hmac = new HMac(new SHA256Digest());
-    hmac.init(new KeyParameter(prk));
+  public static byte[] hkdfExpand(OpaqueCipherSuite suite, byte[] prk, byte[] info, int len) {
+    int hashLen = suite.Nh();
     byte[] result = new byte[len];
     byte[] t = new byte[0];
     int copied = 0;
     int counter = 1;
     while (copied < len) {
-      hmac.reset();
-      hmac.update(t, 0, t.length);
-      hmac.update(info, 0, info.length);
-      hmac.update((byte) counter);
-      t = new byte[32];
-      hmac.doFinal(t, 0);
-      int toCopy = Math.min(len - copied, 32);
+      byte[] input = concat(t, info, new byte[]{(byte) counter});
+      t = suite.oprfSuite().hmac(prk, input);
+      int toCopy = Math.min(len - copied, hashLen);
       System.arraycopy(t, 0, result, copied, toCopy);
       copied += toCopy;
       counter++;
@@ -67,11 +55,10 @@ public class OpaqueCrypto {
   }
 
   /**
-   * HKDF-Expand-Label(secret, label, context, length) in OPAQUE TLS-style format:
-   * info = I2OSP(length, 2) || I2OSP(len("OPAQUE-" + label), 1) || "OPAQUE-" + label
-   * || I2OSP(len(context), 1) || context
+   * HKDF-Expand-Label(secret, label, context, length) in OPAQUE TLS-style format.
    */
-  public static byte[] hkdfExpandLabel(byte[] secret, byte[] label, byte[] context, int length) {
+  public static byte[] hkdfExpandLabel(OpaqueCipherSuite suite, byte[] secret, byte[] label,
+                                       byte[] context, int length) {
     byte[] prefix = "OPAQUE-".getBytes(StandardCharsets.US_ASCII);
     byte[] fullLabel = concat(prefix, label);
     byte[] info = concat(
@@ -81,61 +68,58 @@ public class OpaqueCrypto {
         OctetStringUtils.I2OSP(context.length, 1),
         context
     );
-    return hkdfExpand(secret, info, length);
+    return hkdfExpand(suite, secret, info, length);
   }
 
   /**
-   * HMAC-SHA256(key, data).
+   * HMAC-H(key, data) using the suite's hash.
    */
-  public static byte[] hmacSha256(byte[] key, byte[] data) {
-    HMac hmac = new HMac(new SHA256Digest());
-    hmac.init(new KeyParameter(key));
-    hmac.update(data, 0, data.length);
-    byte[] out = new byte[32];
-    hmac.doFinal(out, 0);
-    return out;
+  public static byte[] hmac(OpaqueCipherSuite suite, byte[] key, byte[] data) {
+    return suite.oprfSuite().hmac(key, data);
   }
 
   /**
-   * SHA-256(data).
+   * H(data) using the suite's hash.
    */
-  public static byte[] sha256(byte[] data) {
-    try {
-      return MessageDigest.getInstance("SHA-256").digest(data);
-    } catch (NoSuchAlgorithmException e) {
-      throw new RuntimeException("SHA-256 not available", e);
-    }
+  public static byte[] hash(OpaqueCipherSuite suite, byte[] data) {
+    return suite.oprfSuite().hash(data);
   }
 
   /**
-   * Computes DH: serializes (privateKey * publicKey) as compressed SEC1 (33 bytes).
+   * Computes DH: serializes (privateKey * publicKey) as compressed SEC1.
    */
-  public static byte[] dhP256(BigInteger privateKey, ECPoint publicKey) {
+  public static byte[] dhECDH(OpaqueCipherSuite suite, BigInteger privateKey, ECPoint publicKey) {
     ECPoint result = publicKey.multiply(privateKey).normalize();
-    return result.getEncoded(true); // 33-byte compressed SEC1 point
+    return result.getEncoded(true);
   }
 
   /**
-   * A derived P-256 AKE key pair.
-   *
-   * @param privateKey     the private key scalar
-   * @param publicKeyBytes 33-byte compressed SEC1 public key
+   * Deserializes a compressed SEC1 byte array to an EC point using the suite's curve.
+   */
+  public static ECPoint deserializePoint(OpaqueCipherSuite suite, byte[] bytes) {
+    return suite.oprfSuite().curve().params().getCurve().decodePoint(bytes);
+  }
+
+  /**
+   * A derived AKE key pair.
    */
   public record AkeKeyPair(BigInteger privateKey, byte[] publicKeyBytes) {
   }
 
   /**
-   * Derives a P-256 AKE key pair from a seed.
+   * Derives an AKE key pair from a seed using the suite's deriveKeyPair.
    */
-  public static AkeKeyPair deriveAkeKeyPair(byte[] seed) {
-    BigInteger sk = OprfSuite.deriveKeyPair(seed, "OPAQUE-DeriveDiffieHellmanKeyPair".getBytes(
-        StandardCharsets.US_ASCII));
-    ECPoint pk = Curve.P256_CURVE.g().multiply(sk).normalize();
+  public static AkeKeyPair deriveAkeKeyPair(OpaqueCipherSuite suite, byte[] seed) {
+    BigInteger sk = suite.oprfSuite().deriveKeyPair(seed,
+        "OPAQUE-DeriveDiffieHellmanKeyPair".getBytes(StandardCharsets.US_ASCII));
+    ECPoint pk = suite.oprfSuite().curve().g().multiply(sk).normalize();
     return new AkeKeyPair(sk, pk.getEncoded(true));
   }
 
+  // ─── Suite-independent utilities ─────────────────────────────────────────────
+
   /**
-   * Generates a random 32-byte seed.
+   * Generates a random byte array of the given length.
    */
   public static byte[] randomBytes(int len) {
     byte[] out = new byte[len];
@@ -144,24 +128,17 @@ public class OpaqueCrypto {
   }
 
   /**
-   * Serializes an EC point to compressed SEC1 (33 bytes).
+   * Serializes an EC point to compressed SEC1.
    */
   public static byte[] serializePoint(ECPoint p) {
     return p.normalize().getEncoded(true);
   }
 
   /**
-   * Deserializes a compressed SEC1 byte array to an EC point on P-256.
-   */
-  public static ECPoint deserializePoint(byte[] bytes) {
-    return Curve.P256_CURVE.params().getCurve().decodePoint(bytes);
-  }
-
-  /**
-   * Interprets a 32-byte big-endian array as a P-256 private key scalar.
+   * Interprets a big-endian byte array as a private key scalar.
    */
   public static BigInteger scalarFromBytes(byte[] bytes) {
-    return new BigInteger(1, bytes); // positive big-endian
+    return new BigInteger(1, bytes);
   }
 
   /**
