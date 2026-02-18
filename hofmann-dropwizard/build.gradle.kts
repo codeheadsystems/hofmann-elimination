@@ -9,6 +9,7 @@ repositories {
 dependencies {
     api(project(":hofmann-server"))
 
+    api(libs.dropwizard.auth)
     api(libs.dropwizard.core)
 
     testImplementation(project(":hofmann-client"))

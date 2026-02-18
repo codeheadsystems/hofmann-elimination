@@ -12,6 +12,7 @@ dependencies {
     api(project(":hofmann-common"))
 
     compileOnly(libs.jakarta.rs.api)
+    implementation(libs.auth0.jwt)
     implementation(libs.javax.inject)
     implementation(libs.bundles.core)
     implementation(libs.bundles.jackson)

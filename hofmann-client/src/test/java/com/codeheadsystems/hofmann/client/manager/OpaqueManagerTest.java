@@ -121,7 +121,7 @@ class OpaqueManagerTest {
         byte[] clientMac = Base64.getDecoder().decode(finReq.clientMacBase64());
         byte[] sessionKey = server.serverFinish(ke2Result.serverAuthState(),
             new com.codeheadsystems.opaque.model.KE3(clientMac));
-        return new AuthFinishResponse(B64.encodeToString(sessionKey));
+        return new AuthFinishResponse(B64.encodeToString(sessionKey), "test-jwt-token");
       });
 
       return new AuthStartResponse(
@@ -134,9 +134,10 @@ class OpaqueManagerTest {
           B64.encodeToString(ke2.serverMac()));
     });
 
-    byte[] sessionKey = manager.authenticate(SERVER_ID, CREDENTIAL_ID, PASSWORD);
+    AuthFinishResponse response = manager.authenticate(SERVER_ID, CREDENTIAL_ID, PASSWORD);
 
-    assertThat(sessionKey).isNotEmpty();
+    assertThat(response.sessionKeyBase64()).isNotEmpty();
+    assertThat(response.token()).isEqualTo("test-jwt-token");
     verify(accessor).authStart(eq(SERVER_ID), any());
     verify(accessor).authFinish(eq(SERVER_ID), any());
   }

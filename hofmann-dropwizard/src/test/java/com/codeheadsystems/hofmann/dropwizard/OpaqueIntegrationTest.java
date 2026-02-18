@@ -8,6 +8,7 @@ import com.codeheadsystems.hofmann.client.config.OpaqueClientConfig;
 import com.codeheadsystems.hofmann.client.manager.OpaqueManager;
 import com.codeheadsystems.hofmann.client.model.ServerConnectionInfo;
 import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
+import com.codeheadsystems.hofmann.model.opaque.AuthFinishResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dropwizard.testing.ResourceHelpers;
 import io.dropwizard.testing.junit5.DropwizardAppExtension;
@@ -67,23 +68,23 @@ class OpaqueIntegrationTest {
   void registerThenAuthenticate_derivesMatchingSessionKey() {
     opaqueManager.register(SERVER_ID, CREDENTIAL_ID, PASSWORD);
 
-    byte[] sessionKey = opaqueManager.authenticate(SERVER_ID, CREDENTIAL_ID, PASSWORD);
+    AuthFinishResponse response = opaqueManager.authenticate(SERVER_ID, CREDENTIAL_ID, PASSWORD);
 
-    assertThat(sessionKey).isNotEmpty();
-    // Authenticating again must produce the same session key because the KSF and OPRF
-    // are deterministic for the same password and registered credential
-    // (Note: session keys will differ across calls due to fresh nonces — we just check non-empty)
+    assertThat(response.sessionKeyBase64()).isNotEmpty();
+    assertThat(response.token()).isNotEmpty();
   }
 
   @Test
   void authenticateTwice_producesDifferentSessionKeys() {
     opaqueManager.register(SERVER_ID, CREDENTIAL_ID, PASSWORD);
 
-    byte[] key1 = opaqueManager.authenticate(SERVER_ID, CREDENTIAL_ID, PASSWORD);
-    byte[] key2 = opaqueManager.authenticate(SERVER_ID, CREDENTIAL_ID, PASSWORD);
+    AuthFinishResponse resp1 = opaqueManager.authenticate(SERVER_ID, CREDENTIAL_ID, PASSWORD);
+    AuthFinishResponse resp2 = opaqueManager.authenticate(SERVER_ID, CREDENTIAL_ID, PASSWORD);
 
     // Each 3DH handshake uses fresh ephemeral keys and nonces, so session keys must differ
-    assertThat(key1).isNotEqualTo(key2);
+    assertThat(resp1.sessionKeyBase64()).isNotEqualTo(resp2.sessionKeyBase64());
+    // Tokens must also be different
+    assertThat(resp1.token()).isNotEqualTo(resp2.token());
   }
 
   // ── Wrong password ────────────────────────────────────────────────────────

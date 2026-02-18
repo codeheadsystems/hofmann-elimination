@@ -3,6 +3,7 @@
 
 [versions]
 assertj = "3.27.7"
+auth0-jwt = "4.4.0"
 bouncy-castle = "1.83"
 dropwizard = "5.0.1"
 jackson = '2.21.0'
@@ -14,8 +15,10 @@ slf4j = '2.0.17'
 
 [libraries]
 assertj = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+auth0-jwt = { module = "com.auth0:java-jwt", version.ref = "auth0-jwt" }
 bouncy-castle = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncy-castle" }
 dropwizard-core = { module = "io.dropwizard:dropwizard-core", version.ref = "dropwizard" }
+dropwizard-auth = { module = "io.dropwizard:dropwizard-auth", version.ref = "dropwizard" }
 dropwizard-testing = { module = "io.dropwizard:dropwizard-testing", version.ref = "dropwizard" }
 jackson-annotations = { module = "com.fasterxml.jackson.core:jackson-annotations", version.ref = "jackson-annotations" }
 jackson-core = { module = "com.fasterxml.jackson.core:jackson-core", version.ref = "jackson" }

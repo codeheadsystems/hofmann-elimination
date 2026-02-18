@@ -102,18 +102,18 @@ public class OpaqueManager {
 
   /**
    * Runs the full OPAQUE authentication flow for the given credential identifier and password.
-   * Returns the shared session key on success.
+   * Returns the server's auth finish response containing both the session key and a JWT token.
    *
    * @param serverId            the server to authenticate against
    * @param credentialIdentifier raw bytes identifying the credential (e.g. UTF-8 email)
    * @param password            the password to authenticate with
-   * @return the shared session key derived from the 3DH handshake
+   * @return the server's response containing session key and JWT token
    * @throws SecurityException if the server MAC in KE2 fails verification (wrong password or
    *                           server mismatch), or if the server rejects the client MAC in KE3
    */
-  public byte[] authenticate(final ServerIdentifier serverId,
-                              final byte[] credentialIdentifier,
-                              final byte[] password) {
+  public AuthFinishResponse authenticate(final ServerIdentifier serverId,
+                                          final byte[] credentialIdentifier,
+                                          final byte[] password) {
     log.debug("authenticate(serverId={})", serverId);
 
     // Step 1 — generate KE1 and send it to the server
@@ -139,12 +139,10 @@ public class OpaqueManager {
         client.generateKE3(authState, null, null, ke2);
 
     // Step 3 — send KE3 to the server; throws SecurityException on 401
-    AuthFinishResponse finishResp = accessor.authFinish(serverId,
+    return accessor.authFinish(serverId,
         new AuthFinishRequest(
             startResp.sessionToken(),
             B64.encodeToString(authResult.ke3().clientMac())));
-
-    return B64D.decode(finishResp.sessionKeyBase64());
   }
 
   /**

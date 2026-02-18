@@ -13,3 +13,8 @@ oprfSeedHex: ""
 # Empty OPRF master key → ephemeral random key generation on each startup
 oprfMasterKeyHex: ""
 oprfProcessorId: "test-processor"
+
+# JWT config — empty secret → random on each startup (fine for tests)
+jwtSecretHex: ""
+jwtTtlSeconds: 3600
+jwtIssuer: "hofmann-test"

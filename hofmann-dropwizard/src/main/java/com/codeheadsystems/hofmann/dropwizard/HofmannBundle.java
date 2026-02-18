@@ -1,22 +1,31 @@
 package com.codeheadsystems.hofmann.dropwizard;
 
+import com.codeheadsystems.hofmann.dropwizard.auth.HofmannAuthenticator;
+import com.codeheadsystems.hofmann.dropwizard.auth.HofmannPrincipal;
 import com.codeheadsystems.hofmann.dropwizard.health.OpaqueServerHealthCheck;
+import com.codeheadsystems.hofmann.server.auth.JwtManager;
 import com.codeheadsystems.hofmann.server.manager.OprfManager;
 import com.codeheadsystems.hofmann.server.model.ProcessorDetail;
 import com.codeheadsystems.hofmann.server.resource.OpaqueResource;
 import com.codeheadsystems.hofmann.server.resource.OprfResource;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemoryCredentialStore;
+import com.codeheadsystems.hofmann.server.store.InMemorySessionStore;
+import com.codeheadsystems.hofmann.server.store.SessionStore;
 import com.codeheadsystems.opaque.Server;
 import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.opaque.internal.OpaqueCrypto;
 import com.codeheadsystems.oprf.curve.Curve;
+import io.dropwizard.auth.AuthDynamicFeature;
+import io.dropwizard.auth.AuthValueFactoryProvider;
+import io.dropwizard.auth.oauth.OAuthCredentialAuthFilter;
 import io.dropwizard.core.ConfiguredBundle;
 import io.dropwizard.core.setup.Bootstrap;
 import io.dropwizard.core.setup.Environment;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.util.HexFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,17 +33,18 @@ import org.slf4j.LoggerFactory;
 /**
  * Dropwizard bundle that wires the Hofmann OPAQUE server into an existing Dropwizard application.
  * <p>
- * Registers the OPAQUE JAX-RS resource and health check. Requires a
- * {@link HofmannConfiguration} block in the application's YAML config.
+ * Registers the OPAQUE JAX-RS resource, health check, and JWT authentication filter.
+ * Requires a {@link HofmannConfiguration}
+ * block in the application's YAML config.
  * <p>
- * Embed in your application with an in-memory credential store (dev/test only):
+ * Embed in your application with in-memory stores (dev/test only):
  * <pre>{@code
  *   bootstrap.addBundle(new HofmannBundle<>());
  * }</pre>
  *
- * Or supply a persistent {@link CredentialStore} implementation:
+ * Or supply persistent stores:
  * <pre>{@code
- *   bootstrap.addBundle(new HofmannBundle<>(myDatabaseCredentialStore));
+ *   bootstrap.addBundle(new HofmannBundle<>(myCredentialStore, mySessionStore));
  * }</pre>
  */
 public class HofmannBundle<C extends HofmannConfiguration> implements ConfiguredBundle<C> {
@@ -42,15 +52,17 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
   private static final Logger log = LoggerFactory.getLogger(HofmannBundle.class);
 
   private final CredentialStore credentialStore;
+  private final SessionStore sessionStore;
 
-  /** Creates a bundle backed by an {@link InMemoryCredentialStore} (dev/test only). */
+  /** Creates a bundle backed by in-memory stores (dev/test only). */
   public HofmannBundle() {
-    this(new InMemoryCredentialStore());
+    this(new InMemoryCredentialStore(), new InMemorySessionStore());
   }
 
-  /** Creates a bundle backed by the supplied persistent {@link CredentialStore}. */
-  public HofmannBundle(CredentialStore credentialStore) {
+  /** Creates a bundle backed by the supplied stores. */
+  public HofmannBundle(CredentialStore credentialStore, SessionStore sessionStore) {
     this.credentialStore = credentialStore;
+    this.sessionStore = sessionStore;
   }
 
   @Override
@@ -62,13 +74,40 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
   public void run(C configuration, Environment environment) {
     OpaqueConfig opaqueConfig = buildOpaqueConfig(configuration);
     Server server = buildServer(configuration, opaqueConfig);
+    JwtManager jwtManager = buildJwtManager(configuration);
 
-    environment.jersey().register(new OpaqueResource(server, opaqueConfig, credentialStore));
+    environment.jersey().register(
+        new OpaqueResource(server, opaqueConfig, credentialStore, jwtManager));
     environment.healthChecks().register("opaque-server", new OpaqueServerHealthCheck(server));
 
+    // JWT auth filter
+    HofmannAuthenticator authenticator = new HofmannAuthenticator(jwtManager);
+    environment.jersey().register(new AuthDynamicFeature(
+        new OAuthCredentialAuthFilter.Builder<HofmannPrincipal>()
+            .setAuthenticator(authenticator)
+            .setPrefix("Bearer")
+            .buildAuthFilter()));
+    environment.jersey().register(new AuthValueFactoryProvider.Binder<>(HofmannPrincipal.class));
+
+    // OPRF endpoint
     ProcessorDetail processorDetail = buildProcessorDetail(configuration);
     OprfManager oprfManager = new OprfManager(() -> processorDetail);
     environment.jersey().register(new OprfResource(oprfManager, Curve.P256_CURVE));
+  }
+
+  private JwtManager buildJwtManager(C configuration) {
+    String secretHex = configuration.getJwtSecretHex();
+    byte[] secret;
+    if (secretHex == null || secretHex.isEmpty()) {
+      log.warn("No JWT secret configured — generating randomly. "
+          + "Tokens will be invalidated on restart. Do not use in production.");
+      secret = new byte[32];
+      new SecureRandom().nextBytes(secret);
+    } else {
+      secret = HexFormat.of().parseHex(secretHex);
+    }
+    return new JwtManager(secret, configuration.getJwtIssuer(),
+        configuration.getJwtTtlSeconds(), sessionStore);
   }
 
   private OpaqueConfig buildOpaqueConfig(C configuration) {

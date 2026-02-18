@@ -8,6 +8,7 @@ import com.codeheadsystems.hofmann.model.opaque.RegistrationDeleteRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationFinishRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartResponse;
+import com.codeheadsystems.hofmann.server.auth.JwtManager;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
 import com.codeheadsystems.opaque.Server;
 import com.codeheadsystems.opaque.config.OpaqueConfig;
@@ -82,6 +83,7 @@ public class OpaqueResource {
   private final Server server;
   private final OpaqueConfig config;
   private final CredentialStore credentialStore;
+  private final JwtManager jwtManager;
 
   /**
    * Pending server-side AKE states keyed by session token.
@@ -96,10 +98,12 @@ public class OpaqueResource {
         return t;
       });
 
-  public OpaqueResource(Server server, OpaqueConfig config, CredentialStore credentialStore) {
+  public OpaqueResource(Server server, OpaqueConfig config, CredentialStore credentialStore,
+                        JwtManager jwtManager) {
     this.server = server;
     this.config = config;
     this.credentialStore = credentialStore;
+    this.jwtManager = jwtManager;
     // Evict individually expired sessions rather than bulk-clearing all sessions,
     // so that a session created 1 second ago is not evicted alongside one created 119 seconds ago.
     sessionReaper.scheduleAtFixedRate(
@@ -193,7 +197,8 @@ public class OpaqueResource {
     }
     String sessionToken = UUID.randomUUID().toString();
     pendingSessions.put(sessionToken,
-        new TimestampedAuthState(ke2Result.serverAuthState(), Instant.now()));
+        new TimestampedAuthState(ke2Result.serverAuthState(), Instant.now(),
+            req.credentialIdentifierBase64()));
 
     KE2 ke2 = ke2Result.ke2();
     return new AuthStartResponse(
@@ -223,7 +228,9 @@ public class OpaqueResource {
     KE3 ke3 = new KE3(decodeBase64(req.clientMacBase64(), "clientMac"));
     try {
       byte[] sessionKey = server.serverFinish(authState, ke3);
-      return new AuthFinishResponse(B64.encodeToString(sessionKey));
+      String sessionKeyBase64 = B64.encodeToString(sessionKey);
+      String token = jwtManager.issueToken(timestamped.credentialIdentifierBase64(), sessionKeyBase64);
+      return new AuthFinishResponse(sessionKeyBase64, token);
     } catch (SecurityException e) {
       log.debug("KE3 verification failed: {}", e.getMessage());
       throw new WebApplicationException(Response.Status.UNAUTHORIZED);
@@ -247,6 +254,7 @@ public class OpaqueResource {
     }
   }
 
-  private record TimestampedAuthState(ServerAuthState state, Instant createdAt) {
+  private record TimestampedAuthState(ServerAuthState state, Instant createdAt,
+                                      String credentialIdentifierBase64) {
   }
 }

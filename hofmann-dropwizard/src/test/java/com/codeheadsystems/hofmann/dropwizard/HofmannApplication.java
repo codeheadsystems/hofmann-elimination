@@ -26,6 +26,7 @@ public class HofmannApplication extends Application<HofmannConfiguration> {
 
   @Override
   public void run(HofmannConfiguration configuration, Environment environment) {
-    // All resources and health checks are registered by HofmannBundle.
+    // Register a test-only protected endpoint to exercise JWT auth in integration tests
+    environment.jersey().register(new WhoAmIResource());
   }
 }

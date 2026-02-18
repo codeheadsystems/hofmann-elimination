@@ -55,6 +55,24 @@ public class HofmannConfiguration extends Configuration {
   private String context = "hofmann-opaque-v1";
 
   /**
+   * Hex-encoded HMAC-SHA256 signing secret for JWT tokens.
+   * Leave empty for random generation (dev only — tokens become invalid on restart).
+   */
+  private String jwtSecretHex = "";
+
+  /**
+   * JWT token time-to-live in seconds.
+   */
+  @Min(1)
+  private long jwtTtlSeconds = 3600;
+
+  /**
+   * JWT issuer claim.
+   */
+  @NotEmpty
+  private String jwtIssuer = "hofmann";
+
+  /**
    * Argon2id memory cost in kibibytes. 0 disables Argon2 (identity KSF — dev only).
    */
   @Min(0)
@@ -71,6 +89,36 @@ public class HofmannConfiguration extends Configuration {
    */
   @Min(1)
   private int argon2Parallelism = 1;
+
+  @JsonProperty
+  public String getJwtSecretHex() {
+    return jwtSecretHex;
+  }
+
+  @JsonProperty
+  public void setJwtSecretHex(String jwtSecretHex) {
+    this.jwtSecretHex = jwtSecretHex;
+  }
+
+  @JsonProperty
+  public long getJwtTtlSeconds() {
+    return jwtTtlSeconds;
+  }
+
+  @JsonProperty
+  public void setJwtTtlSeconds(long jwtTtlSeconds) {
+    this.jwtTtlSeconds = jwtTtlSeconds;
+  }
+
+  @JsonProperty
+  public String getJwtIssuer() {
+    return jwtIssuer;
+  }
+
+  @JsonProperty
+  public void setJwtIssuer(String jwtIssuer) {
+    this.jwtIssuer = jwtIssuer;
+  }
 
   @JsonProperty
   public String getServerKeySeedHex() {
