@@ -17,4 +17,5 @@ include("hofmann-common")
 include("hofmann-client")
 include("hofmann-server")
 include("hofmann-dropwizard")
+include("hofmann-springboot")
 

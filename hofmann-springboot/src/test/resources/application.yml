@@ -1,0 +1,10 @@
+hofmann:
+  context: "hofmann-test"
+  argon2-memory-kib: 0
+  server-key-seed-hex: ""
+  oprf-seed-hex: ""
+  oprf-master-key-hex: ""
+  oprf-processor-id: "test-processor"
+  jwt-secret-hex: ""
+  jwt-ttl-seconds: 3600
+  jwt-issuer: "hofmann-test"
