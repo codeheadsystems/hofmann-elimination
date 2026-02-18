@@ -1,0 +1,15 @@
+# Hofmann test configuration — identity KSF and ephemeral random keys for speed.
+# NOT for production use.
+
+context: "hofmann-test"
+
+# 0 = identity KSF (no Argon2) — fast for tests
+argon2MemoryKib: 0
+
+# Empty seeds → ephemeral random key generation on each startup
+serverKeySeedHex: ""
+oprfSeedHex: ""
+
+# Empty OPRF master key → ephemeral random key generation on each startup
+oprfMasterKeyHex: ""
+oprfProcessorId: "test-processor"
