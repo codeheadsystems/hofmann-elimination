@@ -23,6 +23,8 @@ import io.dropwizard.auth.oauth.OAuthCredentialAuthFilter;
 import io.dropwizard.core.ConfiguredBundle;
 import io.dropwizard.core.setup.Bootstrap;
 import io.dropwizard.core.setup.Environment;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
@@ -47,6 +49,7 @@ import org.slf4j.LoggerFactory;
  *   bootstrap.addBundle(new HofmannBundle<>(myCredentialStore, mySessionStore));
  * }</pre>
  */
+@Singleton
 public class HofmannBundle<C extends HofmannConfiguration> implements ConfiguredBundle<C> {
 
   private static final Logger log = LoggerFactory.getLogger(HofmannBundle.class);
@@ -57,9 +60,16 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
   /** Creates a bundle backed by in-memory stores (dev/test only). */
   public HofmannBundle() {
     this(new InMemoryCredentialStore(), new InMemorySessionStore());
+    log.warn("""
+        #################################################################
+        # WARNING: Using in-memory stores for credentials and sessions. #
+        # All data will be lost on restart. Do not use in production.   #
+        #################################################################
+        """);
   }
 
   /** Creates a bundle backed by the supplied stores. */
+  @Inject
   public HofmannBundle(CredentialStore credentialStore, SessionStore sessionStore) {
     this.credentialStore = credentialStore;
     this.sessionStore = sessionStore;
