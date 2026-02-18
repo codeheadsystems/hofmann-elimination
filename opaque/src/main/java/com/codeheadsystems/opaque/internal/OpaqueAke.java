@@ -16,7 +16,7 @@ import com.codeheadsystems.opaque.model.ServerAuthState;
 import com.codeheadsystems.opaque.model.ServerKE2Result;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
+import java.security.MessageDigest;
 import org.bouncycastle.math.ec.ECPoint;
 
 /**
@@ -213,8 +213,9 @@ public class OpaqueAke {
     DerivedKeys keys = deriveKeys(config, ikm, preamble);
 
     byte[] expectedServerMac = OpaqueCrypto.hmac(suite, keys.km2(), preambleHash);
-    if (!Arrays.equals(expectedServerMac, ke2.serverMac())) {
-      throw new SecurityException("Server MAC verification failed");
+    // Security: constant-time comparison prevents timing side-channel attacks on MAC verification
+    if (!MessageDigest.isEqual(expectedServerMac, ke2.serverMac())) {
+      throw new SecurityException("Authentication failed");
     }
 
     byte[] clientMac = OpaqueCrypto.hmac(suite, keys.km3(),

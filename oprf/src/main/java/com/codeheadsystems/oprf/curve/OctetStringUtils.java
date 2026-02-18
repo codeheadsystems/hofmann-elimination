@@ -38,12 +38,21 @@ public class OctetStringUtils {
 
   /**
    * Deserializes a compressed hex string to an EC point on the given curve.
+   * Validates the point is on the curve and not the identity element to prevent
+   * invalid-curve and small-subgroup attacks.
    */
   public static ECPoint toEcPoint(final Curve curve, final String hex) {
     if (hex == null || hex.isEmpty()) {
       throw new IllegalArgumentException("Hex string must not be null or empty");
     }
-    return curve.params().getCurve().decodePoint(Hex.decode(hex));
+    ECPoint point = curve.params().getCurve().decodePoint(Hex.decode(hex));
+    if (point.isInfinity()) {
+      throw new IllegalArgumentException("Invalid EC point: identity element not allowed");
+    }
+    if (!point.isValid()) {
+      throw new IllegalArgumentException("Invalid EC point: not on curve or wrong subgroup");
+    }
+    return point;
   }
 
   /**

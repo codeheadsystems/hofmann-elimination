@@ -9,7 +9,9 @@ import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import org.bouncycastle.math.ec.ECPoint;
@@ -36,8 +38,19 @@ public class OprfResource {
   @Produces(MediaType.APPLICATION_JSON)
   public OprfResponse evaluate(final OprfRequest request) {
     log.trace("evaluate(requestId={})", request.requestId());
-    final ECPoint blindedPoint = OctetStringUtils.toEcPoint(curve, request.hexCodedEcPoint());
-    final OprfManager.EvaluationResult result = oprfManager.evaluate(request.requestId(), blindedPoint);
-    return new OprfResponse(OctetStringUtils.toHex(result.evaluatedPoint()), result.processIdentifier());
+    // Validate inputs before passing to crypto layer to return 400 instead of 500 for bad input
+    if (request.hexCodedEcPoint() == null || request.hexCodedEcPoint().isBlank()) {
+      throw new WebApplicationException("Missing required field: ecPoint", Response.Status.BAD_REQUEST);
+    }
+    if (request.requestId() == null || request.requestId().isBlank()) {
+      throw new WebApplicationException("Missing required field: requestId", Response.Status.BAD_REQUEST);
+    }
+    try {
+      final ECPoint blindedPoint = OctetStringUtils.toEcPoint(curve, request.hexCodedEcPoint());
+      final OprfManager.EvaluationResult result = oprfManager.evaluate(request.requestId(), blindedPoint);
+      return new OprfResponse(OctetStringUtils.toHex(result.evaluatedPoint()), result.processIdentifier());
+    } catch (IllegalArgumentException e) {
+      throw new WebApplicationException("Invalid EC point data", Response.Status.BAD_REQUEST);
+    }
   }
 }

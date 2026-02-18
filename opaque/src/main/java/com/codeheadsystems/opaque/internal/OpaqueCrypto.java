@@ -94,9 +94,18 @@ public class OpaqueCrypto {
 
   /**
    * Deserializes a compressed SEC1 byte array to an EC point using the suite's curve.
+   * Validates the point is on the curve and not the identity element to prevent
+   * invalid-curve and small-subgroup attacks on DH computations.
    */
   public static ECPoint deserializePoint(OpaqueCipherSuite suite, byte[] bytes) {
-    return suite.oprfSuite().curve().params().getCurve().decodePoint(bytes);
+    ECPoint point = suite.oprfSuite().curve().params().getCurve().decodePoint(bytes);
+    if (point.isInfinity()) {
+      throw new SecurityException("Invalid EC point: identity element not allowed");
+    }
+    if (!point.isValid()) {
+      throw new SecurityException("Invalid EC point: not on curve or wrong subgroup");
+    }
+    return point;
   }
 
   /**

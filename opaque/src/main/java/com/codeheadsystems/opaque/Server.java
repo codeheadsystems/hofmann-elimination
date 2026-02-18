@@ -15,7 +15,7 @@ import com.codeheadsystems.opaque.model.ServerAuthState;
 import com.codeheadsystems.opaque.model.ServerKE2Result;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
+import java.security.MessageDigest;
 
 /**
  * OPAQUE server public API. Holds the server long-term key pair and OPRF seed.
@@ -101,8 +101,9 @@ public class Server {
    * Finalizes server-side authentication: verifies the client MAC and returns the session key.
    */
   public byte[] serverFinish(ServerAuthState state, KE3 ke3) {
-    if (!Arrays.equals(state.expectedClientMac(), ke3.clientMac())) {
-      throw new SecurityException("Client MAC verification failed");
+    // Security: constant-time comparison prevents timing side-channel attacks on MAC verification
+    if (!MessageDigest.isEqual(state.expectedClientMac(), ke3.clientMac())) {
+      throw new SecurityException("Authentication failed");
     }
     return state.sessionKey();
   }

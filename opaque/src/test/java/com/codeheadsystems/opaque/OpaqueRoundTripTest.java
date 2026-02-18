@@ -113,7 +113,7 @@ class OpaqueRoundTripTest {
 
     assertThatThrownBy(() -> authenticate(record, PASSWORD_WRONG, null, null))
         .isInstanceOf(SecurityException.class)
-        .hasMessageContaining("auth_tag mismatch");
+        .hasMessageContaining("Authentication failed");
   }
 
   @Test
@@ -139,7 +139,7 @@ class OpaqueRoundTripTest {
     KE3 tamperedKE3 = new KE3(new byte[32]); // all-zeros MAC
     assertThatThrownBy(() -> server.serverFinish(serverAuthState, tamperedKE3))
         .isInstanceOf(SecurityException.class)
-        .hasMessageContaining("Client MAC verification failed");
+        .hasMessageContaining("Authentication failed");
   }
 
   @Test
@@ -247,7 +247,7 @@ class OpaqueRoundTripTest {
 
     assertThatThrownBy(() -> client.generateKE3(authState, null, null, ke2))
         .isInstanceOf(SecurityException.class)
-        .hasMessageContaining("auth_tag mismatch");
+        .hasMessageContaining("Authentication failed");
   }
 
   @Test
@@ -363,7 +363,7 @@ class OpaqueRoundTripTest {
       ServerKE2Result r = argon2Server.generateKE2(null, record, CREDENTIAL_IDENTIFIER, bad.ke1(), null);
       argon2Client.generateKE3(bad, null, null, r.ke2());
     }).isInstanceOf(SecurityException.class)
-        .hasMessageContaining("auth_tag mismatch");
+        .hasMessageContaining("Authentication failed");
   }
 
   @Test
@@ -386,7 +386,7 @@ class OpaqueRoundTripTest {
 
     assertThatThrownBy(() -> client.generateKE3(authState, null, null, tamperedKe2))
         .isInstanceOf(SecurityException.class)
-        .hasMessageContaining("Server MAC verification failed");
+        .hasMessageContaining("Authentication failed");
   }
 
   @Test
@@ -414,7 +414,7 @@ class OpaqueRoundTripTest {
       ServerKE2Result ke2Result = serverA.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
       clientB.generateKE3(authState, null, null, ke2Result.ke2());
     }).isInstanceOf(SecurityException.class)
-        .hasMessageContaining("Server MAC verification failed");
+        .hasMessageContaining("Authentication failed");
   }
 
   @Test
@@ -449,7 +449,7 @@ class OpaqueRoundTripTest {
       ServerKE2Result ke2Result = server.generateKE2(null, record, bobCredId, authState.ke1(), null);
       client.generateKE3(authState, null, null, ke2Result.ke2());
     }).isInstanceOf(SecurityException.class)
-        .hasMessageContaining("auth_tag mismatch");
+        .hasMessageContaining("Authentication failed");
   }
 
   @Test
@@ -511,7 +511,7 @@ class OpaqueRoundTripTest {
       ServerKE2Result ke2Result = serverB.generateKE2(null, record, CREDENTIAL_IDENTIFIER, authState.ke1(), null);
       client.generateKE3(authState, null, null, ke2Result.ke2());
     }).isInstanceOf(SecurityException.class)
-        .hasMessageContaining("auth_tag mismatch");
+        .hasMessageContaining("Authentication failed");
   }
 
   // ─── Additional tests ────────────────────────────────────────────────────
@@ -566,7 +566,7 @@ class OpaqueRoundTripTest {
 
     assertThatThrownBy(() -> client.generateKE3(authState, null, null, tamperedKe2))
         .isInstanceOf(SecurityException.class)
-        .hasMessageContaining("auth_tag mismatch");
+        .hasMessageContaining("Authentication failed");
   }
 
   @Test
@@ -595,7 +595,7 @@ class OpaqueRoundTripTest {
 
     assertThatThrownBy(() -> client.generateKE3(authState, null, null, tamperedKe2))
         .isInstanceOf(SecurityException.class)
-        .hasMessageContaining("auth_tag mismatch");
+        .hasMessageContaining("Authentication failed");
   }
 
   @Test
@@ -630,7 +630,7 @@ class OpaqueRoundTripTest {
 
     assertThatThrownBy(() -> client.generateKE3(authState, clientIdentity, serverIdentity, ke2))
         .isInstanceOf(SecurityException.class)
-        .hasMessageContaining("auth_tag mismatch");
+        .hasMessageContaining("Authentication failed");
   }
 
   @Test

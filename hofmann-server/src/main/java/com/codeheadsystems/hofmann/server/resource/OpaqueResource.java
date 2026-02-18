@@ -29,6 +29,7 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.Optional;
 import java.util.UUID;
@@ -71,24 +72,41 @@ public class OpaqueResource {
    */
   private static final long SESSION_TTL_SECONDS = 120;
 
+  /**
+   * Maximum number of concurrent pending sessions to prevent memory exhaustion DoS.
+   * An attacker spamming /auth/start without completing /auth/finish could otherwise
+   * grow the session store unboundedly until OOM.
+   */
+  private static final int MAX_PENDING_SESSIONS = 10_000;
+
   private final Server server;
   private final OpaqueConfig config;
   private final CredentialStore credentialStore;
 
   /**
    * Pending server-side AKE states keyed by session token.
+   * Each entry is timestamped for per-entry TTL expiration.
    */
-  private final ConcurrentHashMap<String, ServerAuthState> pendingSessions = new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<String, TimestampedAuthState> pendingSessions = new ConcurrentHashMap<>();
 
   private final ScheduledExecutorService sessionReaper = Executors.newSingleThreadScheduledExecutor(
-      r -> new Thread(r, "opaque-session-reaper"));
+      r -> {
+        Thread t = new Thread(r, "opaque-session-reaper");
+        t.setDaemon(true);
+        return t;
+      });
 
   public OpaqueResource(Server server, OpaqueConfig config, CredentialStore credentialStore) {
     this.server = server;
     this.config = config;
     this.credentialStore = credentialStore;
+    // Evict individually expired sessions rather than bulk-clearing all sessions,
+    // so that a session created 1 second ago is not evicted alongside one created 119 seconds ago.
     sessionReaper.scheduleAtFixedRate(
-        pendingSessions::clear, SESSION_TTL_SECONDS, SESSION_TTL_SECONDS, TimeUnit.SECONDS);
+        () -> {
+          Instant cutoff = Instant.now().minusSeconds(SESSION_TTL_SECONDS);
+          pendingSessions.entrySet().removeIf(e -> e.getValue().createdAt().isBefore(cutoff));
+        }, SESSION_TTL_SECONDS, SESSION_TTL_SECONDS / 4, TimeUnit.SECONDS);
   }
 
   // ── Registration ─────────────────────────────────────────────────────────
@@ -101,8 +119,8 @@ public class OpaqueResource {
   @Path("/registration/start")
   public RegistrationStartResponse registrationStart(RegistrationStartRequest req) {
     log.debug("registrationStart()");
-    byte[] blindedElement = B64D.decode(req.blindedElementBase64());
-    byte[] credentialIdentifier = B64D.decode(req.credentialIdentifierBase64());
+    byte[] blindedElement = decodeBase64(req.blindedElementBase64(), "blindedElement");
+    byte[] credentialIdentifier = decodeBase64(req.credentialIdentifierBase64(), "credentialIdentifier");
 
     RegistrationResponse resp = server.createRegistrationResponse(
         new RegistrationRequest(blindedElement), credentialIdentifier);
@@ -119,11 +137,11 @@ public class OpaqueResource {
   @Path("/registration/finish")
   public Response registrationFinish(RegistrationFinishRequest req) {
     log.debug("registrationFinish()");
-    byte[] credentialIdentifier = B64D.decode(req.credentialIdentifierBase64());
-    byte[] clientPublicKey = B64D.decode(req.clientPublicKeyBase64());
-    byte[] maskingKey = B64D.decode(req.maskingKeyBase64());
-    byte[] envelopeNonce = B64D.decode(req.envelopeNonceBase64());
-    byte[] authTag = B64D.decode(req.authTagBase64());
+    byte[] credentialIdentifier = decodeBase64(req.credentialIdentifierBase64(), "credentialIdentifier");
+    byte[] clientPublicKey = decodeBase64(req.clientPublicKeyBase64(), "clientPublicKey");
+    byte[] maskingKey = decodeBase64(req.maskingKeyBase64(), "maskingKey");
+    byte[] envelopeNonce = decodeBase64(req.envelopeNonceBase64(), "envelopeNonce");
+    byte[] authTag = decodeBase64(req.authTagBase64(), "authTag");
 
     Envelope envelope = new Envelope(envelopeNonce, authTag);
     RegistrationRecord record = new RegistrationRecord(clientPublicKey, maskingKey, envelope);
@@ -139,7 +157,7 @@ public class OpaqueResource {
   @Path("/registration")
   public Response registrationDelete(RegistrationDeleteRequest req) {
     log.debug("registrationDelete()");
-    byte[] credentialIdentifier = B64D.decode(req.credentialIdentifierBase64());
+    byte[] credentialIdentifier = decodeBase64(req.credentialIdentifierBase64(), "credentialIdentifier");
     credentialStore.delete(credentialIdentifier);
     return Response.noContent().build();
   }
@@ -157,10 +175,10 @@ public class OpaqueResource {
   @Path("/auth/start")
   public AuthStartResponse authStart(AuthStartRequest req) {
     log.debug("authStart()");
-    byte[] credentialIdentifier = B64D.decode(req.credentialIdentifierBase64());
-    byte[] blindedElement = B64D.decode(req.blindedElementBase64());
-    byte[] clientNonce = B64D.decode(req.clientNonceBase64());
-    byte[] clientAkePk = B64D.decode(req.clientAkePublicKeyBase64());
+    byte[] credentialIdentifier = decodeBase64(req.credentialIdentifierBase64(), "credentialIdentifier");
+    byte[] blindedElement = decodeBase64(req.blindedElementBase64(), "blindedElement");
+    byte[] clientNonce = decodeBase64(req.clientNonceBase64(), "clientNonce");
+    byte[] clientAkePk = decodeBase64(req.clientAkePublicKeyBase64(), "clientAkePublicKey");
 
     KE1 ke1 = new KE1(new CredentialRequest(blindedElement), clientNonce, clientAkePk);
 
@@ -169,8 +187,13 @@ public class OpaqueResource {
         .map(r -> server.generateKE2(null, r, credentialIdentifier, ke1, null))
         .orElseGet(() -> server.generateFakeKE2(ke1, credentialIdentifier, null, null));
 
+    // Enforce maximum pending sessions to prevent memory exhaustion DoS
+    if (pendingSessions.size() >= MAX_PENDING_SESSIONS) {
+      throw new WebApplicationException("Too many pending sessions", Response.Status.SERVICE_UNAVAILABLE);
+    }
     String sessionToken = UUID.randomUUID().toString();
-    pendingSessions.put(sessionToken, ke2Result.serverAuthState());
+    pendingSessions.put(sessionToken,
+        new TimestampedAuthState(ke2Result.serverAuthState(), Instant.now()));
 
     KE2 ke2 = ke2Result.ke2();
     return new AuthStartResponse(
@@ -190,12 +213,14 @@ public class OpaqueResource {
   @Path("/auth/finish")
   public AuthFinishResponse authFinish(AuthFinishRequest req) {
     log.debug("authFinish(sessionToken={})", req.sessionToken());
-    ServerAuthState authState = pendingSessions.remove(req.sessionToken());
-    if (authState == null) {
-      throw new WebApplicationException("Unknown or expired session token", Response.Status.UNAUTHORIZED);
+    TimestampedAuthState timestamped = pendingSessions.remove(req.sessionToken());
+    if (timestamped == null
+        || timestamped.createdAt().isBefore(Instant.now().minusSeconds(SESSION_TTL_SECONDS))) {
+      throw new WebApplicationException(Response.Status.UNAUTHORIZED);
     }
+    ServerAuthState authState = timestamped.state();
 
-    KE3 ke3 = new KE3(B64D.decode(req.clientMacBase64()));
+    KE3 ke3 = new KE3(decodeBase64(req.clientMacBase64(), "clientMac"));
     try {
       byte[] sessionKey = server.serverFinish(authState, ke3);
       return new AuthFinishResponse(B64.encodeToString(sessionKey));
@@ -203,5 +228,25 @@ public class OpaqueResource {
       log.debug("KE3 verification failed: {}", e.getMessage());
       throw new WebApplicationException(Response.Status.UNAUTHORIZED);
     }
+  }
+
+  /**
+   * Decodes base64 input, returning HTTP 400 for malformed data instead of leaking
+   * an IllegalArgumentException stack trace that reveals internal message structure.
+   */
+  private static byte[] decodeBase64(String encoded, String fieldName) {
+    if (encoded == null || encoded.isBlank()) {
+      throw new WebApplicationException("Missing required field: " + fieldName,
+          Response.Status.BAD_REQUEST);
+    }
+    try {
+      return B64D.decode(encoded);
+    } catch (IllegalArgumentException e) {
+      throw new WebApplicationException("Invalid base64 in field: " + fieldName,
+          Response.Status.BAD_REQUEST);
+    }
+  }
+
+  private record TimestampedAuthState(ServerAuthState state, Instant createdAt) {
   }
 }

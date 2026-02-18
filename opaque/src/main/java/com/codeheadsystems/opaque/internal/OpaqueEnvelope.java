@@ -7,7 +7,7 @@ import com.codeheadsystems.opaque.model.CleartextCredentials;
 import com.codeheadsystems.opaque.model.Envelope;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
+import java.security.MessageDigest;
 
 /**
  * OPAQUE credential envelope operations: Store and Recover.
@@ -82,8 +82,9 @@ public class OpaqueEnvelope {
     byte[] authInput = OctetStringUtils.concat(nonce, cleartext.serialize());
     byte[] expectedTag = OpaqueCrypto.hmac(suite, authKey, authInput);
 
-    if (!Arrays.equals(expectedTag, envelope.authTag())) {
-      throw new SecurityException("Envelope auth_tag mismatch: authentication failed");
+    // Security: constant-time comparison prevents timing side-channel attacks on MAC verification
+    if (!MessageDigest.isEqual(expectedTag, envelope.authTag())) {
+      throw new SecurityException("Authentication failed");
     }
 
     // Return client private key as Nsk-byte big-endian

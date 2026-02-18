@@ -15,6 +15,14 @@ public record KE2(CredentialResponse credentialResponse, byte[] serverNonce,
    * serverNonce(Nn) || serverAkePk(Npk) || serverMac(Nm)
    */
   public static KE2 deserialize(OpaqueConfig config, byte[] bytes) {
+    // Validate input length before deserialization to prevent ArrayIndexOutOfBoundsException
+    // from malformed messages, which could leak internal message structure via stack traces.
+    int expectedLen = config.Noe() + OpaqueConfig.Nn + config.maskedResponseSize()
+        + OpaqueConfig.Nn + config.Npk() + config.Nm();
+    if (bytes == null || bytes.length < expectedLen) {
+      throw new IllegalArgumentException("KE2 message too short: expected at least "
+          + expectedLen + " bytes");
+    }
     int off = 0;
     byte[] evaluatedElement = slice(bytes, off, config.Noe());
     off += config.Noe();
