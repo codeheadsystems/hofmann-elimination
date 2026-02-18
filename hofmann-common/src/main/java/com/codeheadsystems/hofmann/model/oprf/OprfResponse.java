@@ -1,4 +1,4 @@
-package com.codeheadsystems.hofmann.model;
+package com.codeheadsystems.hofmann.model.oprf;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 

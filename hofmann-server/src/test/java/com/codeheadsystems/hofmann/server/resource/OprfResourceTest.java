@@ -3,8 +3,8 @@ package com.codeheadsystems.hofmann.server.resource;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
-import com.codeheadsystems.hofmann.model.OprfRequest;
-import com.codeheadsystems.hofmann.model.OprfResponse;
+import com.codeheadsystems.hofmann.model.oprf.OprfRequest;
+import com.codeheadsystems.hofmann.model.oprf.OprfResponse;
 import com.codeheadsystems.hofmann.server.manager.OprfManager;
 import com.codeheadsystems.oprf.curve.Curve;
 import com.codeheadsystems.oprf.curve.OctetStringUtils;

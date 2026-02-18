@@ -1,7 +1,7 @@
 package com.codeheadsystems.hofmann.server.resource;
 
-import com.codeheadsystems.hofmann.model.OprfRequest;
-import com.codeheadsystems.hofmann.model.OprfResponse;
+import com.codeheadsystems.hofmann.model.oprf.OprfRequest;
+import com.codeheadsystems.hofmann.model.oprf.OprfResponse;
 import com.codeheadsystems.hofmann.server.manager.OprfManager;
 import com.codeheadsystems.oprf.curve.Curve;
 import com.codeheadsystems.oprf.curve.OctetStringUtils;

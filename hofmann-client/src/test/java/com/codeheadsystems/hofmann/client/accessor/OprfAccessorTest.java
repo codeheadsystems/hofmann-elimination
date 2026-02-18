@@ -12,7 +12,7 @@ import com.codeheadsystems.hofmann.client.config.OprfConfig;
 import com.codeheadsystems.hofmann.client.exceptions.OprfAccessorException;
 import com.codeheadsystems.hofmann.client.model.ServerConnectionInfo;
 import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
-import com.codeheadsystems.hofmann.model.OprfResponse;
+import com.codeheadsystems.hofmann.model.oprf.OprfResponse;
 import com.codeheadsystems.oprf.curve.Curve;
 import com.codeheadsystems.oprf.curve.OctetStringUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
