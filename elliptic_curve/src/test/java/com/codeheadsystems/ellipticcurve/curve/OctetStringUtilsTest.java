@@ -1,4 +1,4 @@
-package com.codeheadsystems.oprf.curve;
+package com.codeheadsystems.ellipticcurve.curve;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

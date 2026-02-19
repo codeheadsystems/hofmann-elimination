@@ -1,6 +1,6 @@
-package com.codeheadsystems.oprf.rfc9380;
+package com.codeheadsystems.ellipticcurve.rfc9380;
 
-import com.codeheadsystems.oprf.curve.OctetStringUtils;
+import com.codeheadsystems.ellipticcurve.curve.OctetStringUtils;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;

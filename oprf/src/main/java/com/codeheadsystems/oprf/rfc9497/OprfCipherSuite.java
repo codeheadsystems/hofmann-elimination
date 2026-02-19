@@ -1,8 +1,8 @@
 package com.codeheadsystems.oprf.rfc9497;
 
-import com.codeheadsystems.oprf.curve.OctetStringUtils;
-import com.codeheadsystems.oprf.rfc9380.GroupSpec;
-import com.codeheadsystems.oprf.rfc9380.WeierstrassGroupSpec;
+import com.codeheadsystems.ellipticcurve.curve.OctetStringUtils;
+import com.codeheadsystems.ellipticcurve.rfc9380.GroupSpec;
+import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpec;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;

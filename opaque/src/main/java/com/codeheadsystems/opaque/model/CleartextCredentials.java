@@ -1,6 +1,6 @@
 package com.codeheadsystems.opaque.model;
 
-import com.codeheadsystems.oprf.curve.OctetStringUtils;
+import com.codeheadsystems.ellipticcurve.curve.OctetStringUtils;
 
 /**
  * Cleartext credentials included in HMAC computation during envelope construction/recovery.

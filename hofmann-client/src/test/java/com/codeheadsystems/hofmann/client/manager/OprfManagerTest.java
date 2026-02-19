@@ -9,7 +9,7 @@ import com.codeheadsystems.hofmann.client.accessor.OprfAccessor;
 import com.codeheadsystems.hofmann.client.config.OprfConfig;
 import com.codeheadsystems.hofmann.client.model.HashResult;
 import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
-import com.codeheadsystems.oprf.curve.Curve;
+import com.codeheadsystems.ellipticcurve.curve.Curve;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

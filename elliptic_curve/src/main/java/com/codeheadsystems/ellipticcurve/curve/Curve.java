@@ -1,4 +1,4 @@
-package com.codeheadsystems.oprf.curve;
+package com.codeheadsystems.ellipticcurve.curve;
 
 import java.math.BigInteger;
 import java.security.SecureRandom;

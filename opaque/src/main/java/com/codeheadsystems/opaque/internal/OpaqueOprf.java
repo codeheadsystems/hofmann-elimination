@@ -1,6 +1,6 @@
 package com.codeheadsystems.opaque.internal;
 
-import com.codeheadsystems.oprf.curve.OctetStringUtils;
+import com.codeheadsystems.ellipticcurve.curve.OctetStringUtils;
 import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;

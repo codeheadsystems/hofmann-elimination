@@ -4,7 +4,7 @@ import com.codeheadsystems.hofmann.client.accessor.OprfAccessor;
 import com.codeheadsystems.hofmann.client.config.OprfConfig;
 import com.codeheadsystems.hofmann.client.model.HashResult;
 import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
-import com.codeheadsystems.oprf.rfc9380.GroupSpec;
+import com.codeheadsystems.ellipticcurve.rfc9380.GroupSpec;
 import com.codeheadsystems.oprf.rfc9497.OprfCipherSuite;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;

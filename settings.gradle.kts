@@ -11,6 +11,7 @@ plugins {
 }
 
 rootProject.name = "hofmann-elimination"
+include("elliptic_curve")
 include("oprf")
 include("opaque")
 include("hofmann-common")

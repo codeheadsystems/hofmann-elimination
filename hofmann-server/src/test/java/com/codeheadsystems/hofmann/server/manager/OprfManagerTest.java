@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
 import com.codeheadsystems.hofmann.server.model.ProcessorDetail;
-import com.codeheadsystems.oprf.curve.Curve;
-import com.codeheadsystems.oprf.curve.OctetStringUtils;
+import com.codeheadsystems.ellipticcurve.curve.Curve;
+import com.codeheadsystems.ellipticcurve.curve.OctetStringUtils;
 import java.math.BigInteger;
 import java.util.function.Supplier;
 import org.bouncycastle.math.ec.ECPoint;

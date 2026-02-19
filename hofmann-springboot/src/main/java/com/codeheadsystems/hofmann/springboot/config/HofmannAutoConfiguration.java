@@ -11,7 +11,7 @@ import com.codeheadsystems.opaque.Server;
 import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.opaque.internal.OpaqueCrypto;
-import com.codeheadsystems.oprf.curve.Curve;
+import com.codeheadsystems.ellipticcurve.curve.Curve;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;

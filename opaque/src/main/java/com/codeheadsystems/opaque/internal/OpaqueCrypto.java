@@ -1,9 +1,9 @@
 package com.codeheadsystems.opaque.internal;
 
-import static com.codeheadsystems.oprf.curve.OctetStringUtils.concat;
+import static com.codeheadsystems.ellipticcurve.curve.OctetStringUtils.concat;
 
-import com.codeheadsystems.oprf.curve.OctetStringUtils;
-import com.codeheadsystems.oprf.rfc9380.WeierstrassGroupSpec;
+import com.codeheadsystems.ellipticcurve.curve.OctetStringUtils;
+import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpec;
 import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;

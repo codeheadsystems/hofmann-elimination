@@ -16,7 +16,7 @@ import com.codeheadsystems.opaque.Server;
 import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.opaque.internal.OpaqueCrypto;
-import com.codeheadsystems.oprf.curve.Curve;
+import com.codeheadsystems.ellipticcurve.curve.Curve;
 import io.dropwizard.auth.AuthDynamicFeature;
 import io.dropwizard.auth.AuthValueFactoryProvider;
 import io.dropwizard.auth.oauth.OAuthCredentialAuthFilter;

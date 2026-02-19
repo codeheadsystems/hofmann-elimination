@@ -1,8 +1,8 @@
-package com.codeheadsystems.oprf.rfc9380;
+package com.codeheadsystems.ellipticcurve.rfc9380;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.codeheadsystems.oprf.curve.Curve;
+import com.codeheadsystems.ellipticcurve.curve.Curve;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import org.bouncycastle.math.ec.ECPoint;
@@ -10,34 +10,35 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Test suite for RFC 9380 hash-to-curve implementation for P-384.
+ * Test suite for RFC 9380 hash-to-curve implementation for P-521.
  * <p>
- * Includes test vectors from RFC 9380 Appendix J.3.1 for P384_XMD:SHA-384_SSWU_RO_.
+ * Includes test vectors from RFC 9380 Appendix J.4.1 for P521_XMD:SHA-512_SSWU_RO_.
  */
-public class P384HashToCurveTest {
+public class P521HashToCurveTest {
 
-  private static final String DST = "QUUX-V01-CS02-with-P384_XMD:SHA-384_SSWU_RO_";
+  private static final String DST = "QUUX-V01-CS02-with-P521_XMD:SHA-512_SSWU_RO_";
   private HashToCurve hashToCurve;
 
   @BeforeEach
   void setUp() {
-    hashToCurve = HashToCurve.forP384();
+    hashToCurve = HashToCurve.forP521();
   }
 
   @Test
   void testHashToCurveEmptyString() {
-    // Test vector from RFC 9380 Appendix J.3.1
+    // Test vector from RFC 9380 Appendix J.4.1
     // msg = ""
     byte[] msg = "".getBytes(StandardCharsets.UTF_8);
 
     ECPoint point = hashToCurve.hashToCurve(msg, DST);
 
+    // P-521 coordinates are 66 bytes (leading zero-padded)
     BigInteger expectedX = new BigInteger(
-        "eb9fe1b4f4e14e7140803c1d99d0a93cd823d2b024040f9c067a8eca1f5a2eeac9ad604973527a356f3fa3aeff0e4d83",
+        "00fd767cebb2452030358d0e9cf907f525f50920c8f607889a6a35680727f64f4d66b161fafeb2654bea0d35086bec0a10b30b14adef3556ed9f7f1bc23cecc9c088",
         16
     );
     BigInteger expectedY = new BigInteger(
-        "0c21708cff382b7f4643c07b105c2eaec2cead93a917d825601e63c8f21f6abd9abc22c93c2bed6f235954b25048bb1a",
+        "0169ba78d8d851e930680322596e39c78f4fe31b97e57629ef6460ddd68f8763fd7bd767a4e94a80d3d21a3c2ee98347e024fc73ee1c27166dc3fe5eeef782be411d",
         16
     );
 
@@ -47,18 +48,18 @@ public class P384HashToCurveTest {
 
   @Test
   void testHashToCurveABC() {
-    // Test vector from RFC 9380 Appendix J.3.1
+    // Test vector from RFC 9380 Appendix J.4.1
     // msg = "abc"
     byte[] msg = "abc".getBytes(StandardCharsets.UTF_8);
 
     ECPoint point = hashToCurve.hashToCurve(msg, DST);
 
     BigInteger expectedX = new BigInteger(
-        "e02fc1a5f44a7519419dd314e29863f30df55a514da2d655775a81d413003c4d4e7fd59af0826dfaad4200ac6f60abe1",
+        "002f89a1677b28054b50d15e1f81ed6669b5a2158211118ebdef8a6efc77f8ccaa528f698214e4340155abc1fa08f8f613ef14a043717503d57e267d57155cf784a4",
         16
     );
     BigInteger expectedY = new BigInteger(
-        "01f638d04d98677d65bef99aef1a12a70a4cbb9270ec55248c04530d8bc1f8f90f8a6a859a7c1f1ddccedf8f96d675f6",
+        "010e0be5dc8e753da8ce51091908b72396d3deed14ae166f66d8ebf0a4e7059ead169ea4bead0232e9b700dd380b316e9361cfdba55a08c73545563a80966ecbb86d",
         16
     );
 
@@ -68,18 +69,18 @@ public class P384HashToCurveTest {
 
   @Test
   void testHashToCurveAbcdef() {
-    // Test vector from RFC 9380 Appendix J.3.1
+    // Test vector from RFC 9380 Appendix J.4.1
     // msg = "abcdef0123456789"
     byte[] msg = "abcdef0123456789".getBytes(StandardCharsets.UTF_8);
 
     ECPoint point = hashToCurve.hashToCurve(msg, DST);
 
     BigInteger expectedX = new BigInteger(
-        "bdecc1c1d870624965f19505be50459d363c71a699a496ab672f9a5d6b78676400926fbceee6fcd1780fe86e62b2aa89",
+        "006e200e276a4a81760099677814d7f8794a4a5f3658442de63c18d2244dcc957c645e94cb0754f95fcf103b2aeaf94411847c24187b89fb7462ad3679066337cbc4",
         16
     );
     BigInteger expectedY = new BigInteger(
-        "57cf1f99b5ee00f3c201139b3bfe4dd30a653193778d89a0accc5e0f47e46e4e4b85a0595da29c9494c1814acafe183c",
+        "001dd8dfa9775b60b1614f6f169089d8140d4b3e4012949b52f98db2deff3e1d97bf73a1fa4d437d1dcdf39b6360cc518d8ebcc0f899018206fded7617b654f6b168",
         16
     );
 
@@ -89,7 +90,7 @@ public class P384HashToCurveTest {
 
   @Test
   void testHashToCurveLongMessage() {
-    // Test vector from RFC 9380 Appendix J.3.1
+    // Test vector from RFC 9380 Appendix J.4.1
     // msg = "q128_" + "q" * 128
     StringBuilder sb = new StringBuilder("q128_");
     for (int i = 0; i < 128; i++) {
@@ -100,11 +101,11 @@ public class P384HashToCurveTest {
     ECPoint point = hashToCurve.hashToCurve(msg, DST);
 
     BigInteger expectedX = new BigInteger(
-        "03c3a9f401b78c6c36a52f07eeee0ec1289f178adf78448f43a3850e0456f5dd7f7633dd31676d990eda32882ab486c0",
+        "01b264a630bd6555be537b000b99a06761a9325c53322b65bdc41bf196711f9708d58d34b3b90faf12640c27b91c70a507998e55940648caa8e71098bf2bc8d24664",
         16
     );
     BigInteger expectedY = new BigInteger(
-        "cc183d0d7bdfd0a3af05f50e16a3f2de4abbc523215bf57c848d5ea662482b8c1f43dc453a93b94a8026db58f3f5d878",
+        "01ea9f445bee198b3ee4c812dcf7b0f91e0881f0251aab272a12201fd89b1a95733fd2a699c162b639e9acdcc54fdc2f6536129b6beb0432be01aa8da02df5e59aaa",
         16
     );
 
@@ -114,7 +115,7 @@ public class P384HashToCurveTest {
 
   @Test
   void testHashToCurveA512Times() {
-    // Test vector from RFC 9380 Appendix J.3.1
+    // Test vector from RFC 9380 Appendix J.4.1
     // msg = "a512_" + "a" * 512
     StringBuilder sb = new StringBuilder("a512_");
     for (int i = 0; i < 512; i++) {
@@ -125,11 +126,11 @@ public class P384HashToCurveTest {
     ECPoint point = hashToCurve.hashToCurve(msg, DST);
 
     BigInteger expectedX = new BigInteger(
-        "7b18d210b1f090ac701f65f606f6ca18fb8d081e3bc6cbd937c5604325f1cdea4c15c10a54ef303aabf2ea58bd9947a4",
+        "00c12bc3e28db07b6b4d2a2b1167ab9e26fc2fa85c7b0498a17b0347edf52392856d7e28b8fa7a2dd004611159505835b687ecf1a764857e27e9745848c436ef3925",
         16
     );
     BigInteger expectedY = new BigInteger(
-        "ea857285a33abb516732915c353c75c576bf82ccc96adb63c094dde580021eddeafd91f8c0bfee6f636528f3d0c47fd2",
+        "01cd287df9a50c22a9231beb452346720bb163344a41c5f5a24e8335b6ccc595fd436aea89737b1281aecb411eb835f0b939073fdd1dd4d5a2492e91ef4a3c55bcbd",
         16
     );
 
@@ -139,15 +140,15 @@ public class P384HashToCurveTest {
 
   @Test
   void testHashToCurveResultIsOnCurve() {
-    // Verify that the result is actually on the P-384 curve: y^2 = x^3 - 3x + b
+    // Verify that the result is actually on the P-521 curve: y^2 = x^3 - 3x + b
     byte[] msg = "test message".getBytes(StandardCharsets.UTF_8);
 
     ECPoint point = hashToCurve.hashToCurve(msg, DST).normalize();
 
     BigInteger x = point.getXCoord().toBigInteger();
     BigInteger y = point.getYCoord().toBigInteger();
-    BigInteger p = Curve.P384_CURVE.params().getCurve().getField().getCharacteristic();
-    BigInteger b = Curve.P384_CURVE.params().getCurve().getB().toBigInteger();
+    BigInteger p = Curve.P521_CURVE.params().getCurve().getField().getCharacteristic();
+    BigInteger b = Curve.P521_CURVE.params().getCurve().getB().toBigInteger();
 
     BigInteger lhs = y.modPow(BigInteger.TWO, p);
     BigInteger rhs = x.modPow(BigInteger.valueOf(3), p)

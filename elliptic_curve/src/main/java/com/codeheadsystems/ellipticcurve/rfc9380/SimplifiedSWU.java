@@ -1,6 +1,6 @@
-package com.codeheadsystems.oprf.rfc9380;
+package com.codeheadsystems.ellipticcurve.rfc9380;
 
-import com.codeheadsystems.oprf.curve.Curve;
+import com.codeheadsystems.ellipticcurve.curve.Curve;
 import java.math.BigInteger;
 import org.bouncycastle.crypto.params.ECDomainParameters;
 import org.bouncycastle.math.ec.ECCurve;

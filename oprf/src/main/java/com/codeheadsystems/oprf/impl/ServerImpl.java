@@ -3,7 +3,7 @@ package com.codeheadsystems.oprf.impl;
 import com.codeheadsystems.oprf.model.EliminationRequest;
 import com.codeheadsystems.oprf.model.EliminationResponse;
 import com.codeheadsystems.oprf.Server;
-import com.codeheadsystems.oprf.rfc9380.GroupSpec;
+import com.codeheadsystems.ellipticcurve.rfc9380.GroupSpec;
 import com.codeheadsystems.oprf.rfc9497.OprfCipherSuite;
 import java.math.BigInteger;
 import java.util.UUID;

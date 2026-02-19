@@ -13,7 +13,7 @@ import com.codeheadsystems.hofmann.client.exceptions.OprfAccessorException;
 import com.codeheadsystems.hofmann.client.model.ServerConnectionInfo;
 import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
 import com.codeheadsystems.hofmann.model.oprf.OprfResponse;
-import com.codeheadsystems.oprf.curve.Curve;
+import com.codeheadsystems.ellipticcurve.curve.Curve;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;

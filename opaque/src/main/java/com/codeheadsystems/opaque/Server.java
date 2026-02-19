@@ -1,6 +1,6 @@
 package com.codeheadsystems.opaque;
 
-import com.codeheadsystems.oprf.curve.OctetStringUtils;
+import com.codeheadsystems.ellipticcurve.curve.OctetStringUtils;
 import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.internal.OpaqueAke;
 import com.codeheadsystems.opaque.internal.OpaqueCredentials;

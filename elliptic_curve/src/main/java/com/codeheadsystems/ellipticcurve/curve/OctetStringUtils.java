@@ -1,4 +1,4 @@
-package com.codeheadsystems.oprf.curve;
+package com.codeheadsystems.ellipticcurve.curve;
 
 import org.bouncycastle.math.ec.ECPoint;
 import org.bouncycastle.util.encoders.Hex;
