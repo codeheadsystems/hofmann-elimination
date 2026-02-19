@@ -3,7 +3,7 @@
 
 [versions]
 assertj = "3.27.7"
-auth0-jwt = "4.4.0"
+auth0-jwt = "4.5.1"
 bouncy-castle = "1.83"
 dropwizard = "5.0.1"
 spring-boot = "4.0.2"
