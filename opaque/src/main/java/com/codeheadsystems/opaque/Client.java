@@ -52,17 +52,9 @@ public class Client {
    */
   public ClientAuthState generateKE1(byte[] password) {
     BigInteger blind = config.cipherSuite().oprfSuite().groupSpec().randomScalar();
-    byte[] blindedElement = OpaqueOprf.blind(config.cipherSuite(), password, blind);
-    CredentialRequest credReq = new CredentialRequest(blindedElement);
-
     byte[] seed = OpaqueCrypto.randomBytes(config.Nsk());
-    OpaqueCrypto.AkeKeyPair kp = OpaqueCrypto.deriveAkeKeyPair(config.cipherSuite(), seed);
-    BigInteger clientAkeSk = kp.privateKey();
-    byte[] clientAkePk = kp.publicKeyBytes();
-
     byte[] clientNonce = OpaqueCrypto.randomBytes(OpaqueConfig.Nn);
-    KE1 ke1 = new KE1(credReq, clientNonce, clientAkePk);
-    return new ClientAuthState(blind, password, ke1, clientAkeSk);
+    return generateKE1Deterministic(password, blind, clientNonce, seed);
   }
 
   /**

@@ -28,9 +28,7 @@ public class OpaqueCredentials {
    */
   public static ClientRegistrationState createRegistrationRequest(byte[] password, OpaqueConfig config) {
     BigInteger blind = config.cipherSuite().oprfSuite().groupSpec().randomScalar();
-    byte[] blindedElement = OpaqueOprf.blind(config.cipherSuite(), password, blind);
-    RegistrationRequest request = new RegistrationRequest(blindedElement);
-    return new ClientRegistrationState(blind, password, request);
+    return createRegistrationRequestWithBlind(password, blind, config);
   }
 
   /**
