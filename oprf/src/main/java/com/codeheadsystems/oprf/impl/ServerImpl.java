@@ -1,18 +1,17 @@
 package com.codeheadsystems.oprf.impl;
 
-import com.codeheadsystems.oprf.curve.Curve;
 import com.codeheadsystems.oprf.model.EliminationRequest;
-import com.codeheadsystems.oprf.curve.OctetStringUtils;
 import com.codeheadsystems.oprf.model.EliminationResponse;
 import com.codeheadsystems.oprf.Server;
+import com.codeheadsystems.oprf.rfc9380.GroupSpec;
 import com.codeheadsystems.oprf.rfc9497.OprfCipherSuite;
 import java.math.BigInteger;
 import java.util.UUID;
-import org.bouncycastle.math.ec.ECPoint;
+import org.bouncycastle.util.encoders.Hex;
 
 public class ServerImpl implements Server {
 
-  private final Curve curve;
+  private final GroupSpec groupSpec;
   private final BigInteger masterKey;
   private final String processIdentifier;
 
@@ -21,8 +20,8 @@ public class ServerImpl implements Server {
   }
 
   public ServerImpl(OprfCipherSuite suite) {
-    this.curve = suite.curve();
-    this.masterKey = curve.randomScalar();
+    this.groupSpec = suite.groupSpec();
+    this.masterKey = groupSpec.randomScalar();
     this.processIdentifier = "SP:" + UUID.randomUUID();
   }
 
@@ -31,15 +30,15 @@ public class ServerImpl implements Server {
   }
 
   public ServerImpl(OprfCipherSuite suite, byte[] seed, byte[] info) {
-    this.curve = suite.curve();
+    this.groupSpec = suite.groupSpec();
     this.masterKey = suite.deriveKeyPair(seed, info);
     this.processIdentifier = "SP:" + UUID.randomUUID();
   }
 
   @Override
   public EliminationResponse process(final EliminationRequest eliminationRequest) {
-    ECPoint q = OctetStringUtils.toEcPoint(curve, eliminationRequest.hexCodedEcPoint());
-    ECPoint result = q.multiply(masterKey).normalize();
-    return new EliminationResponse(OctetStringUtils.toHex(result), processIdentifier);
+    byte[] q = Hex.decode(eliminationRequest.hexCodedEcPoint());
+    byte[] result = groupSpec.scalarMultiply(masterKey, q);
+    return new EliminationResponse(Hex.toHexString(result), processIdentifier);
   }
 }

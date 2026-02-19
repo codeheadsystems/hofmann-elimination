@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import org.bouncycastle.math.ec.ECPoint;
 import org.bouncycastle.util.encoders.Hex;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -50,21 +49,21 @@ public class OprfVectorsTest {
         "3338fa65ec36e0290022b48eb562889d89dbfa691d1cde91517fa222ed7ad364", 16);
 
     // Client: H(input) using RFC 9497 HashToGroup DST
-    ECPoint P = SUITE.hashToCurve().hashToCurve(input, SUITE.hashToGroupDst());
+    byte[] P = SUITE.groupSpec().hashToGroup(input, SUITE.hashToGroupDst());
 
     // Client: blind
-    ECPoint blindedElement = P.multiply(blind).normalize();
+    byte[] blindedElement = SUITE.groupSpec().scalarMultiply(blind, P);
 
     // RFC 9497 A.1.1 Vector 1: BlindedElement (client→server message, 33-byte compressed point)
-    assertThat(Hex.toHexString(blindedElement.getEncoded(true)))
+    assertThat(Hex.toHexString(blindedElement))
         .as("blindedElement")
         .isEqualTo("03723a1e5c09b8b9c18d1dcbca29e8007e95f14f4732d9346d490ffc195110368d");
 
     // Server: evaluate
-    ECPoint evaluatedElement = blindedElement.multiply(SK_S).normalize();
+    byte[] evaluatedElement = SUITE.groupSpec().scalarMultiply(SK_S, blindedElement);
 
     // RFC 9497 A.1.1 Vector 1: EvaluationElement (server→client message, 33-byte compressed point)
-    assertThat(Hex.toHexString(evaluatedElement.getEncoded(true)))
+    assertThat(Hex.toHexString(evaluatedElement))
         .as("evaluationElement")
         .isEqualTo("030de02ffec47a1fd53efcdd1c6faf5bdc270912b8749e783c7ca75bb412958832");
 
@@ -88,13 +87,13 @@ public class OprfVectorsTest {
         "e6d0f1d89ad552e859d708177054aca4695ef33b5d89d4d3f9a2c376e08a1450", 16);
 
     // Client: H(input) using RFC 9497 HashToGroup DST
-    ECPoint P = SUITE.hashToCurve().hashToCurve(input, SUITE.hashToGroupDst());
+    byte[] P = SUITE.groupSpec().hashToGroup(input, SUITE.hashToGroupDst());
 
     // Client: blind
-    ECPoint blindedElement = P.multiply(blind).normalize();
+    byte[] blindedElement = SUITE.groupSpec().scalarMultiply(blind, P);
 
     // Server: evaluate
-    ECPoint evaluatedElement = blindedElement.multiply(SK_S).normalize();
+    byte[] evaluatedElement = SUITE.groupSpec().scalarMultiply(SK_S, blindedElement);
 
     // Client: finalize
     byte[] output = SUITE.finalize(input, blind, evaluatedElement);
@@ -156,16 +155,16 @@ public class OprfVectorsTest {
           "504650f53df8f16f6861633388936ea23338fa65ec36e0290022b48eb562889d89dbfa691d1cde91517fa222ed7ad364",
           16);
 
-      ECPoint P = SUITE.hashToCurve().hashToCurve(input, SUITE.hashToGroupDst());
-      ECPoint blindedElement = P.multiply(blind).normalize();
+      byte[] P = SUITE.groupSpec().hashToGroup(input, SUITE.hashToGroupDst());
+      byte[] blindedElement = SUITE.groupSpec().scalarMultiply(blind, P);
 
-      assertThat(Hex.toHexString(blindedElement.getEncoded(true)))
+      assertThat(Hex.toHexString(blindedElement))
           .as("blindedElement")
           .isEqualTo("02a36bc90e6db34096346eaf8b7bc40ee1113582155ad3797003ce614c835a874343701d3f2debbd80d97cbe45de6e5f1f");
 
-      ECPoint evaluatedElement = blindedElement.multiply(SK_S).normalize();
+      byte[] evaluatedElement = SUITE.groupSpec().scalarMultiply(SK_S, blindedElement);
 
-      assertThat(Hex.toHexString(evaluatedElement.getEncoded(true)))
+      assertThat(Hex.toHexString(evaluatedElement))
           .as("evaluationElement")
           .isEqualTo("03af2a4fc94770d7a7bf3187ca9cc4faf3732049eded2442ee50fbddda58b70ae2999366f72498cdbc43e6f2fc184afe30");
 
@@ -184,16 +183,16 @@ public class OprfVectorsTest {
           "504650f53df8f16f6861633388936ea23338fa65ec36e0290022b48eb562889d89dbfa691d1cde91517fa222ed7ad364",
           16);
 
-      ECPoint P = SUITE.hashToCurve().hashToCurve(input, SUITE.hashToGroupDst());
-      ECPoint blindedElement = P.multiply(blind).normalize();
+      byte[] P = SUITE.groupSpec().hashToGroup(input, SUITE.hashToGroupDst());
+      byte[] blindedElement = SUITE.groupSpec().scalarMultiply(blind, P);
 
-      assertThat(Hex.toHexString(blindedElement.getEncoded(true)))
+      assertThat(Hex.toHexString(blindedElement))
           .as("blindedElement")
           .isEqualTo("02def6f418e3484f67a124a2ce1bfb19de7a4af568ede6a1ebb2733882510ddd43d05f2b1ab5187936a55e50a847a8b900");
 
-      ECPoint evaluatedElement = blindedElement.multiply(SK_S).normalize();
+      byte[] evaluatedElement = SUITE.groupSpec().scalarMultiply(SK_S, blindedElement);
 
-      assertThat(Hex.toHexString(evaluatedElement.getEncoded(true)))
+      assertThat(Hex.toHexString(evaluatedElement))
           .as("evaluationElement")
           .isEqualTo("034e9b9a2960b536f2ef47d8608b21597ba400d5abfa1825fd21c36b75f927f396bf3716c96129d1fa4a77fa1d479c8d7b");
 
@@ -237,16 +236,16 @@ public class OprfVectorsTest {
           "00d1dccf7a51bafaf75d4a866d53d8cafe4d504650f53df8f16f6861633388936ea23338fa65ec36e0290022b48eb562889d89dbfa691d1cde91517fa222ed7ad364",
           16);
 
-      ECPoint P = SUITE.hashToCurve().hashToCurve(input, SUITE.hashToGroupDst());
-      ECPoint blindedElement = P.multiply(blind).normalize();
+      byte[] P = SUITE.groupSpec().hashToGroup(input, SUITE.hashToGroupDst());
+      byte[] blindedElement = SUITE.groupSpec().scalarMultiply(blind, P);
 
-      assertThat(Hex.toHexString(blindedElement.getEncoded(true)))
+      assertThat(Hex.toHexString(blindedElement))
           .as("blindedElement")
           .isEqualTo("0300e78bf846b0e1e1a3c320e353d758583cd876df56100a3a1e62bacba470fa6e0991be1be80b721c50c5fd0c672ba764457acc18c6200704e9294fbf28859d916351");
 
-      ECPoint evaluatedElement = blindedElement.multiply(SK_S).normalize();
+      byte[] evaluatedElement = SUITE.groupSpec().scalarMultiply(SK_S, blindedElement);
 
-      assertThat(Hex.toHexString(evaluatedElement.getEncoded(true)))
+      assertThat(Hex.toHexString(evaluatedElement))
           .as("evaluationElement")
           .isEqualTo("030166371cf827cb2fb9b581f97907121a16e2dc5d8b10ce9f0ede7f7d76a0d047657735e8ad07bcda824907b3e5479bd72cdef6b839b967ba5c58b118b84d26f2ba07");
 
@@ -265,16 +264,16 @@ public class OprfVectorsTest {
           "00d1dccf7a51bafaf75d4a866d53d8cafe4d504650f53df8f16f6861633388936ea23338fa65ec36e0290022b48eb562889d89dbfa691d1cde91517fa222ed7ad364",
           16);
 
-      ECPoint P = SUITE.hashToCurve().hashToCurve(input, SUITE.hashToGroupDst());
-      ECPoint blindedElement = P.multiply(blind).normalize();
+      byte[] P = SUITE.groupSpec().hashToGroup(input, SUITE.hashToGroupDst());
+      byte[] blindedElement = SUITE.groupSpec().scalarMultiply(blind, P);
 
-      assertThat(Hex.toHexString(blindedElement.getEncoded(true)))
+      assertThat(Hex.toHexString(blindedElement))
           .as("blindedElement")
           .isEqualTo("0300c28e57e74361d87e0c1874e5f7cc1cc796d61f9cad50427cf54655cdb455613368d42b27f94bf66f59f53c816db3e95e68e1b113443d66a99b3693bab88afb556b");
 
-      ECPoint evaluatedElement = blindedElement.multiply(SK_S).normalize();
+      byte[] evaluatedElement = SUITE.groupSpec().scalarMultiply(SK_S, blindedElement);
 
-      assertThat(Hex.toHexString(evaluatedElement.getEncoded(true)))
+      assertThat(Hex.toHexString(evaluatedElement))
           .as("evaluationElement")
           .isEqualTo("0301ad453607e12d0cc11a3359332a40c3a254eaa1afc64296528d55bed07ba322e72e22cf3bcb50570fd913cb54f7f09c17aff8787af75f6a7faf5640cbb2d9620a6e");
 

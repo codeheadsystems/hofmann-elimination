@@ -2,8 +2,8 @@ package com.codeheadsystems.opaque.internal;
 
 import static com.codeheadsystems.oprf.curve.OctetStringUtils.concat;
 
-import com.codeheadsystems.oprf.curve.Curve;
 import com.codeheadsystems.oprf.curve.OctetStringUtils;
+import com.codeheadsystems.oprf.rfc9380.WeierstrassGroupSpec;
 import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -98,14 +98,8 @@ public class OpaqueCrypto {
    * invalid-curve and small-subgroup attacks on DH computations.
    */
   public static ECPoint deserializePoint(OpaqueCipherSuite suite, byte[] bytes) {
-    ECPoint point = suite.oprfSuite().curve().params().getCurve().decodePoint(bytes);
-    if (point.isInfinity()) {
-      throw new SecurityException("Invalid EC point: identity element not allowed");
-    }
-    if (!point.isValid()) {
-      throw new SecurityException("Invalid EC point: not on curve or wrong subgroup");
-    }
-    return point;
+    WeierstrassGroupSpec wgs = (WeierstrassGroupSpec) suite.oprfSuite().groupSpec();
+    return wgs.deserializePoint(bytes);
   }
 
   /**
@@ -120,8 +114,8 @@ public class OpaqueCrypto {
   public static AkeKeyPair deriveAkeKeyPair(OpaqueCipherSuite suite, byte[] seed) {
     BigInteger sk = suite.oprfSuite().deriveKeyPair(seed,
         "OPAQUE-DeriveDiffieHellmanKeyPair".getBytes(StandardCharsets.US_ASCII));
-    ECPoint pk = suite.oprfSuite().curve().g().multiply(sk).normalize();
-    return new AkeKeyPair(sk, pk.getEncoded(true));
+    byte[] pkBytes = suite.oprfSuite().groupSpec().scalarMultiplyGenerator(sk);
+    return new AkeKeyPair(sk, pkBytes);
   }
 
   // ─── Suite-independent utilities ─────────────────────────────────────────────

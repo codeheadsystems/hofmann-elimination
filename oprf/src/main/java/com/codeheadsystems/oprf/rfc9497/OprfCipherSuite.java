@@ -1,16 +1,14 @@
 package com.codeheadsystems.oprf.rfc9497;
 
-import com.codeheadsystems.oprf.curve.Curve;
 import com.codeheadsystems.oprf.curve.OctetStringUtils;
-import com.codeheadsystems.oprf.rfc9380.HashToField;
-import com.codeheadsystems.oprf.rfc9380.HashToCurve;
+import com.codeheadsystems.oprf.rfc9380.GroupSpec;
+import com.codeheadsystems.oprf.rfc9380.WeierstrassGroupSpec;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
-import org.bouncycastle.math.ec.ECPoint;
 
 /**
  * Central cipher suite abstraction for RFC 9497 OPRF.
@@ -33,17 +31,13 @@ public class OprfCipherSuite {
   private final byte[] hashToGroupDst;
   private final byte[] hashToScalarDst;
   private final byte[] deriveKeyPairDst;
-  private final Curve curve;
-  private final HashToCurve hashToCurve;
-  private final HashToField hashToScalarField;
+  private final GroupSpec groupSpec;
   private final String hashAlgorithm;
   private final int hashOutputLength; // Nh
-  private final int elementSize;      // Noe = Npk (compressed point size)
 
-  private OprfCipherSuite(String identifier, String contextSuffix,
-                           Curve curve, HashToCurve hashToCurve,
-                           HashToField hashToScalarField,
-                           String hashAlgorithm, int hashOutputLength, int elementSize) {
+  OprfCipherSuite(String identifier, String contextSuffix,
+                  GroupSpec groupSpec,
+                  String hashAlgorithm, int hashOutputLength) {
     this.identifier = identifier;
     this.contextString = buildContextString(contextSuffix);
     this.hashToGroupDst = OctetStringUtils.concat(
@@ -52,12 +46,9 @@ public class OprfCipherSuite {
         "HashToScalar-".getBytes(StandardCharsets.UTF_8), this.contextString);
     this.deriveKeyPairDst = OctetStringUtils.concat(
         "DeriveKeyPair".getBytes(StandardCharsets.UTF_8), this.contextString);
-    this.curve = curve;
-    this.hashToCurve = hashToCurve;
-    this.hashToScalarField = hashToScalarField;
+    this.groupSpec = groupSpec;
     this.hashAlgorithm = hashAlgorithm;
     this.hashOutputLength = hashOutputLength;
-    this.elementSize = elementSize;
   }
 
   private static byte[] buildContextString(String suffix) {
@@ -73,10 +64,8 @@ public class OprfCipherSuite {
     return new OprfCipherSuite(
         "P256-SHA256",
         "P256-SHA256",
-        Curve.P256_CURVE,
-        HashToCurve.forP256(),
-        HashToField.forP256Scalar(),
-        "SHA-256", 32, 33
+        WeierstrassGroupSpec.P256_SHA256,
+        "SHA-256", 32
     );
   }
 
@@ -84,10 +73,8 @@ public class OprfCipherSuite {
     return new OprfCipherSuite(
         "P384-SHA384",
         "P384-SHA384",
-        Curve.P384_CURVE,
-        HashToCurve.forP384(),
-        HashToField.forP384Scalar(),
-        "SHA-384", 48, 49
+        WeierstrassGroupSpec.P384_SHA384,
+        "SHA-384", 48
     );
   }
 
@@ -95,10 +82,8 @@ public class OprfCipherSuite {
     return new OprfCipherSuite(
         "P521-SHA512",
         "P521-SHA512",
-        Curve.P521_CURVE,
-        HashToCurve.forP521(),
-        HashToField.forP521Scalar(),
-        "SHA-512", 64, 67
+        WeierstrassGroupSpec.P521_SHA512,
+        "SHA-512", 64
     );
   }
 
@@ -109,11 +94,10 @@ public class OprfCipherSuite {
   public byte[] hashToGroupDst() { return hashToGroupDst; }
   public byte[] hashToScalarDst() { return hashToScalarDst; }
   public byte[] deriveKeyPairDst() { return deriveKeyPairDst; }
-  public Curve curve() { return curve; }
-  public HashToCurve hashToCurve() { return hashToCurve; }
+  public GroupSpec groupSpec() { return groupSpec; }
   public String hashAlgorithm() { return hashAlgorithm; }
   public int hashOutputLength() { return hashOutputLength; }
-  public int elementSize() { return elementSize; }
+  public int elementSize() { return groupSpec.elementSize(); }
 
   // ─── Crypto operations ───────────────────────────────────────────────────────
 
@@ -126,8 +110,7 @@ public class OprfCipherSuite {
    * @return scalar in [0, n-1]
    */
   public BigInteger hashToScalar(byte[] input, byte[] dst) {
-    BigInteger[] result = hashToScalarField.hashToField(input, dst, 1);
-    return result[0];
+    return groupSpec.hashToScalar(input, dst);
   }
 
   /**
@@ -158,16 +141,12 @@ public class OprfCipherSuite {
    *
    * @param input            original client input bytes
    * @param blind            the blinding scalar used by the client
-   * @param evaluatedElement the server's response point (skS * blind * H(input))
+   * @param evaluatedElement the server's response as a serialized group element
    * @return Nh-byte OPRF output
    */
-  public byte[] finalize(byte[] input, BigInteger blind, ECPoint evaluatedElement) {
-    BigInteger n = curve.n();
-    BigInteger inverseBlind = blind.modInverse(n);
-    ECPoint N = evaluatedElement.multiply(inverseBlind).normalize();
-
-    // SerializeElement: compressed SEC1 encoding
-    byte[] unblindedElement = N.getEncoded(true);
+  public byte[] finalize(byte[] input, BigInteger blind, byte[] evaluatedElement) {
+    BigInteger inverseBlind = blind.modInverse(groupSpec.groupOrder());
+    byte[] unblindedElement = groupSpec.scalarMultiply(inverseBlind, evaluatedElement);
 
     byte[] finalizeLabel = "Finalize".getBytes(StandardCharsets.UTF_8);
     byte[] hashInput = OctetStringUtils.concat(

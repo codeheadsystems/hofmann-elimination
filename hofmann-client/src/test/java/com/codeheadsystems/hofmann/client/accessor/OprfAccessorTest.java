@@ -14,7 +14,6 @@ import com.codeheadsystems.hofmann.client.model.ServerConnectionInfo;
 import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
 import com.codeheadsystems.hofmann.model.oprf.OprfResponse;
 import com.codeheadsystems.oprf.curve.Curve;
-import com.codeheadsystems.oprf.curve.OctetStringUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
@@ -22,7 +21,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpResponse;
 import java.util.HashMap;
 import java.util.Map;
-import org.bouncycastle.math.ec.ECPoint;
+import org.bouncycastle.util.encoders.Hex;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,6 +35,8 @@ class OprfAccessorTest {
   private static final OprfConfig CONFIG = new OprfConfig();
   private static final ServerIdentifier SERVER_ID = new ServerIdentifier("test-server");
   private static final URI ENDPOINT = URI.create("http://localhost:8080/oprf");
+  // Compressed SEC1 encoding of the generator point as bytes for test input.
+  private static final byte[] BLINDED_ELEMENT = CURVE.g().getEncoded(true);
 
   @Mock private HttpClient httpClient;
   @Mock private HttpResponse<String> httpResponse;
@@ -52,9 +53,8 @@ class OprfAccessorTest {
 
   @Test
   @SuppressWarnings("unchecked")
-  void handleRequest_success_returnsEvaluatedPointAndProcessIdentifier() throws Exception {
-    ECPoint blindedPoint = CURVE.g();
-    String responseHex = OctetStringUtils.toHex(blindedPoint);
+  void handleRequest_success_returnsEvaluatedElementAndProcessIdentifier() throws Exception {
+    String responseHex = Hex.toHexString(BLINDED_ELEMENT);
     String processIdentifier = "proc-abc";
     String responseBody = "{\"ecPoint\":\"" + responseHex + "\",\"processIdentifier\":\"" + processIdentifier + "\"}";
 
@@ -64,17 +64,17 @@ class OprfAccessorTest {
     when(objectMapper.readValue(eq(responseBody), eq(OprfResponse.class)))
         .thenReturn(new OprfResponse(responseHex, processIdentifier));
 
-    OprfAccessor.Response result = accessor.handleRequest(SERVER_ID, "req-1", blindedPoint);
+    OprfAccessor.Response result = accessor.handleRequest(SERVER_ID, "req-1", BLINDED_ELEMENT);
 
     assertThat(result.processIdentifier()).isEqualTo(processIdentifier);
-    assertThat(OctetStringUtils.toHex(result.evaluatedPoint())).isEqualTo(responseHex);
+    assertThat(Hex.toHexString(result.evaluatedElement())).isEqualTo(responseHex);
   }
 
   @Test
   void handleRequest_unknownServer_throwsIllegalArgumentException() {
     ServerIdentifier unknown = new ServerIdentifier("not-registered");
 
-    assertThatThrownBy(() -> accessor.handleRequest(unknown, "req-1", CURVE.g()))
+    assertThatThrownBy(() -> accessor.handleRequest(unknown, "req-1", BLINDED_ELEMENT))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("not-registered");
   }
@@ -85,7 +85,7 @@ class OprfAccessorTest {
     when(objectMapper.writeValueAsString(any())).thenReturn("{}");
     doThrow(new IOException("connection refused")).when(httpClient).send(any(), any());
 
-    assertThatThrownBy(() -> accessor.handleRequest(SERVER_ID, "req-1", CURVE.g()))
+    assertThatThrownBy(() -> accessor.handleRequest(SERVER_ID, "req-1", BLINDED_ELEMENT))
         .isInstanceOf(OprfAccessorException.class)
         .hasMessageContaining("test-server")
         .hasCauseInstanceOf(IOException.class);
@@ -98,7 +98,7 @@ class OprfAccessorTest {
     doThrow(new InterruptedException("interrupted")).when(httpClient).send(any(), any());
 
     try {
-      assertThatThrownBy(() -> accessor.handleRequest(SERVER_ID, "req-1", CURVE.g()))
+      assertThatThrownBy(() -> accessor.handleRequest(SERVER_ID, "req-1", BLINDED_ELEMENT))
           .isInstanceOf(OprfAccessorException.class)
           .hasCauseInstanceOf(InterruptedException.class);
 

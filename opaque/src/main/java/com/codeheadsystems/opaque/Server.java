@@ -49,8 +49,8 @@ public class Server {
    * Generates a new OpaqueServer with a random key pair and random OPRF seed.
    */
   public static Server generate(OpaqueConfig config) {
-    BigInteger sk = config.cipherSuite().oprfSuite().curve().randomScalar();
-    byte[] pk = config.cipherSuite().oprfSuite().curve().g().multiply(sk).normalize().getEncoded(true);
+    BigInteger sk = config.cipherSuite().oprfSuite().groupSpec().randomScalar();
+    byte[] pk = config.cipherSuite().oprfSuite().groupSpec().scalarMultiplyGenerator(sk);
     byte[] seed = OpaqueCrypto.randomBytes(config.Nok());
 
     int nsk = config.Nsk();

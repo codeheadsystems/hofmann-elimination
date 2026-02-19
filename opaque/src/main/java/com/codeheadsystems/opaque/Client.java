@@ -51,7 +51,7 @@ public class Client {
    * Generates KE1 (first AKE message) by blinding the password and creating a client ephemeral key pair.
    */
   public ClientAuthState generateKE1(byte[] password) {
-    BigInteger blind = config.cipherSuite().oprfSuite().curve().randomScalar();
+    BigInteger blind = config.cipherSuite().oprfSuite().groupSpec().randomScalar();
     byte[] blindedElement = OpaqueOprf.blind(config.cipherSuite(), password, blind);
     CredentialRequest credReq = new CredentialRequest(blindedElement);
 

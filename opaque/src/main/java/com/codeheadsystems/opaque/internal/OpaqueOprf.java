@@ -4,7 +4,6 @@ import com.codeheadsystems.oprf.curve.OctetStringUtils;
 import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
-import org.bouncycastle.math.ec.ECPoint;
 
 /**
  * OPRF operations used by OPAQUE.
@@ -16,31 +15,28 @@ public class OpaqueOprf {
   }
 
   /**
-   * Client blind: maps password to a curve point and applies a random blinding factor.
+   * Client blind: maps password to a group element and applies a random blinding factor.
    *
-   * @param suite  cipher suite (determines hash-to-curve and DST)
+   * @param suite  cipher suite (determines hash-to-group and DST)
    * @param password the client's password
    * @param blind    a randomly-chosen scalar (caller provides for deterministic testing)
-   * @return blindedElement as a compressed EC point
+   * @return blindedElement as a serialized group element
    */
   public static byte[] blind(OpaqueCipherSuite suite, byte[] password, BigInteger blind) {
-    ECPoint H = suite.oprfSuite().hashToCurve().hashToCurve(password, suite.oprfSuite().hashToGroupDst());
-    ECPoint blindedPoint = H.multiply(blind).normalize();
-    return blindedPoint.getEncoded(true);
+    byte[] H = suite.oprfSuite().groupSpec().hashToGroup(password, suite.oprfSuite().hashToGroupDst());
+    return suite.oprfSuite().groupSpec().scalarMultiply(blind, H);
   }
 
   /**
    * Server OPRF evaluation: multiplies the blinded element by the OPRF key.
    *
-   * @param suite          cipher suite (determines curve for deserialization)
+   * @param suite          cipher suite
    * @param oprfKey        server OPRF private key scalar
-   * @param blindedElement compressed EC point from client
-   * @return evaluatedElement as a compressed EC point
+   * @param blindedElement serialized group element from client
+   * @return evaluatedElement as a serialized group element
    */
   public static byte[] blindEvaluate(OpaqueCipherSuite suite, BigInteger oprfKey, byte[] blindedElement) {
-    ECPoint Q = OpaqueCrypto.deserializePoint(suite, blindedElement);
-    ECPoint evaluated = Q.multiply(oprfKey).normalize();
-    return evaluated.getEncoded(true);
+    return suite.oprfSuite().groupSpec().scalarMultiply(oprfKey, blindedElement);
   }
 
   /**
@@ -49,12 +45,11 @@ public class OpaqueOprf {
    * @param suite            cipher suite
    * @param password         original client password bytes
    * @param blind            the blinding scalar used during blind()
-   * @param evaluatedElement compressed EC point from server
+   * @param evaluatedElement serialized group element from server
    * @return Nh-byte OPRF output
    */
   public static byte[] finalize(OpaqueCipherSuite suite, byte[] password, BigInteger blind, byte[] evaluatedElement) {
-    ECPoint evalPoint = OpaqueCrypto.deserializePoint(suite, evaluatedElement);
-    return suite.oprfSuite().finalize(password, blind, evalPoint);
+    return suite.oprfSuite().finalize(password, blind, evaluatedElement);
   }
 
   /**

@@ -20,6 +20,29 @@ addressed; the rest are listed by priority.
 - [x] **Unified error messages** — all MAC/envelope failures throw generic
       "Authentication failed" to prevent protocol state leakage.
 
+## P1: Implement ristretto255-SHA512 OPRF Suite
+
+- [ ] **Add ristretto255-SHA512 cipher suite** — RFC 9497 §4.4 defines a ristretto255-SHA512
+      OPRF suite that was partially implemented but not completed. See `ristretto255.md` for
+      full details, test vectors, known bugs, and a recommended debug approach.
+
+      What is needed:
+      - `ElligatorMap.java` in `rfc9380/`: field arithmetic, Elligator map, ristretto255
+        encode/decode, point addition/doubling (Edwards25519)
+      - `Ristretto255GroupSpec.java` in `rfc9380/`: implements `GroupSpec` using `ElligatorMap`
+      - `OprfCipherSuite.RISTRETTO255_SHA512` constant and `buildRistretto255Sha512()` method
+      - `Ristretto255Sha512` nested class in `OprfVectorsTest` (vectors in `ristretto255.md`)
+
+      Key issues from the previous attempt (details in `ristretto255.md`):
+      - Several constants and sign conventions are tricky; see the notes for correct formulas
+      - `encodeRistretto255` was producing wrong output; the encode algorithm is the main
+        remaining bug — `sqrtRatioM1` returns `wasSquare=false` for a case where it should
+        be true
+      - `hashToScalar` must use little-endian byte interpretation (not OS2IP/big-endian)
+
+      The `GroupSpec` interface is already the right extension point; `OprfCipherSuite` needs
+      no structural changes beyond adding the constant and builder.
+
 ## P2: Important
 
 - [ ] **Add TLS enforcement** — No HTTPS configuration exists. Add TLS config

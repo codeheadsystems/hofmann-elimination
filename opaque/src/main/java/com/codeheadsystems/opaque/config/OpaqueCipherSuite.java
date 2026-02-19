@@ -23,7 +23,7 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
   public int Npk() { return oprfSuite().elementSize(); }
 
   /** Scalar (private key) size in bytes (32, 48, or 66). */
-  public int Nsk() { return (oprfSuite().curve().n().bitLength() + 7) / 8; }
+  public int Nsk() { return (oprfSuite().groupSpec().groupOrder().bitLength() + 7) / 8; }
 
   /** Hash output length in bytes (32, 48, or 64). */
   public int Nh()  { return oprfSuite().hashOutputLength(); }

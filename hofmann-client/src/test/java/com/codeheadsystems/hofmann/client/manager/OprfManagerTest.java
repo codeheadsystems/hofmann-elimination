@@ -10,7 +10,6 @@ import com.codeheadsystems.hofmann.client.config.OprfConfig;
 import com.codeheadsystems.hofmann.client.model.HashResult;
 import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
 import com.codeheadsystems.oprf.curve.Curve;
-import org.bouncycastle.math.ec.ECPoint;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,10 +25,10 @@ class OprfManagerTest {
   private static final ServerIdentifier SERVER_ID = new ServerIdentifier("test-server");
   private static final String PROCESS_ID = "proc-test";
 
-  // A fixed valid EC point to return from the mock accessor.
-  // OprfSuite.finalize() unblides this internally using the random blind,
+  // A fixed valid EC point (compressed SEC1) to return from the mock accessor.
+  // OprfSuite.finalize() unblinds this internally using the random blind,
   // so the exact hash value is non-deterministic — but it will always be 32 bytes.
-  private static final ECPoint MOCK_EVALUATED_POINT = CURVE.g();
+  private static final byte[] MOCK_EVALUATED_ELEMENT = CURVE.g().getEncoded(true);
 
   @Mock private OprfAccessor oprfAccessor;
 
@@ -43,7 +42,7 @@ class OprfManagerTest {
   @Test
   void performHash_populatesHashResultFields() {
     when(oprfAccessor.handleRequest(eq(SERVER_ID), any(), any()))
-        .thenReturn(new OprfAccessor.Response(MOCK_EVALUATED_POINT, PROCESS_ID));
+        .thenReturn(new OprfAccessor.Response(MOCK_EVALUATED_ELEMENT, PROCESS_ID));
 
     HashResult result = manager.performHash("password", SERVER_ID);
 
@@ -58,7 +57,7 @@ class OprfManagerTest {
     ArgumentCaptor<String> requestIdCaptor = ArgumentCaptor.forClass(String.class);
 
     when(oprfAccessor.handleRequest(eq(SERVER_ID), requestIdCaptor.capture(), any()))
-        .thenReturn(new OprfAccessor.Response(MOCK_EVALUATED_POINT, PROCESS_ID));
+        .thenReturn(new OprfAccessor.Response(MOCK_EVALUATED_ELEMENT, PROCESS_ID));
 
     manager.performHash("password", SERVER_ID);
     manager.performHash("password", SERVER_ID);
@@ -71,7 +70,7 @@ class OprfManagerTest {
   @Test
   void performHash_differentInputs_produceDifferentHashes() {
     when(oprfAccessor.handleRequest(eq(SERVER_ID), any(), any()))
-        .thenReturn(new OprfAccessor.Response(MOCK_EVALUATED_POINT, PROCESS_ID));
+        .thenReturn(new OprfAccessor.Response(MOCK_EVALUATED_ELEMENT, PROCESS_ID));
 
     HashResult result1 = manager.performHash("password-one", SERVER_ID);
     HashResult result2 = manager.performHash("password-two", SERVER_ID);
