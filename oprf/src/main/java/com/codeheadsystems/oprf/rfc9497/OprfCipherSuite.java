@@ -2,6 +2,7 @@ package com.codeheadsystems.oprf.rfc9497;
 
 import com.codeheadsystems.ellipticcurve.curve.OctetStringUtils;
 import com.codeheadsystems.ellipticcurve.rfc9380.GroupSpec;
+import com.codeheadsystems.ellipticcurve.rfc9380.Ristretto255GroupSpec;
 import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpec;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -18,6 +19,7 @@ import javax.crypto.spec.SecretKeySpec;
  *   <li>P256-SHA256 (RFC 9497 §4.1)</li>
  *   <li>P384-SHA384 (RFC 9497 §4.2)</li>
  *   <li>P521-SHA512 (RFC 9497 §4.3)</li>
+ *   <li>ristretto255-SHA512 (RFC 9497 §4.4)</li>
  * </ul>
  */
 public class OprfCipherSuite {
@@ -25,6 +27,7 @@ public class OprfCipherSuite {
   public static final OprfCipherSuite P256_SHA256 = buildP256Sha256();
   public static final OprfCipherSuite P384_SHA384 = buildP384Sha384();
   public static final OprfCipherSuite P521_SHA512 = buildP521Sha512();
+  public static final OprfCipherSuite RISTRETTO255_SHA512 = buildRistretto255Sha512();
 
   private final String identifier;
   private final byte[] contextString;
@@ -83,6 +86,15 @@ public class OprfCipherSuite {
         "P521-SHA512",
         "P521-SHA512",
         WeierstrassGroupSpec.P521_SHA512,
+        "SHA-512", 64
+    );
+  }
+
+  private static OprfCipherSuite buildRistretto255Sha512() {
+    return new OprfCipherSuite(
+        "ristretto255-SHA512",
+        "ristretto255-SHA512",
+        Ristretto255GroupSpec.INSTANCE,
         "SHA-512", 64
     );
   }

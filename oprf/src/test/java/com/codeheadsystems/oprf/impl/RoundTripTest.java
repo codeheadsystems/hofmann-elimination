@@ -19,7 +19,8 @@ public class RoundTripTest {
     return Stream.of(
         OprfCipherSuite.P256_SHA256,
         OprfCipherSuite.P384_SHA384,
-        OprfCipherSuite.P521_SHA512
+        OprfCipherSuite.P521_SHA512,
+        OprfCipherSuite.RISTRETTO255_SHA512
     );
   }
 

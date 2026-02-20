@@ -265,7 +265,7 @@ uniformly distributed on the curve. That uniform distribution is needed for secu
 
 Implements the [RFC 9380](https://www.rfc-editor.org/rfc/rfc9380.html) specification,
 validated against the RFC's own test vectors (Appendix J.7.1 for secp256k1 and Appendix A.1.1 for P-256).
-
+Test vectors are also included in `OprfVectorsTest` for regression testing from the [cfrg GitHub repo](https://github.com/cfrg/draft-irtf-cfrg-hash-to-curve/tree/main/poc/vectors)
 ## Related Projects
 
 Several other projects implement OPRF or OPAQUE, but none cover the same combination

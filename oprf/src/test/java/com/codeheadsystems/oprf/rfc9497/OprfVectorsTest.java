@@ -122,6 +122,91 @@ public class OprfVectorsTest {
         .isEqualTo("4465726976654b6579506169724f50524656312d002d503235362d534841323536");
   }
 
+  // ─── RFC 9497 §4.4: ristretto255-SHA512 OPRF (mode 0) ───────────────────────
+
+  @Nested
+  class Ristretto255Sha512 {
+
+    private static final OprfCipherSuite SUITE = OprfCipherSuite.RISTRETTO255_SHA512;
+
+    // skSm from CFRG test vectors, given as 32-byte little-endian:
+    // 5ebcea5ee37023ccb9fc2d2019f9d7737be85591ae8652ffa9ef0f4d37063b0e (LE)
+    // → big-endian: 0e3b06374d0fefa9ff5286ae9155e87b73d7f919202dfcb9cc2370e35eeabc5e
+    private static final BigInteger SK_S = new BigInteger(
+        "0e3b06374d0fefa9ff5286ae9155e87b73d7f919202dfcb9cc2370e35eeabc5e", 16);
+
+    @Test
+    void testDeriveKeyPair() {
+      byte[] seed = new byte[32];
+      Arrays.fill(seed, (byte) 0xa3);
+      byte[] info = "test key".getBytes(StandardCharsets.UTF_8);
+
+      BigInteger skS = SUITE.deriveKeyPair(seed, info);
+
+      // Compare via serializeScalar (little-endian for ristretto255)
+      assertThat(Hex.toHexString(SUITE.groupSpec().serializeScalar(skS)))
+          .isEqualTo("5ebcea5ee37023ccb9fc2d2019f9d7737be85591ae8652ffa9ef0f4d37063b0e");
+    }
+
+    @Test
+    void testVector1() {
+      // Input = 00 (single byte)
+      // Blind given as LE: 64d37aed22a27f5191de1c1d69fadb899d8862b58eb4220029e036ec4c1f6706
+      // → big-endian: 06671f4cec36e0290022b48eb562889d89dbfa691d1cde91517fa222ed7ad364
+      byte[] input = new byte[]{0x00};
+      BigInteger blind = new BigInteger(
+          "06671f4cec36e0290022b48eb562889d89dbfa691d1cde91517fa222ed7ad364", 16);
+
+      byte[] P = SUITE.groupSpec().hashToGroup(input, SUITE.hashToGroupDst());
+      byte[] blindedElement = SUITE.groupSpec().scalarMultiply(blind, P);
+
+      assertThat(Hex.toHexString(blindedElement))
+          .as("blindedElement")
+          .isEqualTo("609a0ae68c15a3cf6903766461307e5c8bb2f95e7e6550e1ffa2dc99e412803c");
+
+      byte[] evaluatedElement = SUITE.groupSpec().scalarMultiply(SK_S, blindedElement);
+
+      assertThat(Hex.toHexString(evaluatedElement))
+          .as("evaluationElement")
+          .isEqualTo("7ec6578ae5120958eb2db1745758ff379e77cb64fe77b0b2d8cc917ea0869c7e");
+
+      byte[] output = SUITE.finalize(input, blind, evaluatedElement);
+
+      assertThat(Hex.toHexString(output))
+          .isEqualTo("527759c3d9366f277d8c6020418d96bb393ba2afb20ff90df23fb7708264e2f3"
+              + "ab9135e3bd69955851de4b1f9fe8a0973396719b7912ba9ee8aa7d0b5e24bcf6");
+    }
+
+    @Test
+    void testVector2() {
+      // Input = 5a5a...5a (17 bytes)
+      // Same blind as vector 1
+      byte[] input = new byte[17];
+      Arrays.fill(input, (byte) 0x5a);
+      BigInteger blind = new BigInteger(
+          "06671f4cec36e0290022b48eb562889d89dbfa691d1cde91517fa222ed7ad364", 16);
+
+      byte[] P = SUITE.groupSpec().hashToGroup(input, SUITE.hashToGroupDst());
+      byte[] blindedElement = SUITE.groupSpec().scalarMultiply(blind, P);
+
+      assertThat(Hex.toHexString(blindedElement))
+          .as("blindedElement")
+          .isEqualTo("da27ef466870f5f15296299850aa088629945a17d1f5b7f5ff043f76b3c06418");
+
+      byte[] evaluatedElement = SUITE.groupSpec().scalarMultiply(SK_S, blindedElement);
+
+      assertThat(Hex.toHexString(evaluatedElement))
+          .as("evaluationElement")
+          .isEqualTo("b4cbf5a4f1eeda5a63ce7b77c7d23f461db3fcab0dd28e4e17cecb5c90d02c25");
+
+      byte[] output = SUITE.finalize(input, blind, evaluatedElement);
+
+      assertThat(Hex.toHexString(output))
+          .isEqualTo("f4a74c9c592497375e796aa837e907b1a045d34306a749db9f34221f7e750cb4"
+              + "f2a6413a6bf6fa5e19ba6348eb673934a722a7ede2e7621306d18951e7cf2c73");
+    }
+  }
+
   // ─── RFC 9497 Appendix A.2.1: P384-SHA384 OPRF (mode 0) ─────────────────────
 
   @Nested
