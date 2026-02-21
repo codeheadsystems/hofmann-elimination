@@ -1,4 +1,4 @@
-package com.codeheadsystems.oprf;
+package com.codeheadsystems.oprf.manager;
 
 import com.codeheadsystems.oprf.model.EliminationRequest;
 import com.codeheadsystems.oprf.model.EliminationResponse;
@@ -9,16 +9,16 @@ import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import org.bouncycastle.util.encoders.Hex;
 
-public class Client {
+public class OprfClientManager {
 
   private final OprfCipherSuite suite;
   private final GroupSpec groupSpec;
 
-  public Client() {
+  public OprfClientManager() {
     this(OprfCipherSuite.P256_SHA256);
   }
 
-  public Client(OprfCipherSuite suite) {
+  public OprfClientManager(OprfCipherSuite suite) {
     this.suite = suite;
     this.groupSpec = suite.groupSpec();
   }
@@ -27,11 +27,11 @@ public class Client {
    * Defines the steps the client takes to convert sensitive data into a key that can be used for elimination.
    * Implements RFC 9497 OPRF mode 0 (OPRF).
    *
-   * @param server        The server that provides the elimination process.
+   * @param oprfServerManager        The server that provides the elimination process.
    * @param sensitiveData The sensitive data that we want to convert into a key for elimination.
    * @return an identity key that represents the original sensitive data after processing through the elimination protocol.
    */
-  public String convertToIdentityKey(final Server server,
+  public String convertToIdentityKey(final OprfServerManager oprfServerManager,
                                      final String sensitiveData) {
     final String requestId = UUID.randomUUID().toString();
     final BigInteger blindingFactor = suite.randomScalar();
@@ -43,7 +43,7 @@ public class Client {
     final String blindedPointHex = Hex.toHexString(blindedElement);
 
     final EliminationRequest eliminationRequest = new EliminationRequest(blindedPointHex, requestId);
-    final EliminationResponse eliminationResponse = server.process(eliminationRequest);
+    final EliminationResponse eliminationResponse = oprfServerManager.process(eliminationRequest);
 
     final byte[] evaluatedElement = Hex.decode(eliminationResponse.hexCodedEcPoint());
     final byte[] finalHash = suite.finalize(input, blindingFactor, evaluatedElement);

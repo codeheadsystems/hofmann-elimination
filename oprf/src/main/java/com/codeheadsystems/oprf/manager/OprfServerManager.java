@@ -1,4 +1,4 @@
-package com.codeheadsystems.oprf;
+package com.codeheadsystems.oprf.manager;
 
 import com.codeheadsystems.ellipticcurve.rfc9380.GroupSpec;
 import com.codeheadsystems.oprf.model.EliminationRequest;
@@ -8,27 +8,27 @@ import java.math.BigInteger;
 import java.util.UUID;
 import org.bouncycastle.util.encoders.Hex;
 
-public class Server {
+public class OprfServerManager {
 
   private final GroupSpec groupSpec;
   private final BigInteger masterKey;
   private final String processIdentifier;
 
-  public Server() {
+  public OprfServerManager() {
     this(OprfCipherSuite.P256_SHA256);
   }
 
-  public Server(OprfCipherSuite suite) {
+  public OprfServerManager(OprfCipherSuite suite) {
     this.groupSpec = suite.groupSpec();
     this.masterKey = suite.randomScalar();
     this.processIdentifier = "SP:" + UUID.randomUUID();
   }
 
-  public Server(byte[] seed, byte[] info) {
+  public OprfServerManager(byte[] seed, byte[] info) {
     this(OprfCipherSuite.P256_SHA256, seed, info);
   }
 
-  public Server(OprfCipherSuite suite, byte[] seed, byte[] info) {
+  public OprfServerManager(OprfCipherSuite suite, byte[] seed, byte[] info) {
     this.groupSpec = suite.groupSpec();
     this.masterKey = suite.deriveKeyPair(seed, info);
     this.processIdentifier = "SP:" + UUID.randomUUID();
