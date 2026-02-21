@@ -3,7 +3,7 @@ package com.codeheadsystems.opaque.internal;
 import static com.codeheadsystems.ellipticcurve.curve.OctetStringUtils.concat;
 
 import com.codeheadsystems.ellipticcurve.curve.OctetStringUtils;
-import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpec;
+import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpecImpl;
 import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -98,7 +98,7 @@ public class OpaqueCrypto {
    * invalid-curve and small-subgroup attacks on DH computations.
    */
   public static ECPoint deserializePoint(OpaqueCipherSuite suite, byte[] bytes) {
-    WeierstrassGroupSpec wgs = (WeierstrassGroupSpec) suite.oprfSuite().groupSpec();
+    WeierstrassGroupSpecImpl wgs = (WeierstrassGroupSpecImpl) suite.oprfSuite().groupSpec();
     return wgs.deserializePoint(bytes);
   }
 

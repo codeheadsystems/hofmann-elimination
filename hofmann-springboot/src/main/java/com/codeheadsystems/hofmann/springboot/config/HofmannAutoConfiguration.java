@@ -1,7 +1,7 @@
 package com.codeheadsystems.hofmann.springboot.config;
 
 import com.codeheadsystems.ellipticcurve.curve.Curve;
-import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpec;
+import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpecImpl;
 import com.codeheadsystems.hofmann.server.auth.JwtManager;
 import com.codeheadsystems.hofmann.server.manager.OprfManager;
 import com.codeheadsystems.hofmann.server.model.ProcessorDetail;
@@ -63,7 +63,7 @@ public class HofmannAutoConfiguration {
   @ConditionalOnMissingBean
   public Curve curve(OpaqueConfig opaqueConfig) {
     var gs = opaqueConfig.cipherSuite().oprfSuite().groupSpec();
-    if (gs instanceof WeierstrassGroupSpec w) {
+    if (gs instanceof WeierstrassGroupSpecImpl w) {
       return w.curve();
     }
     throw new IllegalStateException(

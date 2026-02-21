@@ -9,23 +9,23 @@ import org.bouncycastle.math.ec.ECPoint;
  * Delegates hash-to-group to the existing {@link HashToCurve} pipeline and
  * serializes all group elements as compressed SEC1 byte arrays.
  */
-public record WeierstrassGroupSpec(
+public record WeierstrassGroupSpecImpl(
     Curve curve,
     HashToCurve hashToCurveImpl,
     HashToField hashToScalarFieldImpl
 ) implements GroupSpec {
 
   /** P-256 / SHA-256 instance (RFC 9497 §4.1). */
-  public static final WeierstrassGroupSpec P256_SHA256 = buildP256();
+  public static final WeierstrassGroupSpecImpl P256_SHA256 = buildP256();
 
   /** P-384 / SHA-384 instance (RFC 9497 §4.2). */
-  public static final WeierstrassGroupSpec P384_SHA384 = buildP384();
+  public static final WeierstrassGroupSpecImpl P384_SHA384 = buildP384();
 
   /** P-521 / SHA-512 instance (RFC 9497 §4.3). */
-  public static final WeierstrassGroupSpec P521_SHA512 = buildP521();
+  public static final WeierstrassGroupSpecImpl P521_SHA512 = buildP521();
 
   /** secp256k1 instance (used in RFC 9380 tests). */
-  public static WeierstrassGroupSpec forSecp256k1() {
+  public static WeierstrassGroupSpecImpl forSecp256k1() {
     return buildSecp256k1();
   }
 
@@ -102,34 +102,34 @@ public record WeierstrassGroupSpec(
 
   // ─── Builders ────────────────────────────────────────────────────────────────
 
-  private static WeierstrassGroupSpec buildP256() {
-    return new WeierstrassGroupSpec(
+  private static WeierstrassGroupSpecImpl buildP256() {
+    return new WeierstrassGroupSpecImpl(
         Curve.P256_CURVE,
         HashToCurve.forP256(),
         HashToField.forP256Scalar()
     );
   }
 
-  private static WeierstrassGroupSpec buildP384() {
-    return new WeierstrassGroupSpec(
+  private static WeierstrassGroupSpecImpl buildP384() {
+    return new WeierstrassGroupSpecImpl(
         Curve.P384_CURVE,
         HashToCurve.forP384(),
         HashToField.forP384Scalar()
     );
   }
 
-  private static WeierstrassGroupSpec buildP521() {
-    return new WeierstrassGroupSpec(
+  private static WeierstrassGroupSpecImpl buildP521() {
+    return new WeierstrassGroupSpecImpl(
         Curve.P521_CURVE,
         HashToCurve.forP521(),
         HashToField.forP521Scalar()
     );
   }
 
-  private static WeierstrassGroupSpec buildSecp256k1() {
+  private static WeierstrassGroupSpecImpl buildSecp256k1() {
     // secp256k1 is used in RFC 9380 hash-to-curve tests only (not in OPRF).
     // hashToScalarFieldImpl uses the base field; scalar-field operations are not needed.
-    return new WeierstrassGroupSpec(
+    return new WeierstrassGroupSpecImpl(
         Curve.SECP256K1_CURVE,
         HashToCurve.forSecp256k1(),
         HashToField.forSecp256k1()

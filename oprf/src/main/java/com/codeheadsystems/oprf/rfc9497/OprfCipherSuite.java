@@ -2,7 +2,7 @@ package com.codeheadsystems.oprf.rfc9497;
 
 import com.codeheadsystems.ellipticcurve.curve.OctetStringUtils;
 import com.codeheadsystems.ellipticcurve.rfc9380.GroupSpec;
-import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpec;
+import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpecImpl;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -94,7 +94,7 @@ public class OprfCipherSuite {
     return new OprfCipherSuite(
         "P256-SHA256",
         "P256-SHA256",
-        WeierstrassGroupSpec.P256_SHA256,
+        WeierstrassGroupSpecImpl.P256_SHA256,
         "SHA-256", 32
     );
   }
@@ -103,7 +103,7 @@ public class OprfCipherSuite {
     return new OprfCipherSuite(
         "P384-SHA384",
         "P384-SHA384",
-        WeierstrassGroupSpec.P384_SHA384,
+        WeierstrassGroupSpecImpl.P384_SHA384,
         "SHA-384", 48
     );
   }
@@ -112,7 +112,7 @@ public class OprfCipherSuite {
     return new OprfCipherSuite(
         "P521-SHA512",
         "P521-SHA512",
-        WeierstrassGroupSpec.P521_SHA512,
+        WeierstrassGroupSpecImpl.P521_SHA512,
         "SHA-512", 64
     );
   }
