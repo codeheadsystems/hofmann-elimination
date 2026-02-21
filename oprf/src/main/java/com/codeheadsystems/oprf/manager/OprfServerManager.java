@@ -1,8 +1,8 @@
 package com.codeheadsystems.oprf.manager;
 
 import com.codeheadsystems.ellipticcurve.rfc9380.GroupSpec;
-import com.codeheadsystems.oprf.model.EliminationRequest;
-import com.codeheadsystems.oprf.model.EliminationResponse;
+import com.codeheadsystems.oprf.model.BlindedRequest;
+import com.codeheadsystems.oprf.model.EvaluatedResponse;
 import com.codeheadsystems.oprf.model.ServerProcessorDetail;
 import com.codeheadsystems.oprf.rfc9497.OprfCipherSuite;
 import java.util.function.Supplier;
@@ -24,13 +24,13 @@ public class OprfServerManager {
    * then returned to the client in a hex-encoded format. That process is difficult to reverse due to computational
    * complexity. However, to reverse it is subject to attack from quantum computers by the first party.
    *
-   * @param eliminationRequest the request from the client containing the hex-encoded blinded elliptic curve point.
+   * @param blindedRequest the request from the client containing the hex-encoded blinded elliptic curve point.
    * @return the response containing the hex-encoded elliptic curve point resulting from the server's process, along with a process identifier for tracking and correlation purposes.
    */
-  public EliminationResponse process(final EliminationRequest eliminationRequest) {
-    byte[] q = Hex.decode(eliminationRequest.blindedPoint());
+  public EvaluatedResponse process(final BlindedRequest blindedRequest) {
+    byte[] q = Hex.decode(blindedRequest.blindedPoint());
     byte[] result = groupSpec.scalarMultiply(supplier.get().masterKey(), q);
-    return new EliminationResponse(Hex.toHexString(result), supplier.get().processorIdentifier());
+    return new EvaluatedResponse(Hex.toHexString(result), supplier.get().processorIdentifier());
   }
 
 }

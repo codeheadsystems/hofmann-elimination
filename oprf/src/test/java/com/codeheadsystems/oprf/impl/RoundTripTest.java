@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.codeheadsystems.oprf.manager.OprfClientManager;
 import com.codeheadsystems.oprf.manager.OprfServerManager;
 import com.codeheadsystems.oprf.model.ClientHashingContext;
-import com.codeheadsystems.oprf.model.EliminationRequest;
-import com.codeheadsystems.oprf.model.EliminationResponse;
+import com.codeheadsystems.oprf.model.BlindedRequest;
+import com.codeheadsystems.oprf.model.EvaluatedResponse;
 import com.codeheadsystems.oprf.model.HashResult;
 import com.codeheadsystems.oprf.model.ServerProcessorDetail;
 import com.codeheadsystems.oprf.rfc9497.OprfCipherSuite;
@@ -40,9 +40,9 @@ public class RoundTripTest {
                                      final OprfServerManager oprfServerManager,
                                      final String sensitiveData) {
     final ClientHashingContext clientHashingContext = oprfClientManager.hashingContext(sensitiveData);
-    final EliminationRequest eliminationRequest = oprfClientManager.eliminationRequest(clientHashingContext);
-    final EliminationResponse eliminationResponse = oprfServerManager.process(eliminationRequest);
-    final HashResult result = oprfClientManager.hashResult(eliminationResponse, clientHashingContext);
+    final BlindedRequest blindedRequest = oprfClientManager.eliminationRequest(clientHashingContext);
+    final EvaluatedResponse evaluatedResponse = oprfServerManager.process(blindedRequest);
+    final HashResult result = oprfClientManager.hashResult(evaluatedResponse, clientHashingContext);
     return result.processIdentifier() + ":" + Hex.toHexString(result.hash());
   }
 

@@ -1,7 +1,7 @@
 package com.codeheadsystems.oprf.manager;
 
-import com.codeheadsystems.oprf.model.EliminationRequest;
-import com.codeheadsystems.oprf.model.EliminationResponse;
+import com.codeheadsystems.oprf.model.BlindedRequest;
+import com.codeheadsystems.oprf.model.EvaluatedResponse;
 import com.codeheadsystems.ellipticcurve.rfc9380.GroupSpec;
 import com.codeheadsystems.oprf.model.ClientHashingContext;
 import com.codeheadsystems.oprf.model.HashResult;
@@ -44,24 +44,24 @@ public class OprfClientManager {
    * @param clientHashingContext to generate the elimination request from.
    * @return an elimination request that can be sent to the OPRF server manager.
    */
-  public EliminationRequest eliminationRequest(final ClientHashingContext clientHashingContext) {
+  public BlindedRequest eliminationRequest(final ClientHashingContext clientHashingContext) {
     final byte[] hashedElement = groupSpec.hashToGroup(clientHashingContext.input(), suite.hashToGroupDst());
     final byte[] blindedElement = groupSpec.scalarMultiply(clientHashingContext.blindingFactor(), hashedElement);
     final String blindedPointHex = Hex.toHexString(blindedElement);
-    return new EliminationRequest(blindedPointHex, clientHashingContext.requestId());
+    return new BlindedRequest(blindedPointHex, clientHashingContext.requestId());
   }
 
   /**
    * Takes the elimination response from the server and the original hashing context to produce the final hash result.
    * This involves unblinding the evaluated element from the server and applying the finalization step as defined in RFC 9497.
-   * @param eliminationResponse the response from the OPRF server manager after processing the elimination request.
+   * @param evaluatedResponse the response from the OPRF server manager after processing the elimination request.
    * @param clientHashingContext the original context that was used to generate the elimination request, which contains the necessary information for finalizing the hash.
    * @return a string that represents the final hash result.
    */
-  public HashResult hashResult(final EliminationResponse eliminationResponse, final ClientHashingContext clientHashingContext) {
-    final byte[] evaluatedElement = Hex.decode(eliminationResponse.evaluatedPoint());
+  public HashResult hashResult(final EvaluatedResponse evaluatedResponse, final ClientHashingContext clientHashingContext) {
+    final byte[] evaluatedElement = Hex.decode(evaluatedResponse.evaluatedPoint());
     final byte[] finalHash = suite.finalize(clientHashingContext.input(), clientHashingContext.blindingFactor(), evaluatedElement);
-    return new HashResult(finalHash, eliminationResponse.processIdentifier());
+    return new HashResult(finalHash, evaluatedResponse.processIdentifier());
   }
 
 }
