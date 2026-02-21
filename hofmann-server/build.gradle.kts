@@ -9,7 +9,7 @@ repositories {
 dependencies {
     api(project(":oprf"))
     api(project(":opaque"))
-    api(project(":hofmann-common"))
+    api(project(":hofmann-model"))
 
     compileOnly(libs.jakarta.rs.api)
     implementation(libs.auth0.jwt)

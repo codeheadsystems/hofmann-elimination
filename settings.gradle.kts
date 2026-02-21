@@ -14,7 +14,7 @@ rootProject.name = "hofmann-elimination"
 include("hash-to-curve")
 include("oprf")
 include("opaque")
-include("hofmann-common")
+include("hofmann-model")
 include("hofmann-client")
 include("hofmann-server")
 include("hofmann-dropwizard")

@@ -9,7 +9,7 @@ repositories {
 dependencies {
     api(project(":oprf"))
     api(project(":opaque"))
-    api(project(":hofmann-common"))
+    api(project(":hofmann-model"))
 
     implementation(libs.javax.inject)
     implementation(libs.bundles.core)
