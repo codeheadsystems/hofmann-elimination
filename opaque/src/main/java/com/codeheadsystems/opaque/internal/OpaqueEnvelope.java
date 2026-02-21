@@ -1,8 +1,8 @@
 package com.codeheadsystems.opaque.internal;
 
 import com.codeheadsystems.ellipticcurve.curve.OctetStringUtils;
-import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
+import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.model.CleartextCredentials;
 import com.codeheadsystems.opaque.model.Envelope;
 import java.math.BigInteger;
@@ -22,8 +22,8 @@ public class OpaqueEnvelope {
    * Stores credentials into an envelope.
    * Per RFC 9807 §3.3.1.1.
    *
-   * @param config        OPAQUE configuration (provides cipher suite and size constants)
-   * @param randomizedPwd randomized password from OPRF
+   * @param config          OPAQUE configuration (provides cipher suite and size constants)
+   * @param randomizedPwd   randomized password from OPRF
    * @param serverPublicKey server's public key bytes
    * @param serverIdentity  server identity bytes (may be null)
    * @param clientIdentity  client identity bytes (may be null)

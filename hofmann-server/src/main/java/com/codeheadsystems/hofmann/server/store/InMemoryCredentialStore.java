@@ -16,21 +16,6 @@ import org.slf4j.LoggerFactory;
 public class InMemoryCredentialStore implements CredentialStore {
 
   private static final Logger log = LoggerFactory.getLogger(InMemoryCredentialStore.class);
-
-  // Wrapper so byte[] can be used as a map key with correct equals/hashCode.
-  private record ByteKey(byte[] bytes) {
-
-    @Override
-    public boolean equals(Object o) {
-      return o instanceof ByteKey other && Arrays.equals(bytes, other.bytes);
-    }
-
-    @Override
-    public int hashCode() {
-      return Arrays.hashCode(bytes);
-    }
-  }
-
   private final ConcurrentHashMap<ByteKey, RegistrationRecord> store = new ConcurrentHashMap<>();
 
   public InMemoryCredentialStore() {
@@ -52,5 +37,19 @@ public class InMemoryCredentialStore implements CredentialStore {
   @Override
   public void delete(byte[] credentialIdentifier) {
     store.remove(new ByteKey(credentialIdentifier));
+  }
+
+  // Wrapper so byte[] can be used as a map key with correct equals/hashCode.
+  private record ByteKey(byte[] bytes) {
+
+    @Override
+    public boolean equals(Object o) {
+      return o instanceof ByteKey(byte[] bytes1) && Arrays.equals(bytes, bytes1);
+    }
+
+    @Override
+    public int hashCode() {
+      return Arrays.hashCode(bytes);
+    }
   }
 }

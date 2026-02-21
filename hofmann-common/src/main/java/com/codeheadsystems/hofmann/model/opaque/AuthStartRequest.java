@@ -22,11 +22,11 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * <p>
  * Used by: {@code POST /opaque/auth/start}
  *
- * @param credentialIdentifierBase64  base64-encoded credential identifier used by the server
- *                                    to look up the stored registration record
- * @param blindedElementBase64        base64-encoded blinded OPRF input element (compressed SEC1 EC point)
- * @param clientNonceBase64           base64-encoded 32-byte random client nonce for this AKE session
- * @param clientAkePublicKeyBase64    base64-encoded ephemeral client AKE public key (compressed SEC1 EC point)
+ * @param credentialIdentifierBase64 base64-encoded credential identifier used by the server
+ *                                   to look up the stored registration record
+ * @param blindedElementBase64       base64-encoded blinded OPRF input element (compressed SEC1 EC point)
+ * @param clientNonceBase64          base64-encoded 32-byte random client nonce for this AKE session
+ * @param clientAkePublicKeyBase64   base64-encoded ephemeral client AKE public key (compressed SEC1 EC point)
  */
 public record AuthStartRequest(
     @JsonProperty("credentialIdentifier") String credentialIdentifierBase64,

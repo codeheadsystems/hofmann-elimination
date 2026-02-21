@@ -32,6 +32,13 @@ public class ExpandMessageXmdTest {
 
   // --- RFC 9380 Appendix K.1: standard DST, len_in_bytes = 32 ---
 
+  private static byte[] expand(String msg, String dst, int lenInBytes) {
+    return ExpandMessageXmd.forSha256().expand(
+        msg.getBytes(StandardCharsets.UTF_8),
+        dst.getBytes(StandardCharsets.UTF_8),
+        lenInBytes);
+  }
+
   @Test
   void expandXmd_standardDst_emptyMsg_32bytes() {
     byte[] result = expand("", STANDARD_DST, 32);
@@ -62,6 +69,8 @@ public class ExpandMessageXmdTest {
         .isEqualTo("b23a1d2b4d97b2ef7785562a7e8bac7eed54ed6e97e29aa51bfe3f12ddad1ff9");
   }
 
+  // --- RFC 9380 Appendix K.1: standard DST, len_in_bytes = 128 ---
+
   @Test
   void expandXmd_standardDst_a512_32bytes() {
     StringBuilder sb = new StringBuilder("a512_");
@@ -70,8 +79,6 @@ public class ExpandMessageXmdTest {
     assertThat(Hex.toHexString(result))
         .isEqualTo("4623227bcc01293b8c130bf771da8c298dede7383243dc0993d2d94823958c4c");
   }
-
-  // --- RFC 9380 Appendix K.1: standard DST, len_in_bytes = 128 ---
 
   @Test
   void expandXmd_standardDst_emptyMsg_128bytes() {
@@ -115,6 +122,8 @@ public class ExpandMessageXmdTest {
                 + "fa7fabb3ea7d520ee603e0c25bcaf0b9a5e92ec6a1fe4e0391d1cdbce8c68a");
   }
 
+  // --- RFC 9380 Appendix K.2: long DST (256 bytes), len_in_bytes = 32 ---
+
   @Test
   void expandXmd_standardDst_a512_128bytes() {
     StringBuilder sb = new StringBuilder("a512_");
@@ -126,8 +135,6 @@ public class ExpandMessageXmdTest {
                 + "28896a4510864370c207f99bd4a608ea121700ef01ed879745ee3e4ceef777eda6d9e5e38b90c86ea6fb0b36504ba4a45"
                 + "d22e86f6db5dd43d98a294bebb9125d5b794e9d2a81181066eb954966a487");
   }
-
-  // --- RFC 9380 Appendix K.2: long DST (256 bytes), len_in_bytes = 32 ---
 
   @Test
   void expandXmd_longDst_emptyMsg_32bytes() {
@@ -159,6 +166,8 @@ public class ExpandMessageXmdTest {
         .isEqualTo("01b637612bb18e840028be900a833a74414140dde0c4754c198532c3a0ba42bc");
   }
 
+  // --- RFC 9380 Appendix K.2: long DST (256 bytes), len_in_bytes = 128 ---
+
   @Test
   void expandXmd_longDst_a512_32bytes() {
     StringBuilder sb = new StringBuilder("a512_");
@@ -167,8 +176,6 @@ public class ExpandMessageXmdTest {
     assertThat(Hex.toHexString(result))
         .isEqualTo("20cce7033cabc5460743180be6fa8aac5a103f56d481cf369a8accc0c374431b");
   }
-
-  // --- RFC 9380 Appendix K.2: long DST (256 bytes), len_in_bytes = 128 ---
 
   @Test
   void expandXmd_longDst_emptyMsg_128bytes() {
@@ -212,6 +219,8 @@ public class ExpandMessageXmdTest {
                 + "b7ccf40d41d1751a04ca0356548bc6e703fca02ab521b505e8e45600508d32");
   }
 
+  // ── Input validation ─────────────────────────────────────────────────────
+
   @Test
   void expandXmd_longDst_a512_128bytes() {
     StringBuilder sb = new StringBuilder("a512_");
@@ -223,8 +232,6 @@ public class ExpandMessageXmdTest {
                 + "424e83280fed3d10cffb2f8431f14e7a23f4c68819d40617589e4c41169d0b56e0e3535be1fd71fbb08bb70c5b5ffed95"
                 + "3d6c14bf7618b35fc1f4c4b30538236b4b08c9fbf90462447a8ada60be495");
   }
-
-  // ── Input validation ─────────────────────────────────────────────────────
 
   @Test
   void expandRejectsZeroLenInBytes() {
@@ -254,12 +261,5 @@ public class ExpandMessageXmdTest {
     assertThatThrownBy(() -> expand("msg", STANDARD_DST, 8161))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("lenInBytes too large");
-  }
-
-  private static byte[] expand(String msg, String dst, int lenInBytes) {
-    return ExpandMessageXmd.forSha256().expand(
-        msg.getBytes(StandardCharsets.UTF_8),
-        dst.getBytes(StandardCharsets.UTF_8),
-        lenInBytes);
   }
 }

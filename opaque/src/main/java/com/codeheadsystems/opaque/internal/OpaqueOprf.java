@@ -17,7 +17,7 @@ public class OpaqueOprf {
   /**
    * Client blind: maps password to a group element and applies a random blinding factor.
    *
-   * @param suite  cipher suite (determines hash-to-group and DST)
+   * @param suite    cipher suite (determines hash-to-group and DST)
    * @param password the client's password
    * @param blind    a randomly-chosen scalar (caller provides for deterministic testing)
    * @return blindedElement as a serialized group element

@@ -19,22 +19,6 @@ public record OpaqueConfig(
 
   // Nonce length — suite-independent (always 32)
   public static final int Nn = 32;
-
-  // Suite-dependent size accessors delegating to the cipher suite
-  public int Nm()  { return cipherSuite.Nm(); }
-  public int Nh()  { return cipherSuite.Nh(); }
-  public int Nx()  { return cipherSuite.Nx(); }
-  public int Npk() { return cipherSuite.Npk(); }
-  public int Nsk() { return cipherSuite.Nsk(); }
-  public int Noe() { return cipherSuite.Noe(); }
-  public int Nok() { return cipherSuite.Nok(); }
-
-  /** Envelope size = Nn + Nm. */
-  public int envelopeSize() { return cipherSuite.envelopeSize(); }
-
-  /** Masked response size = Npk + envelopeSize. */
-  public int maskedResponseSize() { return cipherSuite.maskedResponseSize(); }
-
   /**
    * Default configuration for production use with Argon2id, P256-SHA256 suite.
    * Context is the string "OPAQUE-3DH".
@@ -83,6 +67,49 @@ public record OpaqueConfig(
   public static OpaqueConfig withArgon2id(OpaqueCipherSuite suite, byte[] context,
                                           int memory, int iterations, int parallelism) {
     return new OpaqueConfig(suite, memory, iterations, parallelism, context, new Argon2idKsf());
+  }
+
+  // Suite-dependent size accessors delegating to the cipher suite
+  public int Nm() {
+    return cipherSuite.Nm();
+  }
+
+  public int Nh() {
+    return cipherSuite.Nh();
+  }
+
+  public int Nx() {
+    return cipherSuite.Nx();
+  }
+
+  public int Npk() {
+    return cipherSuite.Npk();
+  }
+
+  public int Nsk() {
+    return cipherSuite.Nsk();
+  }
+
+  public int Noe() {
+    return cipherSuite.Noe();
+  }
+
+  public int Nok() {
+    return cipherSuite.Nok();
+  }
+
+  /**
+   * Envelope size = Nn + Nm.
+   */
+  public int envelopeSize() {
+    return cipherSuite.envelopeSize();
+  }
+
+  /**
+   * Masked response size = Npk + envelopeSize.
+   */
+  public int maskedResponseSize() {
+    return cipherSuite.maskedResponseSize();
   }
 
   /**

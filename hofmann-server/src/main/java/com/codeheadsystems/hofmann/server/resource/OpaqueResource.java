@@ -116,6 +116,23 @@ public class OpaqueResource {
   // ── Registration ─────────────────────────────────────────────────────────
 
   /**
+   * Decodes base64 input, returning HTTP 400 for malformed data instead of leaking
+   * an IllegalArgumentException stack trace that reveals internal message structure.
+   */
+  private static byte[] decodeBase64(String encoded, String fieldName) {
+    if (encoded == null || encoded.isBlank()) {
+      throw new WebApplicationException("Missing required field: " + fieldName,
+          Response.Status.BAD_REQUEST);
+    }
+    try {
+      return B64D.decode(encoded);
+    } catch (IllegalArgumentException e) {
+      throw new WebApplicationException("Invalid base64 in field: " + fieldName,
+          Response.Status.BAD_REQUEST);
+    }
+  }
+
+  /**
    * Phase 1 of registration: client sends a blinded password element; server evaluates the OPRF
    * and returns the evaluated element along with the server's public key.
    */
@@ -154,6 +171,8 @@ public class OpaqueResource {
     return Response.noContent().build();
   }
 
+  // ── Authentication ────────────────────────────────────────────────────────
+
   /**
    * Deletes a previously registered credential.
    */
@@ -165,8 +184,6 @@ public class OpaqueResource {
     credentialStore.delete(credentialIdentifier);
     return Response.noContent().build();
   }
-
-  // ── Authentication ────────────────────────────────────────────────────────
 
   /**
    * AKE phase 1: client sends KE1; server generates and returns KE2.
@@ -234,23 +251,6 @@ public class OpaqueResource {
     } catch (SecurityException e) {
       log.debug("KE3 verification failed: {}", e.getMessage());
       throw new WebApplicationException(Response.Status.UNAUTHORIZED);
-    }
-  }
-
-  /**
-   * Decodes base64 input, returning HTTP 400 for malformed data instead of leaking
-   * an IllegalArgumentException stack trace that reveals internal message structure.
-   */
-  private static byte[] decodeBase64(String encoded, String fieldName) {
-    if (encoded == null || encoded.isBlank()) {
-      throw new WebApplicationException("Missing required field: " + fieldName,
-          Response.Status.BAD_REQUEST);
-    }
-    try {
-      return B64D.decode(encoded);
-    } catch (IllegalArgumentException e) {
-      throw new WebApplicationException("Invalid base64 in field: " + fieldName,
-          Response.Status.BAD_REQUEST);
     }
   }
 

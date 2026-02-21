@@ -12,7 +12,6 @@ import com.codeheadsystems.hofmann.client.exceptions.OpaqueAccessorException;
 import com.codeheadsystems.hofmann.client.model.ServerConnectionInfo;
 import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
 import com.codeheadsystems.hofmann.model.opaque.AuthFinishRequest;
-import com.codeheadsystems.hofmann.model.opaque.AuthFinishResponse;
 import com.codeheadsystems.hofmann.model.opaque.AuthStartRequest;
 import com.codeheadsystems.hofmann.model.opaque.AuthStartResponse;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartRequest;

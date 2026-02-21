@@ -56,7 +56,9 @@ public class OprfCipherSuite {
     this.random = new SecureRandom();
   }
 
-  /** Copy constructor used by {@link #withRandom(SecureRandom)}. */
+  /**
+   * Copy constructor used by {@link #withRandom(SecureRandom)}.
+   */
   private OprfCipherSuite(OprfCipherSuite source, SecureRandom random) {
     this.identifier = source.identifier;
     this.contextString = source.contextString;
@@ -67,18 +69,6 @@ public class OprfCipherSuite {
     this.hashAlgorithm = source.hashAlgorithm;
     this.hashOutputLength = source.hashOutputLength;
     this.random = random;
-  }
-
-  /**
-   * Returns a new {@code OprfCipherSuite} identical to this one but using the given
-   * {@link SecureRandom} for all scalar generation. Use this to inject a custom or
-   * deterministic random source (e.g. in tests or DI frameworks).
-   *
-   * @param random the {@link SecureRandom} to use
-   * @return a new suite with the provided random source
-   */
-  public OprfCipherSuite withRandom(SecureRandom random) {
-    return new OprfCipherSuite(this, random);
   }
 
   private static byte[] buildContextString(String suffix) {
@@ -117,17 +107,55 @@ public class OprfCipherSuite {
     );
   }
 
+  /**
+   * Returns a new {@code OprfCipherSuite} identical to this one but using the given
+   * {@link SecureRandom} for all scalar generation. Use this to inject a custom or
+   * deterministic random source (e.g. in tests or DI frameworks).
+   *
+   * @param random the {@link SecureRandom} to use
+   * @return a new suite with the provided random source
+   */
+  public OprfCipherSuite withRandom(SecureRandom random) {
+    return new OprfCipherSuite(this, random);
+  }
+
   // ─── Accessors ──────────────────────────────────────────────────────────────
 
-  public String identifier() { return identifier; }
-  public byte[] contextString() { return contextString; }
-  public byte[] hashToGroupDst() { return hashToGroupDst; }
-  public byte[] hashToScalarDst() { return hashToScalarDst; }
-  public byte[] deriveKeyPairDst() { return deriveKeyPairDst; }
-  public GroupSpec groupSpec() { return groupSpec; }
-  public String hashAlgorithm() { return hashAlgorithm; }
-  public int hashOutputLength() { return hashOutputLength; }
-  public int elementSize() { return groupSpec.elementSize(); }
+  public String identifier() {
+    return identifier;
+  }
+
+  public byte[] contextString() {
+    return contextString;
+  }
+
+  public byte[] hashToGroupDst() {
+    return hashToGroupDst;
+  }
+
+  public byte[] hashToScalarDst() {
+    return hashToScalarDst;
+  }
+
+  public byte[] deriveKeyPairDst() {
+    return deriveKeyPairDst;
+  }
+
+  public GroupSpec groupSpec() {
+    return groupSpec;
+  }
+
+  public String hashAlgorithm() {
+    return hashAlgorithm;
+  }
+
+  public int hashOutputLength() {
+    return hashOutputLength;
+  }
+
+  public int elementSize() {
+    return groupSpec.elementSize();
+  }
 
   // ─── Crypto operations ───────────────────────────────────────────────────────
 

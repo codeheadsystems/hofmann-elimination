@@ -1,10 +1,13 @@
 package com.codeheadsystems.ellipticcurve.rfc9380;
+
 import static org.assertj.core.api.Assertions.assertThat;
+
 import com.codeheadsystems.ellipticcurve.curve.Curve;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import org.bouncycastle.math.ec.ECPoint;
 import org.junit.jupiter.api.Test;
+
 /**
  * Debug tests to verify each stage of the RFC 9380 hash-to-curve pipeline for P-256.
  * Uses intermediate test vectors from RFC 9380 Appendix J.2.1.
@@ -22,6 +25,7 @@ public class P256ComponentTest {
   // Final point P = Q0 + Q1
   private static final BigInteger EXPECTED_P_X = new BigInteger("2c15230b26dbc6fc9a37051158c95b79656e17a1a920b11394ca91c44247d3e4", 16);
   private static final BigInteger EXPECTED_P_Y = new BigInteger("8a7a74985cc5c776cdfe4b1f19884970453912e9d31528c060be9ab5c43e8415", 16);
+
   @Test
   void stage1_hashToField() {
     HashToField h2f = HashToField.forP256();
@@ -35,6 +39,7 @@ public class P256ComponentTest {
     assertThat(u[0]).as("u[0]").isEqualTo(EXPECTED_U0);
     assertThat(u[1]).as("u[1]").isEqualTo(EXPECTED_U1);
   }
+
   @Test
   void stage2_simplifiedSWU() {
     SimplifiedSWU swu = SimplifiedSWU.forP256();
@@ -50,6 +55,7 @@ public class P256ComponentTest {
     assertThat(swu1[0]).as("Q1.x").isEqualTo(EXPECTED_Q1_X);
     assertThat(swu1[1]).as("Q1.y").isEqualTo(EXPECTED_Q1_Y);
   }
+
   @Test
   void stage3_pointAddition() {
     SimplifiedSWU swu = SimplifiedSWU.forP256();
@@ -64,6 +70,7 @@ public class P256ComponentTest {
     assertThat(P.getXCoord().toBigInteger()).as("P.x").isEqualTo(EXPECTED_P_X);
     assertThat(P.getYCoord().toBigInteger()).as("P.y").isEqualTo(EXPECTED_P_Y);
   }
+
   @Test
   void stage4_fullPipeline() {
     HashToCurve h2c = HashToCurve.forP256();

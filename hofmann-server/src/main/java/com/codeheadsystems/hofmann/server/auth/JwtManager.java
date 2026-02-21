@@ -71,15 +71,6 @@ public class JwtManager {
   }
 
   /**
-   * Result of a successful JWT verification.
-   *
-   * @param subject the JWT subject (credential identifier base64)
-   * @param jti     the JWT ID
-   */
-  public record VerifyResult(String subject, String jti) {
-  }
-
-  /**
    * Verifies a JWT and returns the subject and JTI if valid and not revoked.
    *
    * @param token JWT string
@@ -109,5 +100,14 @@ public class JwtManager {
    */
   public void revoke(String jti) {
     sessionStore.revoke(jti);
+  }
+
+  /**
+   * Result of a successful JWT verification.
+   *
+   * @param subject the JWT subject (credential identifier base64)
+   * @param jti     the JWT ID
+   */
+  public record VerifyResult(String subject, String jti) {
   }
 }

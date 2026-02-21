@@ -3,7 +3,6 @@ package com.codeheadsystems.ellipticcurve.rfc9380;
 import com.codeheadsystems.ellipticcurve.curve.Curve;
 import java.math.BigInteger;
 import org.bouncycastle.math.ec.ECPoint;
-import org.bouncycastle.util.encoders.Hex;
 
 /**
  * {@link GroupSpec} implementation for Weierstrass elliptic curves (P-256, P-384, P-521, secp256k1).
@@ -16,18 +15,60 @@ public record WeierstrassGroupSpecImpl(
     HashToField hashToScalarFieldImpl
 ) implements GroupSpec {
 
-  /** P-256 / SHA-256 instance (RFC 9497 §4.1). */
+  /**
+   * P-256 / SHA-256 instance (RFC 9497 §4.1).
+   */
   public static final WeierstrassGroupSpecImpl P256_SHA256 = buildP256();
 
-  /** P-384 / SHA-384 instance (RFC 9497 §4.2). */
+  /**
+   * P-384 / SHA-384 instance (RFC 9497 §4.2).
+   */
   public static final WeierstrassGroupSpecImpl P384_SHA384 = buildP384();
 
-  /** P-521 / SHA-512 instance (RFC 9497 §4.3). */
+  /**
+   * P-521 / SHA-512 instance (RFC 9497 §4.3).
+   */
   public static final WeierstrassGroupSpecImpl P521_SHA512 = buildP521();
 
-  /** secp256k1 instance (used in RFC 9380 tests). */
+  /**
+   * secp256k1 instance (used in RFC 9380 tests).
+   */
   public static WeierstrassGroupSpecImpl forSecp256k1() {
     return buildSecp256k1();
+  }
+
+  private static WeierstrassGroupSpecImpl buildP256() {
+    return new WeierstrassGroupSpecImpl(
+        Curve.P256_CURVE,
+        HashToCurve.forP256(),
+        HashToField.forP256Scalar()
+    );
+  }
+
+  private static WeierstrassGroupSpecImpl buildP384() {
+    return new WeierstrassGroupSpecImpl(
+        Curve.P384_CURVE,
+        HashToCurve.forP384(),
+        HashToField.forP384Scalar()
+    );
+  }
+
+  private static WeierstrassGroupSpecImpl buildP521() {
+    return new WeierstrassGroupSpecImpl(
+        Curve.P521_CURVE,
+        HashToCurve.forP521(),
+        HashToField.forP521Scalar()
+    );
+  }
+
+  private static WeierstrassGroupSpecImpl buildSecp256k1() {
+    // secp256k1 is used in RFC 9380 hash-to-curve tests only (not in OPRF).
+    // hashToScalarFieldImpl uses the base field; scalar-field operations are not needed.
+    return new WeierstrassGroupSpecImpl(
+        Curve.SECP256K1_CURVE,
+        HashToCurve.forSecp256k1(),
+        HashToField.forSecp256k1()
+    );
   }
 
   @Override
@@ -51,6 +92,8 @@ public record WeierstrassGroupSpecImpl(
   public BigInteger hashToScalar(byte[] msg, byte[] dst) {
     return hashToScalarFieldImpl.hashToField(msg, dst, 1)[0];
   }
+
+  // ─── Builders ────────────────────────────────────────────────────────────────
 
   @Override
   public byte[] scalarMultiply(BigInteger scalar, byte[] element) {
@@ -85,14 +128,6 @@ public record WeierstrassGroupSpecImpl(
     return padded;
   }
 
-  @Override
-  public ECPoint toEcPoint(String hex) {
-    if (hex == null || hex.isEmpty()) {
-      throw new IllegalArgumentException("Hex string must not be null or empty");
-    }
-    return deserializePoint(Hex.decode(hex));
-  }
-
   /**
    * Deserializes a compressed SEC1 byte array to an EC point.
    * Validates the point is on the curve and not the identity element to prevent
@@ -107,41 +142,5 @@ public record WeierstrassGroupSpecImpl(
       throw new SecurityException("Invalid EC point: not on curve or wrong subgroup");
     }
     return p;
-  }
-
-  // ─── Builders ────────────────────────────────────────────────────────────────
-
-  private static WeierstrassGroupSpecImpl buildP256() {
-    return new WeierstrassGroupSpecImpl(
-        Curve.P256_CURVE,
-        HashToCurve.forP256(),
-        HashToField.forP256Scalar()
-    );
-  }
-
-  private static WeierstrassGroupSpecImpl buildP384() {
-    return new WeierstrassGroupSpecImpl(
-        Curve.P384_CURVE,
-        HashToCurve.forP384(),
-        HashToField.forP384Scalar()
-    );
-  }
-
-  private static WeierstrassGroupSpecImpl buildP521() {
-    return new WeierstrassGroupSpecImpl(
-        Curve.P521_CURVE,
-        HashToCurve.forP521(),
-        HashToField.forP521Scalar()
-    );
-  }
-
-  private static WeierstrassGroupSpecImpl buildSecp256k1() {
-    // secp256k1 is used in RFC 9380 hash-to-curve tests only (not in OPRF).
-    // hashToScalarFieldImpl uses the base field; scalar-field operations are not needed.
-    return new WeierstrassGroupSpecImpl(
-        Curve.SECP256K1_CURVE,
-        HashToCurve.forSecp256k1(),
-        HashToField.forSecp256k1()
-    );
   }
 }

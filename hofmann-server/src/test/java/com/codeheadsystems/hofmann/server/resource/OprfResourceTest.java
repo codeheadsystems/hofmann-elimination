@@ -2,7 +2,6 @@ package com.codeheadsystems.hofmann.server.resource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -31,6 +30,8 @@ class OprfResourceTest {
   private static final String REQUEST_ID = "req-001";
   private static final String PROCESS_ID = "proc-xyz";
   private static final String EVALUATED_POINT = "02fedcba0987654321";
+  @Mock private OprfServerManager oprfServerManager;
+  private OprfResource resource;
 
   @BeforeAll
   static void installRuntimeDelegate() {
@@ -53,10 +54,6 @@ class OprfResourceTest {
   static void removeRuntimeDelegate() {
     RuntimeDelegate.setInstance(null);
   }
-
-  @Mock private OprfServerManager oprfServerManager;
-
-  private OprfResource resource;
 
   @BeforeEach
   void setUp() {

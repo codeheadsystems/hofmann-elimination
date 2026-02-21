@@ -1,8 +1,8 @@
 package com.codeheadsystems.opaque.internal;
 
 import com.codeheadsystems.ellipticcurve.curve.OctetStringUtils;
-import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
+import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.internal.OpaqueEnvelope.RecoverResult;
 import com.codeheadsystems.opaque.internal.OpaqueEnvelope.StoreResult;
 import com.codeheadsystems.opaque.model.ClientRegistrationState;

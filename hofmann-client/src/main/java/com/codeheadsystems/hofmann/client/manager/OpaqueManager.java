@@ -67,9 +67,9 @@ public class OpaqueManager {
    * Runs the full OPAQUE registration flow for the given credential identifier and password.
    * On success the server has stored the registration record and the method returns normally.
    *
-   * @param serverId            the server to register with
+   * @param serverId             the server to register with
    * @param credentialIdentifier raw bytes identifying the credential (e.g. UTF-8 email)
-   * @param password            the password to register
+   * @param password             the password to register
    */
   public void register(final ServerIdentifier serverId,
                        final byte[] credentialIdentifier,
@@ -104,16 +104,16 @@ public class OpaqueManager {
    * Runs the full OPAQUE authentication flow for the given credential identifier and password.
    * Returns the server's auth finish response containing both the session key and a JWT token.
    *
-   * @param serverId            the server to authenticate against
+   * @param serverId             the server to authenticate against
    * @param credentialIdentifier raw bytes identifying the credential (e.g. UTF-8 email)
-   * @param password            the password to authenticate with
+   * @param password             the password to authenticate with
    * @return the server's response containing session key and JWT token
    * @throws SecurityException if the server MAC in KE2 fails verification (wrong password or
    *                           server mismatch), or if the server rejects the client MAC in KE3
    */
   public AuthFinishResponse authenticate(final ServerIdentifier serverId,
-                                          final byte[] credentialIdentifier,
-                                          final byte[] password) {
+                                         final byte[] credentialIdentifier,
+                                         final byte[] password) {
     log.debug("authenticate(serverId={})", serverId);
 
     // Step 1 — generate KE1 and send it to the server
@@ -148,7 +148,7 @@ public class OpaqueManager {
   /**
    * Deletes a previously registered credential from the server.
    *
-   * @param serverId            the server to delete from
+   * @param serverId             the server to delete from
    * @param credentialIdentifier raw bytes identifying the credential to remove
    */
   public void deleteRegistration(final ServerIdentifier serverId,

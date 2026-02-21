@@ -19,33 +19,73 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
   public static final OpaqueCipherSuite P384_SHA384 = new OpaqueCipherSuite(OprfCipherSuite.P384_SHA384);
   public static final OpaqueCipherSuite P521_SHA512 = new OpaqueCipherSuite(OprfCipherSuite.P521_SHA512);
 
-  /** Compressed public key size in bytes (33, 49, or 67). */
-  public int Npk() { return oprfSuite().elementSize(); }
+  /**
+   * Compressed public key size in bytes (33, 49, or 67).
+   */
+  public int Npk() {
+    return oprfSuite().elementSize();
+  }
 
-  /** Scalar (private key) size in bytes (32, 48, or 66). */
-  public int Nsk() { return (oprfSuite().groupSpec().groupOrder().bitLength() + 7) / 8; }
+  /**
+   * Scalar (private key) size in bytes (32, 48, or 66).
+   */
+  public int Nsk() {
+    return (oprfSuite().groupSpec().groupOrder().bitLength() + 7) / 8;
+  }
 
-  /** Hash output length in bytes (32, 48, or 64). */
-  public int Nh()  { return oprfSuite().hashOutputLength(); }
+  /**
+   * Hash output length in bytes (32, 48, or 64).
+   */
+  public int Nh() {
+    return oprfSuite().hashOutputLength();
+  }
 
-  /** MAC output length — equals hash output length. */
-  public int Nm()  { return Nh(); }
+  /**
+   * MAC output length — equals hash output length.
+   */
+  public int Nm() {
+    return Nh();
+  }
 
-  /** HKDF output length — equals hash output length. */
-  public int Nx()  { return Nh(); }
+  /**
+   * HKDF output length — equals hash output length.
+   */
+  public int Nx() {
+    return Nh();
+  }
 
-  /** OPRF evaluated element size — equals compressed public key size. */
-  public int Noe() { return Npk(); }
+  /**
+   * OPRF evaluated element size — equals compressed public key size.
+   */
+  public int Noe() {
+    return Npk();
+  }
 
-  /** OPRF key size — equals scalar size. */
-  public int Nok() { return Nsk(); }
+  /**
+   * OPRF key size — equals scalar size.
+   */
+  public int Nok() {
+    return Nsk();
+  }
 
-  /** Nonce length — always 32, suite-independent. */
-  public int Nn()  { return 32; }
+  /**
+   * Nonce length — always 32, suite-independent.
+   */
+  public int Nn() {
+    return 32;
+  }
 
-  /** Envelope size = Nn + Nm. */
-  public int envelopeSize() { return Nn() + Nm(); }
+  /**
+   * Envelope size = Nn + Nm.
+   */
+  public int envelopeSize() {
+    return Nn() + Nm();
+  }
 
-  /** Masked response size = Npk + envelopeSize. */
-  public int maskedResponseSize() { return Npk() + envelopeSize(); }
+  /**
+   * Masked response size = Npk + envelopeSize.
+   */
+  public int maskedResponseSize() {
+    return Npk() + envelopeSize();
+  }
 }

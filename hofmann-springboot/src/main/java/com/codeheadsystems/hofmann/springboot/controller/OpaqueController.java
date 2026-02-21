@@ -66,7 +66,7 @@ public class OpaqueController {
       });
 
   public OpaqueController(Server server, OpaqueConfig config, CredentialStore credentialStore,
-                           JwtManager jwtManager) {
+                          JwtManager jwtManager) {
     this.server = server;
     this.config = config;
     this.credentialStore = credentialStore;
@@ -76,6 +76,17 @@ public class OpaqueController {
           Instant cutoff = Instant.now().minusSeconds(SESSION_TTL_SECONDS);
           pendingSessions.entrySet().removeIf(e -> e.getValue().createdAt().isBefore(cutoff));
         }, SESSION_TTL_SECONDS, SESSION_TTL_SECONDS / 4, TimeUnit.SECONDS);
+  }
+
+  private static byte[] decodeBase64(String encoded, String fieldName) {
+    if (encoded == null || encoded.isBlank()) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing required field: " + fieldName);
+    }
+    try {
+      return B64D.decode(encoded);
+    } catch (IllegalArgumentException e) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid base64 in field: " + fieldName);
+    }
   }
 
   @PostMapping("/registration/start")
@@ -169,17 +180,6 @@ public class OpaqueController {
     } catch (SecurityException e) {
       log.debug("KE3 verification failed: {}", e.getMessage());
       throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
-    }
-  }
-
-  private static byte[] decodeBase64(String encoded, String fieldName) {
-    if (encoded == null || encoded.isBlank()) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing required field: " + fieldName);
-    }
-    try {
-      return B64D.decode(encoded);
-    } catch (IllegalArgumentException e) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid base64 in field: " + fieldName);
     }
   }
 

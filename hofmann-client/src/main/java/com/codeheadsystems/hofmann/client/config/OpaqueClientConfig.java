@@ -1,7 +1,7 @@
 package com.codeheadsystems.hofmann.client.config;
 
-import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
+import com.codeheadsystems.opaque.config.OpaqueConfig;
 import java.nio.charset.StandardCharsets;
 
 /**

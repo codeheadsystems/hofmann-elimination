@@ -3,12 +3,9 @@ package com.codeheadsystems.opaque;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
+import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.internal.OpaqueCrypto;
-import java.util.stream.Stream;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.MethodSource;
 import com.codeheadsystems.opaque.model.AuthResult;
 import com.codeheadsystems.opaque.model.ClientAuthState;
 import com.codeheadsystems.opaque.model.ClientRegistrationState;
@@ -20,8 +17,11 @@ import com.codeheadsystems.opaque.model.RegistrationResponse;
 import com.codeheadsystems.opaque.model.ServerAuthState;
 import com.codeheadsystems.opaque.model.ServerKE2Result;
 import java.nio.charset.StandardCharsets;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * Integration tests: full registration + authentication round trips.
@@ -56,6 +56,14 @@ class OpaqueRoundTripTest {
     return out;
   }
 
+  static Stream<OpaqueCipherSuite> allSuites() {
+    return Stream.of(
+        OpaqueCipherSuite.P256_SHA256,
+        OpaqueCipherSuite.P384_SHA384,
+        OpaqueCipherSuite.P521_SHA512
+    );
+  }
+
   @BeforeEach
   void setUp() {
     client = new Client(CONFIG);
@@ -66,13 +74,13 @@ class OpaqueRoundTripTest {
     return register(password, null, null);
   }
 
+  // ─── Tests ────────────────────────────────────────────────────────────────
+
   private RegistrationRecord register(byte[] password, byte[] serverIdentity, byte[] clientIdentity) {
     ClientRegistrationState regState = client.createRegistrationRequest(password);
     RegistrationResponse response = server.createRegistrationResponse(regState.request(), CREDENTIAL_IDENTIFIER);
     return client.finalizeRegistration(regState, response, serverIdentity, clientIdentity);
   }
-
-  // ─── Tests ────────────────────────────────────────────────────────────────
 
   private AuthResult authenticate(RegistrationRecord record, byte[] password,
                                   byte[] serverIdentity, byte[] clientIdentity) {
@@ -282,6 +290,8 @@ class OpaqueRoundTripTest {
     assertThat(fakeUserEx.getMessage()).isEqualTo(wrongPwdEx.getMessage());
   }
 
+  // ─── Additional coverage ──────────────────────────────────────────────────
+
   @Test
   void exportKeyIsReproducibleAcrossSessions() {
     // The export_key is derived from randomizedPwd (deterministic given correct password)
@@ -295,8 +305,6 @@ class OpaqueRoundTripTest {
     // Session keys must still be fresh each time
     assertThat(result1.sessionKey()).isNotEqualTo(result2.sessionKey());
   }
-
-  // ─── Additional coverage ──────────────────────────────────────────────────
 
   @Test
   void multipleIndependentUsers() {
@@ -479,6 +487,8 @@ class OpaqueRoundTripTest {
     assertThat(result.sessionKey()).isEqualTo(serverKey);
   }
 
+  // ─── Additional tests ────────────────────────────────────────────────────
+
   @Test
   void differentOprfSeedsCannotCrossAuthenticate() {
     // Two servers with identical long-term AKE keys but different OPRF seeds derive different
@@ -513,8 +523,6 @@ class OpaqueRoundTripTest {
     }).isInstanceOf(SecurityException.class)
         .hasMessageContaining("Authentication failed");
   }
-
-  // ─── Additional tests ────────────────────────────────────────────────────
 
   @Test
   void registrationRequestsAreUnique() {
@@ -680,6 +688,8 @@ class OpaqueRoundTripTest {
     assertThat(result.exportKey()).isNotNull().hasSize(32);
   }
 
+  // ─── Helpers ─────────────────────────────────────────────────────────────
+
   @Test
   void serverFinishCalledTwiceReturnsSameKey() {
     // serverFinish is a stateless MAC-verification step; calling it twice with the
@@ -696,7 +706,7 @@ class OpaqueRoundTripTest {
     assertThat(sessionKey1).isEqualTo(sessionKey2);
   }
 
-  // ─── Helpers ─────────────────────────────────────────────────────────────
+  // ─── Parameterized multi-suite round-trip tests ────────────────────────────
 
   @Test
   void registrationResponseContainsServerPublicKey() {
@@ -706,16 +716,6 @@ class OpaqueRoundTripTest {
     RegistrationResponse response = server.createRegistrationResponse(regState.request(), CREDENTIAL_IDENTIFIER);
 
     assertThat(response.serverPublicKey()).isEqualTo(server.getServerPublicKey());
-  }
-
-  // ─── Parameterized multi-suite round-trip tests ────────────────────────────
-
-  static Stream<OpaqueCipherSuite> allSuites() {
-    return Stream.of(
-        OpaqueCipherSuite.P256_SHA256,
-        OpaqueCipherSuite.P384_SHA384,
-        OpaqueCipherSuite.P521_SHA512
-    );
   }
 
   @ParameterizedTest(name = "fullRoundTrip_{0}")

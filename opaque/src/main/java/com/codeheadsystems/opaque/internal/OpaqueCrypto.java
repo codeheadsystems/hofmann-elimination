@@ -103,12 +103,6 @@ public class OpaqueCrypto {
   }
 
   /**
-   * A derived AKE key pair.
-   */
-  public record AkeKeyPair(BigInteger privateKey, byte[] publicKeyBytes) {
-  }
-
-  /**
    * Derives an AKE key pair from a seed using the suite's deriveKeyPair.
    */
   public static AkeKeyPair deriveAkeKeyPair(OpaqueCipherSuite suite, byte[] seed) {
@@ -118,8 +112,6 @@ public class OpaqueCrypto {
     return new AkeKeyPair(sk, pkBytes);
   }
 
-  // ─── Suite-independent utilities ─────────────────────────────────────────────
-
   /**
    * Generates a random byte array of the given length.
    */
@@ -128,6 +120,8 @@ public class OpaqueCrypto {
     RANDOM.nextBytes(out);
     return out;
   }
+
+  // ─── Suite-independent utilities ─────────────────────────────────────────────
 
   /**
    * Serializes an EC point to compressed SEC1.
@@ -155,5 +149,11 @@ public class OpaqueCrypto {
       out[i] = (byte) (a[i] ^ b[i]);
     }
     return out;
+  }
+
+  /**
+   * A derived AKE key pair.
+   */
+  public record AkeKeyPair(BigInteger privateKey, byte[] publicKeyBytes) {
   }
 }

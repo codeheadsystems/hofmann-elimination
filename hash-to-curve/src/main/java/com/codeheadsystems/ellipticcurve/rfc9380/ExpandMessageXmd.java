@@ -28,17 +28,23 @@ public class ExpandMessageXmd {
     this.rInBytes = rInBytes;
   }
 
-  /** SHA-256: bInBytes=32, rInBytes=64. */
+  /**
+   * SHA-256: bInBytes=32, rInBytes=64.
+   */
   public static ExpandMessageXmd forSha256() {
     return new ExpandMessageXmd("SHA-256", 32, 64);
   }
 
-  /** SHA-384: bInBytes=48, rInBytes=128 (SHA-384 uses the same 1024-bit block as SHA-512). */
+  /**
+   * SHA-384: bInBytes=48, rInBytes=128 (SHA-384 uses the same 1024-bit block as SHA-512).
+   */
   public static ExpandMessageXmd forSha384() {
     return new ExpandMessageXmd("SHA-384", 48, 128);
   }
 
-  /** SHA-512: bInBytes=64, rInBytes=128. */
+  /**
+   * SHA-512: bInBytes=64, rInBytes=128.
+   */
   public static ExpandMessageXmd forSha512() {
     return new ExpandMessageXmd("SHA-512", 64, 128);
   }

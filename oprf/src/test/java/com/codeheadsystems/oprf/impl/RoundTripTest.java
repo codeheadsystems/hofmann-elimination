@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.codeheadsystems.oprf.manager.OprfClientManager;
 import com.codeheadsystems.oprf.manager.OprfServerManager;
-import com.codeheadsystems.oprf.model.ClientHashingContext;
 import com.codeheadsystems.oprf.model.BlindedRequest;
+import com.codeheadsystems.oprf.model.ClientHashingContext;
 import com.codeheadsystems.oprf.model.EvaluatedResponse;
 import com.codeheadsystems.oprf.model.HashResult;
 import com.codeheadsystems.oprf.model.ServerProcessorDetail;
@@ -56,8 +56,8 @@ public class RoundTripTest {
   @Test
   void testRoundTrip() {
     OprfServerManager oprfServerManager = oprfServerManager(DEFAULT_SUITE);
-    OprfClientManager alice = new OprfClientManager();
-    OprfClientManager bob = new OprfClientManager();
+    OprfClientManager alice = new OprfClientManager(DEFAULT_SUITE);
+    OprfClientManager bob = new OprfClientManager(DEFAULT_SUITE);
 
     String aliceHash = convertToIdentityKey(alice, oprfServerManager, TEST_DATA);
     String bobHash = convertToIdentityKey(bob, oprfServerManager, TEST_DATA);
@@ -74,7 +74,7 @@ public class RoundTripTest {
   void testDifferentServersHaveDifferentResults() {
     OprfServerManager oprfServerManager1 = oprfServerManager(DEFAULT_SUITE);
     OprfServerManager oprfServerManager2 = oprfServerManager(DEFAULT_SUITE);
-    OprfClientManager alice = new OprfClientManager();
+    OprfClientManager alice = new OprfClientManager(DEFAULT_SUITE);
 
     String hash1 = convertToIdentityKey(alice, oprfServerManager1, TEST_DATA);
     String hash2 = convertToIdentityKey(alice, oprfServerManager2, TEST_DATA);

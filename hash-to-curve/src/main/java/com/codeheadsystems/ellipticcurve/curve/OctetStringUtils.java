@@ -5,7 +5,8 @@ package com.codeheadsystems.ellipticcurve.curve;
  */
 public class OctetStringUtils {
 
-  private OctetStringUtils() {}
+  private OctetStringUtils() {
+  }
 
   /**
    * Integer to Octet String Primitive (I2OSP) from RFC 8017.

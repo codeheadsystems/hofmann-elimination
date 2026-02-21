@@ -35,14 +35,11 @@ class OpaqueManagerTest {
   private static final ServerIdentifier SERVER_ID = new ServerIdentifier("test-server");
   private static final byte[] CREDENTIAL_ID = "alice@example.com".getBytes(StandardCharsets.UTF_8);
   private static final byte[] PASSWORD = "correct-horse-battery-staple".getBytes(StandardCharsets.UTF_8);
-
-  @Mock private OpaqueAccessor accessor;
-
-  private OpaqueManager manager;
-
   // A real opaque Client is used via OpaqueManager so we can exercise the full crypto path.
   // We use the identity KSF and a fixed context so the test is deterministic (no Argon2 cost).
   private static final OpaqueClientConfig CONFIG = OpaqueClientConfig.forTesting("opaque-manager-test");
+  @Mock private OpaqueAccessor accessor;
+  private OpaqueManager manager;
 
   @BeforeEach
   void setUp() {
