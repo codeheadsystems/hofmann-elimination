@@ -27,7 +27,7 @@ public class RoundTripTest {
 
   @Test
   void testRoundTrip() {
-    Server server = new ServerImpl();
+    Server server = new Server();
     Client alice = new Client();
     Client bob = new Client();
 
@@ -44,8 +44,8 @@ public class RoundTripTest {
 
   @Test
   void testDifferentServersHaveDifferentResults() {
-    Server server1 = new ServerImpl();
-    Server server2 = new ServerImpl();
+    Server server1 = new Server();
+    Server server2 = new Server();
     Client alice = new Client();
 
     String hash1 = alice.convertToIdentityKey(server1, TEST_DATA);
@@ -59,7 +59,7 @@ public class RoundTripTest {
   @ParameterizedTest(name = "roundTrip_{0}")
   @MethodSource("allSuites")
   void roundTripAllSuites(OprfCipherSuite suite) {
-    Server server = new ServerImpl(suite);
+    Server server = new Server(suite);
     Client alice = new Client(suite);
     Client bob = new Client(suite);
 
@@ -77,8 +77,8 @@ public class RoundTripTest {
   @ParameterizedTest(name = "differentServers_{0}")
   @MethodSource("allSuites")
   void differentServersHaveDifferentResultsAllSuites(OprfCipherSuite suite) {
-    Server server1 = new ServerImpl(suite);
-    Server server2 = new ServerImpl(suite);
+    Server server1 = new Server(suite);
+    Server server2 = new Server(suite);
     Client alice = new Client(suite);
 
     String hash1 = alice.convertToIdentityKey(server1, TEST_DATA);

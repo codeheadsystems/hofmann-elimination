@@ -3,8 +3,7 @@ package com.codeheadsystems.hofmann.springboot.controller;
 import com.codeheadsystems.hofmann.model.oprf.OprfRequest;
 import com.codeheadsystems.hofmann.model.oprf.OprfResponse;
 import com.codeheadsystems.hofmann.server.manager.OprfManager;
-import com.codeheadsystems.ellipticcurve.curve.Curve;
-import com.codeheadsystems.ellipticcurve.curve.OctetStringUtils;
+import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpecImpl;
 import org.bouncycastle.math.ec.ECPoint;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -18,11 +17,11 @@ import org.springframework.web.server.ResponseStatusException;
 public class OprfController {
 
   private final OprfManager oprfManager;
-  private final Curve curve;
+  private final WeierstrassGroupSpecImpl groupSpec;
 
-  public OprfController(OprfManager oprfManager, Curve curve) {
+  public OprfController(OprfManager oprfManager, WeierstrassGroupSpecImpl groupSpec) {
     this.oprfManager = oprfManager;
-    this.curve = curve;
+    this.groupSpec = groupSpec;
   }
 
   @PostMapping
@@ -34,9 +33,9 @@ public class OprfController {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing required field: requestId");
     }
     try {
-      ECPoint blindedPoint = OctetStringUtils.toEcPoint(curve, request.hexCodedEcPoint());
+      ECPoint blindedPoint = groupSpec.toEcPoint(request.hexCodedEcPoint());
       OprfManager.EvaluationResult result = oprfManager.evaluate(request.requestId(), blindedPoint);
-      return new OprfResponse(OctetStringUtils.toHex(result.evaluatedPoint()), result.processIdentifier());
+      return new OprfResponse(groupSpec.toHex(result.evaluatedPoint()), result.processIdentifier());
     } catch (IllegalArgumentException e) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid EC point data");
     }

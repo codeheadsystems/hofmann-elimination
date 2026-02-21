@@ -1,6 +1,5 @@
 package com.codeheadsystems.hofmann.springboot.config;
 
-import com.codeheadsystems.ellipticcurve.curve.Curve;
 import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpecImpl;
 import com.codeheadsystems.hofmann.server.auth.JwtManager;
 import com.codeheadsystems.hofmann.server.manager.OprfManager;
@@ -61,10 +60,10 @@ public class HofmannAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean
-  public Curve curve(OpaqueConfig opaqueConfig) {
+  public WeierstrassGroupSpecImpl weierstrassGroupSpecImpl(OpaqueConfig opaqueConfig) {
     var gs = opaqueConfig.cipherSuite().oprfSuite().groupSpec();
     if (gs instanceof WeierstrassGroupSpecImpl w) {
-      return w.curve();
+      return w;
     }
     throw new IllegalStateException(
         "OprfController requires a Weierstrass-based cipher suite (got " + gs.getClass().getSimpleName() + ")");

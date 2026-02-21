@@ -3,8 +3,7 @@ package com.codeheadsystems.hofmann.server.resource;
 import com.codeheadsystems.hofmann.model.oprf.OprfRequest;
 import com.codeheadsystems.hofmann.model.oprf.OprfResponse;
 import com.codeheadsystems.hofmann.server.manager.OprfManager;
-import com.codeheadsystems.ellipticcurve.curve.Curve;
-import com.codeheadsystems.ellipticcurve.curve.OctetStringUtils;
+import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpecImpl;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
@@ -24,13 +23,13 @@ public class OprfResource {
   private static final Logger log = LoggerFactory.getLogger(OprfResource.class);
 
   private final OprfManager oprfManager;
-  private final Curve curve;
+  private final WeierstrassGroupSpecImpl groupSpec;
 
   @Inject
-  public OprfResource(final OprfManager oprfManager, final Curve curve) {
+  public OprfResource(final OprfManager oprfManager, final WeierstrassGroupSpecImpl groupSpec) {
     log.info("OprfResource({})", oprfManager);
     this.oprfManager = oprfManager;
-    this.curve = curve;
+    this.groupSpec = groupSpec;
   }
 
   @POST
@@ -46,9 +45,9 @@ public class OprfResource {
       throw new WebApplicationException("Missing required field: requestId", Response.Status.BAD_REQUEST);
     }
     try {
-      final ECPoint blindedPoint = OctetStringUtils.toEcPoint(curve, request.hexCodedEcPoint());
+      final ECPoint blindedPoint = groupSpec.toEcPoint(request.hexCodedEcPoint());
       final OprfManager.EvaluationResult result = oprfManager.evaluate(request.requestId(), blindedPoint);
-      return new OprfResponse(OctetStringUtils.toHex(result.evaluatedPoint()), result.processIdentifier());
+      return new OprfResponse(groupSpec.toHex(result.evaluatedPoint()), result.processIdentifier());
     } catch (IllegalArgumentException e) {
       throw new WebApplicationException("Invalid EC point data", Response.Status.BAD_REQUEST);
     }

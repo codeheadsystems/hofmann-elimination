@@ -6,8 +6,7 @@ import static org.mockito.Mockito.when;
 import com.codeheadsystems.hofmann.model.oprf.OprfRequest;
 import com.codeheadsystems.hofmann.model.oprf.OprfResponse;
 import com.codeheadsystems.hofmann.server.manager.OprfManager;
-import com.codeheadsystems.ellipticcurve.curve.Curve;
-import com.codeheadsystems.ellipticcurve.curve.OctetStringUtils;
+import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpecImpl;
 import org.bouncycastle.math.ec.ECPoint;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,7 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class OprfResourceTest {
 
-  private static final Curve CURVE = Curve.P256_CURVE;
+  private static final WeierstrassGroupSpecImpl GROUP_SPEC = WeierstrassGroupSpecImpl.P256_SHA256;
 
   @Mock private OprfManager oprfManager;
 
@@ -26,17 +25,17 @@ class OprfResourceTest {
 
   @BeforeEach
   void setUp() {
-    resource = new OprfResource(oprfManager, CURVE);
+    resource = new OprfResource(oprfManager, GROUP_SPEC);
   }
 
   @Test
   void evaluate_success_returnsOprfResponseWithEvaluatedPoint() {
-    ECPoint inputPoint = CURVE.g();
-    ECPoint evaluatedPoint = CURVE.g().multiply(CURVE.n().subtract(java.math.BigInteger.ONE)).normalize();
+    ECPoint inputPoint = GROUP_SPEC.curve().g();
+    ECPoint evaluatedPoint = GROUP_SPEC.curve().g().multiply(GROUP_SPEC.curve().n().subtract(java.math.BigInteger.ONE)).normalize();
     String requestId = "req-42";
     String processIdentifier = "proc-xyz";
-    String inputHex = OctetStringUtils.toHex(inputPoint);
-    String evaluatedHex = OctetStringUtils.toHex(evaluatedPoint);
+    String inputHex = GROUP_SPEC.toHex(inputPoint);
+    String evaluatedHex = GROUP_SPEC.toHex(evaluatedPoint);
 
     OprfRequest request = new OprfRequest(inputHex, requestId);
     OprfManager.EvaluationResult evaluationResult =
@@ -52,8 +51,8 @@ class OprfResourceTest {
 
   @Test
   void evaluate_hexRoundTrip_pointDecodedCorrectly() {
-    ECPoint point = CURVE.g().multiply(java.math.BigInteger.TWO).normalize();
-    String hex = OctetStringUtils.toHex(point);
+    ECPoint point = GROUP_SPEC.curve().g().multiply(java.math.BigInteger.TWO).normalize();
+    String hex = GROUP_SPEC.toHex(point);
     String requestId = "req-rt";
     String processIdentifier = "proc-rt";
 
@@ -66,7 +65,7 @@ class OprfResourceTest {
     OprfResponse response = resource.evaluate(request);
 
     // The hex in the response should decode back to the same point
-    ECPoint decoded = OctetStringUtils.toEcPoint(CURVE, response.hexCodedEcPoint());
+    ECPoint decoded = GROUP_SPEC.toEcPoint(response.hexCodedEcPoint());
     assertThat(decoded.normalize()).isEqualTo(point);
   }
 }

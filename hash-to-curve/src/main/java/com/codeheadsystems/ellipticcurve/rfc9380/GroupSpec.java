@@ -1,6 +1,8 @@
 package com.codeheadsystems.ellipticcurve.rfc9380;
 
 import java.math.BigInteger;
+import org.bouncycastle.math.ec.ECPoint;
+import org.bouncycastle.util.encoders.Hex;
 
 /**
  * Abstraction over a cryptographic group for use in RFC 9497 OPRF.
@@ -12,6 +14,23 @@ import java.math.BigInteger;
  * All group elements cross the interface as {@code byte[]} (serialized canonical form).
  */
 public interface GroupSpec {
+
+  /**
+   * Serializes an EC point to a compressed hex string.
+   */
+  default String toHex(final ECPoint point) {
+    if (point == null) {
+      throw new IllegalArgumentException("EC point must not be null");
+    }
+    return Hex.toHexString(point.getEncoded(true));
+  }
+
+  /**
+   * Deserializes a compressed hex string to an EC point on this group's curve.
+   * Validates the point is on the curve and not the identity element to prevent
+   * invalid-curve and small-subgroup attacks.
+   */
+  ECPoint toEcPoint(String hex);
 
   /** The prime group order n (also used as the scalar modulus). */
   BigInteger groupOrder();

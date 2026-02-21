@@ -3,6 +3,7 @@ package com.codeheadsystems.ellipticcurve.rfc9380;
 import com.codeheadsystems.ellipticcurve.curve.Curve;
 import java.math.BigInteger;
 import org.bouncycastle.math.ec.ECPoint;
+import org.bouncycastle.util.encoders.Hex;
 
 /**
  * {@link GroupSpec} implementation for Weierstrass elliptic curves (P-256, P-384, P-521, secp256k1).
@@ -82,6 +83,14 @@ public record WeierstrassGroupSpecImpl(
     byte[] padded = new byte[ns];
     System.arraycopy(raw, 0, padded, ns - raw.length, raw.length);
     return padded;
+  }
+
+  @Override
+  public ECPoint toEcPoint(String hex) {
+    if (hex == null || hex.isEmpty()) {
+      throw new IllegalArgumentException("Hex string must not be null or empty");
+    }
+    return deserializePoint(Hex.decode(hex));
   }
 
   /**

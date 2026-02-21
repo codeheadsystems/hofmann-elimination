@@ -16,7 +16,7 @@ import com.codeheadsystems.opaque.Server;
 import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.opaque.internal.OpaqueCrypto;
-import com.codeheadsystems.ellipticcurve.curve.Curve;
+import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpecImpl;
 import io.dropwizard.auth.AuthDynamicFeature;
 import io.dropwizard.auth.AuthValueFactoryProvider;
 import io.dropwizard.auth.oauth.OAuthCredentialAuthFilter;
@@ -102,7 +102,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     // OPRF endpoint
     ProcessorDetail processorDetail = buildProcessorDetail(configuration, opaqueConfig);
     OprfManager oprfManager = new OprfManager(() -> processorDetail);
-    environment.jersey().register(new OprfResource(oprfManager, Curve.P256_CURVE));
+    environment.jersey().register(new OprfResource(oprfManager, WeierstrassGroupSpecImpl.P256_SHA256));
   }
 
   private JwtManager buildJwtManager(C configuration) {

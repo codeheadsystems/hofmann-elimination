@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.lang.reflect.Constructor;
-import org.bouncycastle.math.ec.ECPoint;
 import org.junit.jupiter.api.Test;
 
 class OctetStringUtilsTest {
@@ -61,59 +60,6 @@ class OctetStringUtilsTest {
     assertThatThrownBy(() -> OctetStringUtils.I2OSP(256, 1))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("Value too large for specified length");
-  }
-
-  // ─── toHex ────────────────────────────────────────────────────────────────
-
-  @Test
-  void toHex_nullPointThrows() {
-    assertThatThrownBy(() -> OctetStringUtils.toHex(null))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("EC point must not be null");
-  }
-
-  @Test
-  void toHex_generatorPointProducesExpectedHex() {
-    ECPoint g = Curve.P256_CURVE.g();
-    String hex = OctetStringUtils.toHex(g);
-    // P-256 generator — compressed SEC1 is 33 bytes = 66 hex chars, starts with 02 or 03
-    assertThat(hex).hasSize(66);
-    assertThat(hex).startsWith("0");
-  }
-
-  @Test
-  void toHex_roundTripsWithToEcPoint() {
-    ECPoint g = Curve.P256_CURVE.g().normalize();
-    String hex = OctetStringUtils.toHex(g);
-    ECPoint recovered = OctetStringUtils.toEcPoint(Curve.P256_CURVE, hex);
-    assertThat(recovered.normalize()).isEqualTo(g);
-  }
-
-  // ─── toEcPoint ────────────────────────────────────────────────────────────
-
-  @Test
-  void toEcPoint_nullHexThrows() {
-    // hex == null branch
-    assertThatThrownBy(() -> OctetStringUtils.toEcPoint(Curve.P256_CURVE, null))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Hex string must not be null or empty");
-  }
-
-  @Test
-  void toEcPoint_emptyHexThrows() {
-    // hex.isEmpty() branch
-    assertThatThrownBy(() -> OctetStringUtils.toEcPoint(Curve.P256_CURVE, ""))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Hex string must not be null or empty");
-  }
-
-  @Test
-  void toEcPoint_validHexReturnsPoint() {
-    // Compressed P-256 generator point hex
-    String generatorHex = OctetStringUtils.toHex(Curve.P256_CURVE.g());
-    ECPoint point = OctetStringUtils.toEcPoint(Curve.P256_CURVE, generatorHex);
-    assertThat(point).isNotNull();
-    assertThat(point.normalize()).isEqualTo(Curve.P256_CURVE.g().normalize());
   }
 
   // ─── concat ───────────────────────────────────────────────────────────────

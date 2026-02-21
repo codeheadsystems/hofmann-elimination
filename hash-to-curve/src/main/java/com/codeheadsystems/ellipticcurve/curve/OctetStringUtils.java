@@ -1,8 +1,5 @@
 package com.codeheadsystems.ellipticcurve.curve;
 
-import org.bouncycastle.math.ec.ECPoint;
-import org.bouncycastle.util.encoders.Hex;
-
 /**
  * Utility methods for octet string encoding and EC point serialization.
  */
@@ -24,35 +21,6 @@ public class OctetStringUtils {
       value >>= 8;
     }
     return result;
-  }
-
-  /**
-   * Serializes an EC point to a compressed hex string.
-   */
-  public static String toHex(final ECPoint point) {
-    if (point == null) {
-      throw new IllegalArgumentException("EC point must not be null");
-    }
-    return Hex.toHexString(point.getEncoded(true));
-  }
-
-  /**
-   * Deserializes a compressed hex string to an EC point on the given curve.
-   * Validates the point is on the curve and not the identity element to prevent
-   * invalid-curve and small-subgroup attacks.
-   */
-  public static ECPoint toEcPoint(final Curve curve, final String hex) {
-    if (hex == null || hex.isEmpty()) {
-      throw new IllegalArgumentException("Hex string must not be null or empty");
-    }
-    ECPoint point = curve.params().getCurve().decodePoint(Hex.decode(hex));
-    if (point.isInfinity()) {
-      throw new IllegalArgumentException("Invalid EC point: identity element not allowed");
-    }
-    if (!point.isValid()) {
-      throw new IllegalArgumentException("Invalid EC point: not on curve or wrong subgroup");
-    }
-    return point;
   }
 
   /**
