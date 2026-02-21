@@ -5,8 +5,6 @@ import com.codeheadsystems.oprf.model.EliminationRequest;
 import com.codeheadsystems.oprf.model.EliminationResponse;
 import com.codeheadsystems.oprf.model.ServerProcessorDetail;
 import com.codeheadsystems.oprf.rfc9497.OprfCipherSuite;
-import java.math.BigInteger;
-import java.util.UUID;
 import java.util.function.Supplier;
 import org.bouncycastle.util.encoders.Hex;
 
@@ -30,7 +28,7 @@ public class OprfServerManager {
    * @return the response containing the hex-encoded elliptic curve point resulting from the server's process, along with a process identifier for tracking and correlation purposes.
    */
   public EliminationResponse process(final EliminationRequest eliminationRequest) {
-    byte[] q = Hex.decode(eliminationRequest.hexCodedEcPoint());
+    byte[] q = Hex.decode(eliminationRequest.blindedPoint());
     byte[] result = groupSpec.scalarMultiply(supplier.get().masterKey(), q);
     return new EliminationResponse(Hex.toHexString(result), supplier.get().processorIdentifier());
   }

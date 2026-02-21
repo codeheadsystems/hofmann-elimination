@@ -7,10 +7,12 @@ import com.codeheadsystems.oprf.manager.OprfServerManager;
 import com.codeheadsystems.oprf.model.ClientHashingContext;
 import com.codeheadsystems.oprf.model.EliminationRequest;
 import com.codeheadsystems.oprf.model.EliminationResponse;
+import com.codeheadsystems.oprf.model.HashResult;
 import com.codeheadsystems.oprf.model.ServerProcessorDetail;
 import com.codeheadsystems.oprf.rfc9497.OprfCipherSuite;
 import java.util.UUID;
 import java.util.stream.Stream;
+import org.bouncycastle.util.encoders.Hex;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -40,7 +42,8 @@ public class RoundTripTest {
     final ClientHashingContext clientHashingContext = oprfClientManager.hashingContext(sensitiveData);
     final EliminationRequest eliminationRequest = oprfClientManager.eliminationRequest(clientHashingContext);
     final EliminationResponse eliminationResponse = oprfServerManager.process(eliminationRequest);
-    return oprfClientManager.hashResult(eliminationResponse, clientHashingContext);
+    final HashResult result = oprfClientManager.hashResult(eliminationResponse, clientHashingContext);
+    return result.processIdentifier() + ":" + Hex.toHexString(result.hash());
   }
 
   private OprfServerManager oprfServerManager(OprfCipherSuite suite) {

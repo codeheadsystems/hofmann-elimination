@@ -4,6 +4,7 @@ import com.codeheadsystems.oprf.model.EliminationRequest;
 import com.codeheadsystems.oprf.model.EliminationResponse;
 import com.codeheadsystems.ellipticcurve.rfc9380.GroupSpec;
 import com.codeheadsystems.oprf.model.ClientHashingContext;
+import com.codeheadsystems.oprf.model.HashResult;
 import com.codeheadsystems.oprf.rfc9497.OprfCipherSuite;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -57,10 +58,10 @@ public class OprfClientManager {
    * @param clientHashingContext the original context that was used to generate the elimination request, which contains the necessary information for finalizing the hash.
    * @return a string that represents the final hash result.
    */
-  public String hashResult(final EliminationResponse eliminationResponse, final ClientHashingContext clientHashingContext) {
-    final byte[] evaluatedElement = Hex.decode(eliminationResponse.hexCodedEcPoint());
+  public HashResult hashResult(final EliminationResponse eliminationResponse, final ClientHashingContext clientHashingContext) {
+    final byte[] evaluatedElement = Hex.decode(eliminationResponse.evaluatedPoint());
     final byte[] finalHash = suite.finalize(clientHashingContext.input(), clientHashingContext.blindingFactor(), evaluatedElement);
-    return eliminationResponse.processIdentifier() + ":" + Hex.toHexString(finalHash);
+    return new HashResult(finalHash, eliminationResponse.processIdentifier());
   }
 
 }
