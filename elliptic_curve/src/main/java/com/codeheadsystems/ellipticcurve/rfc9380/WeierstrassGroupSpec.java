@@ -2,7 +2,6 @@ package com.codeheadsystems.ellipticcurve.rfc9380;
 
 import com.codeheadsystems.ellipticcurve.curve.Curve;
 import java.math.BigInteger;
-import java.security.SecureRandom;
 import org.bouncycastle.math.ec.ECPoint;
 
 /**
@@ -15,8 +14,6 @@ public record WeierstrassGroupSpec(
     HashToCurve hashToCurveImpl,
     HashToField hashToScalarFieldImpl
 ) implements GroupSpec {
-
-  private static final SecureRandom RANDOM = new SecureRandom();
 
   /** P-256 / SHA-256 instance (RFC 9497 §4.1). */
   public static final WeierstrassGroupSpec P256_SHA256 = buildP256();
@@ -67,16 +64,14 @@ public record WeierstrassGroupSpec(
 
   @Override
   public BigInteger randomScalar() {
-    BigInteger n = curve.n();
-    BigInteger k;
-    do {
-      k = new BigInteger(n.bitLength(), RANDOM);
-    } while (k.compareTo(BigInteger.ONE) < 0 || k.compareTo(n) >= 0);
-    return k;
+    return curve.randomScalar();
   }
 
   @Override
   public byte[] serializeScalar(BigInteger k) {
+    if (k.signum() < 0 || k.compareTo(curve.n()) >= 0) {
+      throw new IllegalArgumentException("Scalar out of range [0, n-1]");
+    }
     int ns = (curve.n().bitLength() + 7) / 8;
     byte[] raw = k.toByteArray();
     if (raw.length == ns) {

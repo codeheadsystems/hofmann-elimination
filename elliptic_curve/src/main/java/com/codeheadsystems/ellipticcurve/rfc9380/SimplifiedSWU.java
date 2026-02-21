@@ -223,7 +223,8 @@ public class SimplifiedSWU {
     BigInteger c1 = p.subtract(BigInteger.valueOf(3)).divide(BigInteger.valueOf(4));
 
     // c2 = sqrt(-Z) = (-Z)^((p+1)/4) for p ≡ 3 (mod 4)
-    ECFieldElement c2 = modPow(Z.negate(), p.add(BigInteger.ONE).divide(BigInteger.valueOf(4)));
+    ECFieldElement c2 = curve.fromBigInteger(
+        Z.negate().toBigInteger().modPow(p.add(BigInteger.ONE).divide(BigInteger.valueOf(4)), p));
 
     // 1. tv1 = v^2
     ECFieldElement tv1 = v.square();
@@ -235,7 +236,7 @@ public class SimplifiedSWU {
     tv1 = tv1.multiply(tv2);
 
     // 4. y1 = tv1^c1                 (= (u * v^3)^((p-3)/4))
-    ECFieldElement y1 = modPow(tv1, c1);
+    ECFieldElement y1 = curve.fromBigInteger(tv1.toBigInteger().modPow(c1, p));
 
     // 5. y1 = y1 * tv2               (candidate sqrt(u/v))
     y1 = y1.multiply(tv2);
@@ -265,25 +266,6 @@ public class SimplifiedSWU {
    */
   private int sgn0(ECFieldElement x) {
     return x.toBigInteger().testBit(0) ? 1 : 0;
-  }
-
-  /**
-   * Modular exponentiation for field elements.
-   * Computes base^exponent in the field using repeated squaring.
-   */
-  private ECFieldElement modPow(ECFieldElement base, BigInteger exponent) {
-    ECFieldElement result = curve.fromBigInteger(BigInteger.ONE);
-    ECFieldElement current = base;
-
-    while (exponent.signum() > 0) {
-      if (exponent.testBit(0)) {
-        result = result.multiply(current);
-      }
-      current = current.square();
-      exponent = exponent.shiftRight(1);
-    }
-
-    return result;
   }
 
   /**

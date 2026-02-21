@@ -15,7 +15,7 @@ public class OctetStringUtils {
    * Converts a non-negative integer to an octet string of specified length.
    */
   public static byte[] I2OSP(int value, int length) {
-    if (value < 0 || value >= (1L << (8 * length))) {
+    if (value < 0 || (length < 4 && value >= (1 << (8 * length)))) {
       throw new IllegalArgumentException("Value too large for specified length");
     }
     byte[] result = new byte[length];

@@ -95,11 +95,17 @@ public class IsogenyMap {
     // Compute x = x_num(x') / x_den(x')
     ECFieldElement xNum = evalPolynomial(xPrime, xNumCoeffs);
     ECFieldElement xDen = evalPolynomial(xPrime, xDenCoeffs);
+    if (xDen.isZero()) {
+      throw new ArithmeticException("Isogeny x denominator is zero — degenerate SWU input");
+    }
     ECFieldElement x = xNum.divide(xDen);
 
     // Compute y = y' * y_num(x') / y_den(x')
     ECFieldElement yNum = evalPolynomial(xPrime, yNumCoeffs);
     ECFieldElement yDen = evalPolynomial(xPrime, yDenCoeffs);
+    if (yDen.isZero()) {
+      throw new ArithmeticException("Isogeny y denominator is zero — degenerate SWU input");
+    }
     ECFieldElement y = yPrime.multiply(yNum).divide(yDen);
 
     return targetCurve.createPoint(x.toBigInteger(), y.toBigInteger());

@@ -148,6 +148,9 @@ public class HashToCurve {
     ECPoint R = Q0.add(Q1).normalize();
 
     // Step 4: clear_cofactor (h_eff = 1 for both secp256k1 and P-256, no-op)
+    if (R.isInfinity()) {
+      throw new ArithmeticException("hash_to_curve produced identity element — check DST");
+    }
     return R;
   }
 
