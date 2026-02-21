@@ -17,7 +17,7 @@ repositories {
 
 dependencies {
 
-    api(project(":elliptic_curve"))
+    api(project(":hash-to-curve"))
     implementation(libs.bundles.core)
 
     testImplementation(libs.bundles.test)

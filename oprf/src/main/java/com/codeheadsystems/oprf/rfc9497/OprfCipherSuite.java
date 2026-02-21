@@ -7,6 +7,7 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
@@ -34,10 +35,13 @@ public class OprfCipherSuite {
   private final GroupSpec groupSpec;
   private final String hashAlgorithm;
   private final int hashOutputLength; // Nh
+  private final SecureRandom random;
 
-  OprfCipherSuite(String identifier, String contextSuffix,
+  OprfCipherSuite(String identifier,
+                  String contextSuffix,
                   GroupSpec groupSpec,
-                  String hashAlgorithm, int hashOutputLength) {
+                  String hashAlgorithm,
+                  int hashOutputLength) {
     this.identifier = identifier;
     this.contextString = buildContextString(contextSuffix);
     this.hashToGroupDst = OctetStringUtils.concat(
@@ -49,6 +53,32 @@ public class OprfCipherSuite {
     this.groupSpec = groupSpec;
     this.hashAlgorithm = hashAlgorithm;
     this.hashOutputLength = hashOutputLength;
+    this.random = new SecureRandom();
+  }
+
+  /** Copy constructor used by {@link #withRandom(SecureRandom)}. */
+  private OprfCipherSuite(OprfCipherSuite source, SecureRandom random) {
+    this.identifier = source.identifier;
+    this.contextString = source.contextString;
+    this.hashToGroupDst = source.hashToGroupDst;
+    this.hashToScalarDst = source.hashToScalarDst;
+    this.deriveKeyPairDst = source.deriveKeyPairDst;
+    this.groupSpec = source.groupSpec;
+    this.hashAlgorithm = source.hashAlgorithm;
+    this.hashOutputLength = source.hashOutputLength;
+    this.random = random;
+  }
+
+  /**
+   * Returns a new {@code OprfCipherSuite} identical to this one but using the given
+   * {@link SecureRandom} for all scalar generation. Use this to inject a custom or
+   * deterministic random source (e.g. in tests or DI frameworks).
+   *
+   * @param random the {@link SecureRandom} to use
+   * @return a new suite with the provided random source
+   */
+  public OprfCipherSuite withRandom(SecureRandom random) {
+    return new OprfCipherSuite(this, random);
   }
 
   private static byte[] buildContextString(String suffix) {
@@ -100,6 +130,22 @@ public class OprfCipherSuite {
   public int elementSize() { return groupSpec.elementSize(); }
 
   // ─── Crypto operations ───────────────────────────────────────────────────────
+
+  /**
+   * Returns a random scalar uniformly sampled from [1, n-1] using this suite's
+   * {@link SecureRandom}. Call {@link #withRandom(SecureRandom)} to inject a
+   * custom random source.
+   *
+   * @return random scalar in [1, n-1]
+   */
+  public BigInteger randomScalar() {
+    BigInteger n = groupSpec.groupOrder();
+    BigInteger k;
+    do {
+      k = new BigInteger(n.bitLength(), random);
+    } while (k.compareTo(BigInteger.ONE) < 0 || k.compareTo(n) >= 0);
+    return k;
+  }
 
   /**
    * Hashes input to a scalar modulo the group order.

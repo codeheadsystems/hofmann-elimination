@@ -55,9 +55,6 @@ public interface GroupSpec {
    */
   byte[] scalarMultiplyGenerator(BigInteger scalar);
 
-  /** Returns a random scalar uniformly sampled from [1, n-1]. */
-  BigInteger randomScalar();
-
   /**
    * Serializes a scalar to a fixed-size big-endian byte array (Ns bytes).
    *

@@ -1,5 +1,7 @@
 package com.codeheadsystems.hofmann.springboot.config;
 
+import com.codeheadsystems.ellipticcurve.curve.Curve;
+import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpec;
 import com.codeheadsystems.hofmann.server.auth.JwtManager;
 import com.codeheadsystems.hofmann.server.manager.OprfManager;
 import com.codeheadsystems.hofmann.server.model.ProcessorDetail;
@@ -11,7 +13,6 @@ import com.codeheadsystems.opaque.Server;
 import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.opaque.internal.OpaqueCrypto;
-import com.codeheadsystems.ellipticcurve.curve.Curve;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
@@ -56,6 +57,17 @@ public class HofmannAutoConfiguration {
         props.getArgon2MemoryKib(),
         props.getArgon2Iterations(),
         props.getArgon2Parallelism());
+  }
+
+  @Bean
+  @ConditionalOnMissingBean
+  public Curve curve(OpaqueConfig opaqueConfig) {
+    var gs = opaqueConfig.cipherSuite().oprfSuite().groupSpec();
+    if (gs instanceof WeierstrassGroupSpec w) {
+      return w.curve();
+    }
+    throw new IllegalStateException(
+        "OprfController requires a Weierstrass-based cipher suite (got " + gs.getClass().getSimpleName() + ")");
   }
 
   @Bean
@@ -118,13 +130,7 @@ public class HofmannAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean
-  public Curve curve() {
-    return Curve.P256_CURVE;
-  }
-
-  @Bean
-  @ConditionalOnMissingBean
-  public OprfManager oprfManager(HofmannProperties props, Curve curve) {
+  public OprfManager oprfManager(HofmannProperties props, OpaqueConfig opaqueConfig) {
     String masterKeyHex = props.getOprfMasterKeyHex();
     String processorId = props.getOprfProcessorId();
 
@@ -132,7 +138,7 @@ public class HofmannAutoConfiguration {
     if (masterKeyHex == null || masterKeyHex.isEmpty()) {
       log.warn("No OPRF master key configured — generating randomly. "
           + "OPRF outputs will change on restart. Do not use in production.");
-      masterKey = curve.randomScalar();
+      masterKey = opaqueConfig.cipherSuite().oprfSuite().randomScalar();
     } else {
       masterKey = new BigInteger(masterKeyHex, 16);
     }

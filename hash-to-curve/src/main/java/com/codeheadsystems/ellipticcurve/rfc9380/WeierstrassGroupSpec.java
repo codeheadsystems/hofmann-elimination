@@ -63,11 +63,6 @@ public record WeierstrassGroupSpec(
   }
 
   @Override
-  public BigInteger randomScalar() {
-    return curve.randomScalar();
-  }
-
-  @Override
   public byte[] serializeScalar(BigInteger k) {
     if (k.signum() < 0 || k.compareTo(curve.n()) >= 0) {
       throw new IllegalArgumentException("Scalar out of range [0, n-1]");

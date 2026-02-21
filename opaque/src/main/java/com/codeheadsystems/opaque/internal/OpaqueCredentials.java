@@ -27,7 +27,7 @@ public class OpaqueCredentials {
    * Client creates a registration request by blinding the password.
    */
   public static ClientRegistrationState createRegistrationRequest(byte[] password, OpaqueConfig config) {
-    BigInteger blind = config.cipherSuite().oprfSuite().groupSpec().randomScalar();
+    BigInteger blind = config.cipherSuite().oprfSuite().randomScalar();
     return createRegistrationRequestWithBlind(password, blind, config);
   }
 

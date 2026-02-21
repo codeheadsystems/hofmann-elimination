@@ -51,7 +51,7 @@ public class Client {
    * Generates KE1 (first AKE message) by blinding the password and creating a client ephemeral key pair.
    */
   public ClientAuthState generateKE1(byte[] password) {
-    BigInteger blind = config.cipherSuite().oprfSuite().groupSpec().randomScalar();
+    BigInteger blind = config.cipherSuite().oprfSuite().randomScalar();
     byte[] seed = OpaqueCrypto.randomBytes(config.Nsk());
     byte[] clientNonce = OpaqueCrypto.randomBytes(OpaqueConfig.Nn);
     return generateKE1Deterministic(password, blind, clientNonce, seed);

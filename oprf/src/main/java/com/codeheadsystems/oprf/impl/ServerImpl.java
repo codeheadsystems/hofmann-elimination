@@ -21,7 +21,7 @@ public class ServerImpl implements Server {
 
   public ServerImpl(OprfCipherSuite suite) {
     this.groupSpec = suite.groupSpec();
-    this.masterKey = groupSpec.randomScalar();
+    this.masterKey = suite.randomScalar();
     this.processIdentifier = "SP:" + UUID.randomUUID();
   }
 

@@ -49,7 +49,7 @@ public class Server {
    * Generates a new OpaqueServer with a random key pair and random OPRF seed.
    */
   public static Server generate(OpaqueConfig config) {
-    BigInteger sk = config.cipherSuite().oprfSuite().groupSpec().randomScalar();
+    BigInteger sk = config.cipherSuite().oprfSuite().randomScalar();
     byte[] pk = config.cipherSuite().oprfSuite().groupSpec().scalarMultiplyGenerator(sk);
     byte[] seed = OpaqueCrypto.randomBytes(config.Nok());
 

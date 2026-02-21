@@ -34,7 +34,7 @@ public class Client {
   public String convertToIdentityKey(final Server server,
                                      final String sensitiveData) {
     final String requestId = UUID.randomUUID().toString();
-    final BigInteger blindingFactor = groupSpec.randomScalar();
+    final BigInteger blindingFactor = suite.randomScalar();
 
     final byte[] input = sensitiveData.getBytes(StandardCharsets.UTF_8);
 

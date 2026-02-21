@@ -100,7 +100,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     environment.jersey().register(new AuthValueFactoryProvider.Binder<>(HofmannPrincipal.class));
 
     // OPRF endpoint
-    ProcessorDetail processorDetail = buildProcessorDetail(configuration);
+    ProcessorDetail processorDetail = buildProcessorDetail(configuration, opaqueConfig);
     OprfManager oprfManager = new OprfManager(() -> processorDetail);
     environment.jersey().register(new OprfResource(oprfManager, Curve.P256_CURVE));
   }
@@ -173,14 +173,14 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     return new Server(skFixed, pk, oprfSeed, opaqueConfig);
   }
 
-  private ProcessorDetail buildProcessorDetail(C configuration) {
+  private ProcessorDetail buildProcessorDetail(C configuration, OpaqueConfig opaqueConfig) {
     String masterKeyHex = configuration.getOprfMasterKeyHex();
     String processorId = configuration.getOprfProcessorId();
 
     if (masterKeyHex == null || masterKeyHex.isEmpty()) {
       log.warn("No OPRF master key configured — generating randomly. "
           + "OPRF outputs will change on restart. Do not use in production.");
-      BigInteger masterKey = Curve.P256_CURVE.randomScalar();
+      BigInteger masterKey = opaqueConfig.cipherSuite().oprfSuite().randomScalar();
       return new ProcessorDetail(masterKey, processorId);
     }
 
