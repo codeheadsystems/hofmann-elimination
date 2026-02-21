@@ -17,6 +17,7 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.HexFormat;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -126,23 +127,40 @@ public class HofmannAutoConfiguration {
     return new HofmannOpaqueServerManager(server, credentialStore, jwtManager);
   }
 
+  /**
+   * Default {@link ServerProcessorDetail} supplier that reads the master key and processor ID
+   * from configuration.  {@code oprfMasterKeyHex} must be set — no random fallback.
+   * <p>
+   * Override this bean in your application context to implement key rotation or any other
+   * custom key-management strategy:
+   * <pre>{@code
+   *   @Bean
+   *   public Supplier<ServerProcessorDetail> serverProcessorDetailSupplier() {
+   *     return () -> keyRotationService.currentDetail();
+   *   }
+   * }</pre>
+   */
   @Bean
   @ConditionalOnMissingBean
-  public OprfServerManager oprfServerManager(HofmannProperties props) {
-    OprfCipherSuite oprfSuite = OprfCipherSuite.fromName(props.getOprfCipherSuite());
+  public Supplier<ServerProcessorDetail> serverProcessorDetailSupplier(HofmannProperties props) {
     String masterKeyHex = props.getOprfMasterKeyHex();
-    String processorId = props.getOprfProcessorId();
-
-    BigInteger masterKey;
     if (masterKeyHex == null || masterKeyHex.isEmpty()) {
-      log.warn("No OPRF master key configured — generating randomly. "
-          + "OPRF outputs will change on restart. Do not use in production.");
-      masterKey = oprfSuite.randomScalar();
-    } else {
-      masterKey = new BigInteger(masterKeyHex, 16);
+      throw new IllegalStateException(
+          "hofmann.oprfMasterKeyHex must be configured for the OPRF endpoint. "
+              + "Generate a value with: openssl rand -hex 32. "
+              + "Alternatively, provide a custom Supplier<ServerProcessorDetail> bean.");
     }
+    BigInteger masterKey = new BigInteger(masterKeyHex, 16);
+    String processorId = props.getOprfProcessorId();
+    ServerProcessorDetail detail = new ServerProcessorDetail(masterKey, processorId);
+    return () -> detail;
+  }
 
-    ServerProcessorDetail serverProcessorDetail = new ServerProcessorDetail(masterKey, processorId);
-    return new OprfServerManager(oprfSuite, () -> serverProcessorDetail);
+  @Bean
+  @ConditionalOnMissingBean
+  public OprfServerManager oprfServerManager(HofmannProperties props,
+      Supplier<ServerProcessorDetail> serverProcessorDetailSupplier) {
+    OprfCipherSuite oprfSuite = OprfCipherSuite.fromName(props.getOprfCipherSuite());
+    return new OprfServerManager(oprfSuite, serverProcessorDetailSupplier);
   }
 }

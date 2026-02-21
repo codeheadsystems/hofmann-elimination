@@ -3,7 +3,8 @@ hofmann:
   argon2-memory-kib: 0
   server-key-seed-hex: ""
   oprf-seed-hex: ""
-  oprf-master-key-hex: ""
+  # Fixed test-only OPRF master key — do not use in production.
+  oprf-master-key-hex: "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
   oprf-processor-id: "test-processor"
   jwt-secret-hex: ""
   jwt-ttl-seconds: 3600

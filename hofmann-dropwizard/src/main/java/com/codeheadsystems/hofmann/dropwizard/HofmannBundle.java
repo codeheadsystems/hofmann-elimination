@@ -30,6 +30,7 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.HexFormat;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,6 +50,14 @@ import org.slf4j.LoggerFactory;
  * <pre>{@code
  *   bootstrap.addBundle(new HofmannBundle<>(myCredentialStore, mySessionStore));
  * }</pre>
+ * <p>
+ * To implement key rotation or custom key management for the OPRF endpoint, supply a
+ * {@code Supplier<ServerProcessorDetail>}:
+ * <pre>{@code
+ *   bootstrap.addBundle(new HofmannBundle<>(credentialStore, sessionStore,
+ *       () -> keyRotationService.currentDetail()));
+ * }</pre>
+ * When no supplier is provided, {@code oprfMasterKeyHex} must be set in the configuration.
  */
 @Singleton
 public class HofmannBundle<C extends HofmannConfiguration> implements ConfiguredBundle<C> {
@@ -57,27 +66,51 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
 
   private final CredentialStore credentialStore;
   private final SessionStore sessionStore;
+  private final Supplier<ServerProcessorDetail> processorDetailSupplier;
+  private final boolean ephemeralKey;
 
   /**
-   * Creates a bundle backed by in-memory stores (dev/test only).
+   * Creates a bundle backed by in-memory stores and an ephemeral random OPRF master key.
+   * <p>
+   * For dev/test only — all credentials, sessions, and OPRF outputs will be lost on restart.
+   * In production supply persistent stores and either a configured {@code oprfMasterKeyHex}
+   * or a custom {@code Supplier<ServerProcessorDetail>}.
    */
   public HofmannBundle() {
-    this(new InMemoryCredentialStore(), new InMemorySessionStore());
+    this.credentialStore = new InMemoryCredentialStore();
+    this.sessionStore = new InMemorySessionStore();
+    this.processorDetailSupplier = null;
+    this.ephemeralKey = true;
     log.warn("""
         #################################################################
-        # WARNING: Using in-memory stores for credentials and sessions. #
-        # All data will be lost on restart. Do not use in production.   #
+        # WARNING: Using ephemeral in-memory stores and a random OPRF  #
+        # master key. All data will be lost on restart.                 #
+        # Do not use in production.                                     #
         #################################################################
         """);
   }
 
   /**
-   * Creates a bundle backed by the supplied stores.
+   * Creates a bundle backed by the supplied stores and a custom OPRF key supplier.
+   * The supplier is called on every OPRF request, so it may return different
+   * {@link ServerProcessorDetail} instances (e.g., for key rotation).
+   * When a non-null supplier is given, {@code oprfMasterKeyHex} in the configuration is ignored.
    */
   @Inject
-  public HofmannBundle(CredentialStore credentialStore, SessionStore sessionStore) {
+  public HofmannBundle(CredentialStore credentialStore,
+                       SessionStore sessionStore,
+                       Supplier<ServerProcessorDetail> processorDetailSupplier) {
     this.credentialStore = credentialStore;
     this.sessionStore = sessionStore;
+    this.processorDetailSupplier = processorDetailSupplier;
+    this.ephemeralKey = false;
+  }
+
+  private static Supplier<ServerProcessorDetail> buildEphemeralProcessorSupplier(String processorId) {
+    // randomScalar() is intentional here — ephemeral mode is dev/test only.
+    BigInteger masterKey = OprfCipherSuite.P256_SHA256.randomScalar();
+    ServerProcessorDetail detail = new ServerProcessorDetail(masterKey, processorId);
+    return () -> detail;
   }
 
   @Override
@@ -106,8 +139,15 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
 
     // OPRF endpoint
     OprfCipherSuite oprfSuite = OprfCipherSuite.fromName(configuration.getOprfCipherSuite());
-    ServerProcessorDetail serverProcessorDetail = buildProcessorDetail(configuration, oprfSuite);
-    OprfServerManager oprfServerManager = new OprfServerManager(oprfSuite, () -> serverProcessorDetail);
+    Supplier<ServerProcessorDetail> oprfSupplier;
+    if (processorDetailSupplier != null) {
+      oprfSupplier = processorDetailSupplier;
+    } else if (ephemeralKey) {
+      oprfSupplier = buildEphemeralProcessorSupplier(configuration.getOprfProcessorId());
+    } else {
+      oprfSupplier = buildDefaultProcessorSupplier(configuration);
+    }
+    OprfServerManager oprfServerManager = new OprfServerManager(oprfSuite, oprfSupplier);
     environment.jersey().register(new OprfResource(oprfServerManager));
   }
 
@@ -181,18 +221,17 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     return new Server(skFixed, pk, oprfSeed, opaqueConfig);
   }
 
-  private ServerProcessorDetail buildProcessorDetail(C configuration, OprfCipherSuite oprfSuite) {
+  private Supplier<ServerProcessorDetail> buildDefaultProcessorSupplier(C configuration) {
     String masterKeyHex = configuration.getOprfMasterKeyHex();
-    String processorId = configuration.getOprfProcessorId();
-
     if (masterKeyHex == null || masterKeyHex.isEmpty()) {
-      log.warn("No OPRF master key configured — generating randomly. "
-          + "OPRF outputs will change on restart. Do not use in production.");
-      BigInteger masterKey = oprfSuite.randomScalar();
-      return new ServerProcessorDetail(masterKey, processorId);
+      throw new IllegalStateException(
+          "oprfMasterKeyHex must be configured in the OPRF endpoint. "
+              + "Generate a value with: openssl rand -hex 32. "
+              + "Alternatively, supply a custom Supplier<ServerProcessorDetail> to the HofmannBundle constructor.");
     }
-
     BigInteger masterKey = new BigInteger(masterKeyHex, 16);
-    return new ServerProcessorDetail(masterKey, processorId);
+    String processorId = configuration.getOprfProcessorId();
+    ServerProcessorDetail detail = new ServerProcessorDetail(masterKey, processorId);
+    return () -> detail;
   }
 }

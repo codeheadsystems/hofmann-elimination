@@ -10,7 +10,7 @@ argon2MemoryKib: 0
 serverKeySeedHex: ""
 oprfSeedHex: ""
 
-# Empty OPRF master key → ephemeral random key generation on each startup
+# Empty OPRF master key — the HofmannBundle no-arg constructor provides an ephemeral random key.
 oprfMasterKeyHex: ""
 oprfProcessorId: "test-processor"
 
