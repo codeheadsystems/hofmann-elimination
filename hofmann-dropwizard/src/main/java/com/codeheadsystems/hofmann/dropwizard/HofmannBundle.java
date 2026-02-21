@@ -4,8 +4,6 @@ import com.codeheadsystems.hofmann.dropwizard.auth.HofmannAuthenticator;
 import com.codeheadsystems.hofmann.dropwizard.auth.HofmannPrincipal;
 import com.codeheadsystems.hofmann.dropwizard.health.OpaqueServerHealthCheck;
 import com.codeheadsystems.hofmann.server.auth.JwtManager;
-import com.codeheadsystems.hofmann.server.manager.OprfManager;
-import com.codeheadsystems.oprf.model.ServerProcessorDetail;
 import com.codeheadsystems.hofmann.server.resource.OpaqueResource;
 import com.codeheadsystems.hofmann.server.resource.OprfResource;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
@@ -13,10 +11,11 @@ import com.codeheadsystems.hofmann.server.store.InMemoryCredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemorySessionStore;
 import com.codeheadsystems.hofmann.server.store.SessionStore;
 import com.codeheadsystems.opaque.Server;
-import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
+import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.internal.OpaqueCrypto;
-import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpecImpl;
+import com.codeheadsystems.oprf.manager.OprfServerManager;
+import com.codeheadsystems.oprf.model.ServerProcessorDetail;
 import io.dropwizard.auth.AuthDynamicFeature;
 import io.dropwizard.auth.AuthValueFactoryProvider;
 import io.dropwizard.auth.oauth.OAuthCredentialAuthFilter;
@@ -43,7 +42,7 @@ import org.slf4j.LoggerFactory;
  * <pre>{@code
  *   bootstrap.addBundle(new HofmannBundle<>());
  * }</pre>
- *
+ * <p>
  * Or supply persistent stores:
  * <pre>{@code
  *   bootstrap.addBundle(new HofmannBundle<>(myCredentialStore, mySessionStore));
@@ -57,7 +56,9 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
   private final CredentialStore credentialStore;
   private final SessionStore sessionStore;
 
-  /** Creates a bundle backed by in-memory stores (dev/test only). */
+  /**
+   * Creates a bundle backed by in-memory stores (dev/test only).
+   */
   public HofmannBundle() {
     this(new InMemoryCredentialStore(), new InMemorySessionStore());
     log.warn("""
@@ -68,7 +69,9 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
         """);
   }
 
-  /** Creates a bundle backed by the supplied stores. */
+  /**
+   * Creates a bundle backed by the supplied stores.
+   */
   @Inject
   public HofmannBundle(CredentialStore credentialStore, SessionStore sessionStore) {
     this.credentialStore = credentialStore;
@@ -101,8 +104,8 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
 
     // OPRF endpoint
     ServerProcessorDetail serverProcessorDetail = buildProcessorDetail(configuration, opaqueConfig);
-    OprfManager oprfManager = new OprfManager(() -> serverProcessorDetail);
-    environment.jersey().register(new OprfResource(oprfManager, WeierstrassGroupSpecImpl.P256_SHA256));
+    OprfServerManager oprfServerManager = new OprfServerManager(opaqueConfig.cipherSuite().oprfSuite(), () -> serverProcessorDetail);
+    environment.jersey().register(new OprfResource(oprfServerManager));
   }
 
   private JwtManager buildJwtManager(C configuration) {

@@ -2,8 +2,8 @@ package com.codeheadsystems.hofmann.server.resource;
 
 import com.codeheadsystems.hofmann.model.oprf.OprfRequest;
 import com.codeheadsystems.hofmann.model.oprf.OprfResponse;
-import com.codeheadsystems.hofmann.server.manager.OprfManager;
-import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpecImpl;
+import com.codeheadsystems.oprf.manager.OprfServerManager;
+import com.codeheadsystems.oprf.model.EvaluatedResponse;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
@@ -13,7 +13,6 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import org.bouncycastle.math.ec.ECPoint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,14 +21,12 @@ import org.slf4j.LoggerFactory;
 public class OprfResource {
   private static final Logger log = LoggerFactory.getLogger(OprfResource.class);
 
-  private final OprfManager oprfManager;
-  private final WeierstrassGroupSpecImpl groupSpec;
+  private final OprfServerManager oprfServerManager;
 
   @Inject
-  public OprfResource(final OprfManager oprfManager, final WeierstrassGroupSpecImpl groupSpec) {
-    log.info("OprfResource({})", oprfManager);
-    this.oprfManager = oprfManager;
-    this.groupSpec = groupSpec;
+  public OprfResource(final OprfServerManager oprfServerManager) {
+    this.oprfServerManager = oprfServerManager;
+    log.info("OprfResource({})", oprfServerManager);
   }
 
   @POST
@@ -45,9 +42,8 @@ public class OprfResource {
       throw new WebApplicationException("Missing required field: requestId", Response.Status.BAD_REQUEST);
     }
     try {
-      final ECPoint blindedPoint = groupSpec.toEcPoint(request.ecPoint());
-      final OprfManager.EvaluationResult result = oprfManager.evaluate(request.requestId(), blindedPoint);
-      return new OprfResponse(groupSpec.toHex(result.evaluatedPoint()), result.processIdentifier());
+      final EvaluatedResponse evaluatedResponse = oprfServerManager.process(request.blindedRequest());
+      return new OprfResponse(evaluatedResponse);
     } catch (IllegalArgumentException e) {
       throw new WebApplicationException("Invalid EC point data", Response.Status.BAD_REQUEST);
     }

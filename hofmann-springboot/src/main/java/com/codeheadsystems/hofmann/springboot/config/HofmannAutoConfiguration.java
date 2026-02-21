@@ -1,17 +1,16 @@
 package com.codeheadsystems.hofmann.springboot.config;
 
-import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpecImpl;
 import com.codeheadsystems.hofmann.server.auth.JwtManager;
-import com.codeheadsystems.hofmann.server.manager.OprfManager;
-import com.codeheadsystems.oprf.model.ServerProcessorDetail;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemoryCredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemorySessionStore;
 import com.codeheadsystems.hofmann.server.store.SessionStore;
 import com.codeheadsystems.opaque.Server;
-import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
+import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.internal.OpaqueCrypto;
+import com.codeheadsystems.oprf.manager.OprfServerManager;
+import com.codeheadsystems.oprf.model.ServerProcessorDetail;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
@@ -56,17 +55,6 @@ public class HofmannAutoConfiguration {
         props.getArgon2MemoryKib(),
         props.getArgon2Iterations(),
         props.getArgon2Parallelism());
-  }
-
-  @Bean
-  @ConditionalOnMissingBean
-  public WeierstrassGroupSpecImpl weierstrassGroupSpecImpl(OpaqueConfig opaqueConfig) {
-    var gs = opaqueConfig.cipherSuite().oprfSuite().groupSpec();
-    if (gs instanceof WeierstrassGroupSpecImpl w) {
-      return w;
-    }
-    throw new IllegalStateException(
-        "OprfController requires a Weierstrass-based cipher suite (got " + gs.getClass().getSimpleName() + ")");
   }
 
   @Bean
@@ -129,7 +117,7 @@ public class HofmannAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean
-  public OprfManager oprfManager(HofmannProperties props, OpaqueConfig opaqueConfig) {
+  public OprfServerManager oprfServerManager(HofmannProperties props, OpaqueConfig opaqueConfig) {
     String masterKeyHex = props.getOprfMasterKeyHex();
     String processorId = props.getOprfProcessorId();
 
@@ -143,6 +131,6 @@ public class HofmannAutoConfiguration {
     }
 
     ServerProcessorDetail serverProcessorDetail = new ServerProcessorDetail(masterKey, processorId);
-    return new OprfManager(() -> serverProcessorDetail);
+    return new OprfServerManager(opaqueConfig.cipherSuite().oprfSuite(), () -> serverProcessorDetail);
   }
 }

@@ -17,7 +17,7 @@ public record OprfRequest(@JsonProperty("ecPoint") String ecPoint,
   }
 
   public BlindedRequest blindedRequest() {
-    return new BlindedRequest(ecPoint, requestId);
+    return new BlindedRequest(ecPoint(), requestId());
   }
 
 }

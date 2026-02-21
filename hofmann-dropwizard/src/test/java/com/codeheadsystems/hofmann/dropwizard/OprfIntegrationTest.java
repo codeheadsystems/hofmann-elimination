@@ -2,12 +2,13 @@ package com.codeheadsystems.hofmann.dropwizard;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.codeheadsystems.hofmann.client.accessor.OprfAccessor;
+import com.codeheadsystems.hofmann.client.accessor.HofmannOprfAccessor;
 import com.codeheadsystems.hofmann.client.config.OprfConfig;
-import com.codeheadsystems.hofmann.client.manager.OprfManager;
-import com.codeheadsystems.hofmann.client.model.HashResult;
+import com.codeheadsystems.hofmann.client.manager.HofmannOprfClientManager;
+import com.codeheadsystems.hofmann.client.model.HofmannHashResult;
 import com.codeheadsystems.hofmann.client.model.ServerConnectionInfo;
 import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
+import com.codeheadsystems.oprf.manager.OprfClientManager;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dropwizard.testing.ResourceHelpers;
 import io.dropwizard.testing.junit5.DropwizardAppExtension;
@@ -21,7 +22,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * Integration tests for the standalone OPRF endpoint ({@code POST /oprf}) exercised through
- * the {@link OprfManager} / {@link OprfAccessor} client stack from {@code hofmann-client}.
+ * the {@link HofmannOprfClientManager} / {@link HofmannOprfAccessor} client stack from {@code hofmann-client}.
  * <p>
  * Starts a real embedded Jetty server via Dropwizard's test support and drives the full
  * client-side OPRF flow over HTTP.
@@ -36,21 +37,22 @@ class OprfIntegrationTest {
 
   private static final ServerIdentifier SERVER_ID = new ServerIdentifier("local");
 
-  private OprfManager oprfManager;
+  private HofmannOprfClientManager hofmannOprfClientManager;
 
   @BeforeEach
   void setUp() {
     OprfConfig oprfConfig = new OprfConfig();
     Map<ServerIdentifier, ServerConnectionInfo> connections = Map.of(
         SERVER_ID, new ServerConnectionInfo(URI.create(baseUrl() + "/oprf")));
-    OprfAccessor accessor = new OprfAccessor(oprfConfig, HttpClient.newHttpClient(),
+    HofmannOprfAccessor accessor = new HofmannOprfAccessor(oprfConfig, HttpClient.newHttpClient(),
         new ObjectMapper(), connections);
-    oprfManager = new OprfManager(accessor, oprfConfig);
+    final OprfClientManager oprfClientManager = new OprfClientManager(oprfConfig.suite());
+    hofmannOprfClientManager = new HofmannOprfClientManager(accessor, oprfClientManager);
   }
 
   @Test
   void performHash_returnsNonEmptyHash() {
-    HashResult result = oprfManager.performHash("my-sensitive-input", SERVER_ID);
+    HofmannHashResult result = hofmannOprfClientManager.performHash("my-sensitive-input", SERVER_ID);
 
     assertThat(result.hash()).isNotEmpty();
     assertThat(result.processIdentifier()).isEqualTo("test-processor");
@@ -60,8 +62,8 @@ class OprfIntegrationTest {
 
   @Test
   void performHash_differentInputsProduceDifferentHashes() {
-    HashResult result1 = oprfManager.performHash("input-one", SERVER_ID);
-    HashResult result2 = oprfManager.performHash("input-two", SERVER_ID);
+    HofmannHashResult result1 = hofmannOprfClientManager.performHash("input-one", SERVER_ID);
+    HofmannHashResult result2 = hofmannOprfClientManager.performHash("input-two", SERVER_ID);
 
     assertThat(result1.hash()).isNotEqualTo(result2.hash());
   }
@@ -71,8 +73,8 @@ class OprfIntegrationTest {
     // Because the OPRF master key is fixed for a server instance within a run, and the
     // OPRF finalization is deterministic given the same blinding-unblinding round-trip,
     // the same input must yield the same final hash value.
-    HashResult result1 = oprfManager.performHash("stable-input", SERVER_ID);
-    HashResult result2 = oprfManager.performHash("stable-input", SERVER_ID);
+    HofmannHashResult result1 = hofmannOprfClientManager.performHash("stable-input", SERVER_ID);
+    HofmannHashResult result2 = hofmannOprfClientManager.performHash("stable-input", SERVER_ID);
 
     assertThat(result1.hash()).isEqualTo(result2.hash());
   }

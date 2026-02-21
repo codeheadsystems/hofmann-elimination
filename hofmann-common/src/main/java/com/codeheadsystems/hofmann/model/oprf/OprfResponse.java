@@ -17,7 +17,7 @@ public record OprfResponse(@JsonProperty("ecPoint") String ecPoint,
   }
 
   public EvaluatedResponse evaluatedResponse() {
-    return new EvaluatedResponse(ecPoint, processIdentifier);
+    return new EvaluatedResponse(ecPoint(), processIdentifier());
   }
 
 }

@@ -2,9 +2,9 @@ package com.codeheadsystems.hofmann.springboot.controller;
 
 import com.codeheadsystems.hofmann.model.oprf.OprfRequest;
 import com.codeheadsystems.hofmann.model.oprf.OprfResponse;
-import com.codeheadsystems.hofmann.server.manager.OprfManager;
-import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpecImpl;
-import org.bouncycastle.math.ec.ECPoint;
+import com.codeheadsystems.oprf.manager.OprfServerManager;
+import com.codeheadsystems.oprf.model.BlindedRequest;
+import com.codeheadsystems.oprf.model.EvaluatedResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -16,12 +16,10 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/oprf")
 public class OprfController {
 
-  private final OprfManager oprfManager;
-  private final WeierstrassGroupSpecImpl groupSpec;
+  private final OprfServerManager oprfServerManager;
 
-  public OprfController(OprfManager oprfManager, WeierstrassGroupSpecImpl groupSpec) {
-    this.oprfManager = oprfManager;
-    this.groupSpec = groupSpec;
+  public OprfController(OprfServerManager oprfServerManager) {
+    this.oprfServerManager = oprfServerManager;
   }
 
   @PostMapping
@@ -33,9 +31,9 @@ public class OprfController {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing required field: requestId");
     }
     try {
-      ECPoint blindedPoint = groupSpec.toEcPoint(request.ecPoint());
-      OprfManager.EvaluationResult result = oprfManager.evaluate(request.requestId(), blindedPoint);
-      return new OprfResponse(groupSpec.toHex(result.evaluatedPoint()), result.processIdentifier());
+      BlindedRequest blindedRequest = request.blindedRequest();
+      EvaluatedResponse evaluatedResponse = oprfServerManager.process(blindedRequest);
+      return new OprfResponse(evaluatedResponse);
     } catch (IllegalArgumentException e) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid EC point data");
     }
