@@ -4,10 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.codeheadsystems.oprf.manager.OprfClientManager;
 import com.codeheadsystems.oprf.manager.OprfServerManager;
+import com.codeheadsystems.oprf.model.ClientHashingContext;
 import com.codeheadsystems.oprf.model.EliminationRequest;
 import com.codeheadsystems.oprf.model.EliminationResponse;
-import com.codeheadsystems.oprf.model.HashingContext;
+import com.codeheadsystems.oprf.model.ServerProcessorDetail;
 import com.codeheadsystems.oprf.rfc9497.OprfCipherSuite;
+import java.util.UUID;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -15,6 +17,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 public class RoundTripTest {
 
+  private static final OprfCipherSuite DEFAULT_SUITE = OprfCipherSuite.P256_SHA256;
   private static final String TEST_DATA = "test data for round trip";
   private static final String TEST_DATA2 = "Different Data";
 
@@ -26,7 +29,6 @@ public class RoundTripTest {
     );
   }
 
-
   /**
    * Defines the steps the client takes to convert sensitive data into a key that can be used for elimination.
    * Implements RFC 9497 OPRF mode 0 (OPRF).
@@ -35,18 +37,22 @@ public class RoundTripTest {
   public String convertToIdentityKey(final OprfClientManager oprfClientManager,
                                      final OprfServerManager oprfServerManager,
                                      final String sensitiveData) {
-    final HashingContext hashingContext = oprfClientManager.hashingContext(sensitiveData);
-    final EliminationRequest eliminationRequest = oprfClientManager.eliminationRequest(hashingContext);
+    final ClientHashingContext clientHashingContext = oprfClientManager.hashingContext(sensitiveData);
+    final EliminationRequest eliminationRequest = oprfClientManager.eliminationRequest(clientHashingContext);
     final EliminationResponse eliminationResponse = oprfServerManager.process(eliminationRequest);
-    return oprfClientManager.hashResult(eliminationResponse, hashingContext);
+    return oprfClientManager.hashResult(eliminationResponse, clientHashingContext);
   }
 
+  private OprfServerManager oprfServerManager(OprfCipherSuite suite) {
+    final ServerProcessorDetail detail = new ServerProcessorDetail(suite.randomScalar(), "SP:" + UUID.randomUUID());
+    return new OprfServerManager(suite, () -> detail);
+  }
 
   // ─── Existing P256-SHA256 tests (backward compat) ─────────────────────────
 
   @Test
   void testRoundTrip() {
-    OprfServerManager oprfServerManager = new OprfServerManager();
+    OprfServerManager oprfServerManager = oprfServerManager(DEFAULT_SUITE);
     OprfClientManager alice = new OprfClientManager();
     OprfClientManager bob = new OprfClientManager();
 
@@ -63,8 +69,8 @@ public class RoundTripTest {
 
   @Test
   void testDifferentServersHaveDifferentResults() {
-    OprfServerManager oprfServerManager1 = new OprfServerManager();
-    OprfServerManager oprfServerManager2 = new OprfServerManager();
+    OprfServerManager oprfServerManager1 = oprfServerManager(DEFAULT_SUITE);
+    OprfServerManager oprfServerManager2 = oprfServerManager(DEFAULT_SUITE);
     OprfClientManager alice = new OprfClientManager();
 
     String hash1 = convertToIdentityKey(alice, oprfServerManager1, TEST_DATA);
@@ -78,7 +84,7 @@ public class RoundTripTest {
   @ParameterizedTest(name = "roundTrip_{0}")
   @MethodSource("allSuites")
   void roundTripAllSuites(OprfCipherSuite suite) {
-    OprfServerManager oprfServerManager = new OprfServerManager(suite);
+    OprfServerManager oprfServerManager = oprfServerManager(suite);
     OprfClientManager alice = new OprfClientManager(suite);
     OprfClientManager bob = new OprfClientManager(suite);
 
@@ -96,8 +102,8 @@ public class RoundTripTest {
   @ParameterizedTest(name = "differentServers_{0}")
   @MethodSource("allSuites")
   void differentServersHaveDifferentResultsAllSuites(OprfCipherSuite suite) {
-    OprfServerManager oprfServerManager1 = new OprfServerManager(suite);
-    OprfServerManager oprfServerManager2 = new OprfServerManager(suite);
+    OprfServerManager oprfServerManager1 = oprfServerManager(suite);
+    OprfServerManager oprfServerManager2 = oprfServerManager(suite);
     OprfClientManager alice = new OprfClientManager(suite);
 
     String hash1 = convertToIdentityKey(alice, oprfServerManager1, TEST_DATA);

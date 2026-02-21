@@ -3,7 +3,7 @@ package com.codeheadsystems.oprf.manager;
 import com.codeheadsystems.oprf.model.EliminationRequest;
 import com.codeheadsystems.oprf.model.EliminationResponse;
 import com.codeheadsystems.ellipticcurve.rfc9380.GroupSpec;
-import com.codeheadsystems.oprf.model.HashingContext;
+import com.codeheadsystems.oprf.model.ClientHashingContext;
 import com.codeheadsystems.oprf.rfc9497.OprfCipherSuite;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -31,35 +31,35 @@ public class OprfClientManager {
    * @param sensitiveData the sensitive data you want to hash.
    * @return a hashing context.
    */
-  public HashingContext hashingContext(final String sensitiveData) {
+  public ClientHashingContext hashingContext(final String sensitiveData) {
     final String requestId = UUID.randomUUID().toString();
     final BigInteger blindingFactor = suite.randomScalar();
     final byte[] input = sensitiveData.getBytes(StandardCharsets.UTF_8);
-    return new HashingContext(requestId, blindingFactor, input);
+    return new ClientHashingContext(requestId, blindingFactor, input);
   }
 
   /**
    * Creates a elimination request for the hashing context. This is largely deterministic based on the hashing context.
-   * @param hashingContext to generate the elimination request from.
+   * @param clientHashingContext to generate the elimination request from.
    * @return an elimination request that can be sent to the OPRF server manager.
    */
-  public EliminationRequest eliminationRequest(final HashingContext hashingContext) {
-    final byte[] hashedElement = groupSpec.hashToGroup(hashingContext.input(), suite.hashToGroupDst());
-    final byte[] blindedElement = groupSpec.scalarMultiply(hashingContext.blindingFactor(), hashedElement);
+  public EliminationRequest eliminationRequest(final ClientHashingContext clientHashingContext) {
+    final byte[] hashedElement = groupSpec.hashToGroup(clientHashingContext.input(), suite.hashToGroupDst());
+    final byte[] blindedElement = groupSpec.scalarMultiply(clientHashingContext.blindingFactor(), hashedElement);
     final String blindedPointHex = Hex.toHexString(blindedElement);
-    return new EliminationRequest(blindedPointHex, hashingContext.requestId());
+    return new EliminationRequest(blindedPointHex, clientHashingContext.requestId());
   }
 
   /**
    * Takes the elimination response from the server and the original hashing context to produce the final hash result.
    * This involves unblinding the evaluated element from the server and applying the finalization step as defined in RFC 9497.
    * @param eliminationResponse the response from the OPRF server manager after processing the elimination request.
-   * @param hashingContext the original context that was used to generate the elimination request, which contains the necessary information for finalizing the hash.
+   * @param clientHashingContext the original context that was used to generate the elimination request, which contains the necessary information for finalizing the hash.
    * @return a string that represents the final hash result.
    */
-  public String hashResult(final EliminationResponse eliminationResponse, final HashingContext hashingContext) {
+  public String hashResult(final EliminationResponse eliminationResponse, final ClientHashingContext clientHashingContext) {
     final byte[] evaluatedElement = Hex.decode(eliminationResponse.hexCodedEcPoint());
-    final byte[] finalHash = suite.finalize(hashingContext.input(), hashingContext.blindingFactor(), evaluatedElement);
+    final byte[] finalHash = suite.finalize(clientHashingContext.input(), clientHashingContext.blindingFactor(), evaluatedElement);
     return eliminationResponse.processIdentifier() + ":" + Hex.toHexString(finalHash);
   }
 

@@ -3,7 +3,7 @@ package com.codeheadsystems.hofmann.server.manager;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
-import com.codeheadsystems.hofmann.server.model.ProcessorDetail;
+import com.codeheadsystems.oprf.model.ServerProcessorDetail;
 import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpecImpl;
 import java.math.BigInteger;
 import java.util.function.Supplier;
@@ -21,7 +21,7 @@ class OprfManagerTest {
   private static final BigInteger MASTER_KEY = BigInteger.valueOf(42L);
   private static final String PROCESS_ID = "proc-test";
 
-  @Mock private Supplier<ProcessorDetail> processorDetailSupplier;
+  @Mock private Supplier<ServerProcessorDetail> processorDetailSupplier;
 
   private OprfManager manager;
 
@@ -34,7 +34,7 @@ class OprfManagerTest {
   void evaluate_returnsCorrectlyMultipliedPoint() {
     ECPoint blindedPoint = GROUP_SPEC.curve().g();
     ECPoint expectedPoint = blindedPoint.multiply(MASTER_KEY).normalize();
-    when(processorDetailSupplier.get()).thenReturn(new ProcessorDetail(MASTER_KEY, PROCESS_ID));
+    when(processorDetailSupplier.get()).thenReturn(new ServerProcessorDetail(MASTER_KEY, PROCESS_ID));
 
     OprfManager.EvaluationResult result = manager.evaluate("req-1", blindedPoint);
 
@@ -51,8 +51,8 @@ class OprfManagerTest {
     BigInteger key2 = BigInteger.valueOf(13L);
 
     when(processorDetailSupplier.get())
-        .thenReturn(new ProcessorDetail(key1, "proc-1"))
-        .thenReturn(new ProcessorDetail(key2, "proc-2"));
+        .thenReturn(new ServerProcessorDetail(key1, "proc-1"))
+        .thenReturn(new ServerProcessorDetail(key2, "proc-2"));
 
     OprfManager.EvaluationResult result1 = manager.evaluate("req-1", blindedPoint);
     OprfManager.EvaluationResult result2 = manager.evaluate("req-2", blindedPoint);
@@ -67,7 +67,7 @@ class OprfManagerTest {
   void evaluate_differentBlindedPoints_produceDifferentResults() {
     ECPoint point1 = GROUP_SPEC.curve().g();
     ECPoint point2 = GROUP_SPEC.curve().g().multiply(BigInteger.TWO).normalize();
-    ProcessorDetail detail = new ProcessorDetail(MASTER_KEY, PROCESS_ID);
+    ServerProcessorDetail detail = new ServerProcessorDetail(MASTER_KEY, PROCESS_ID);
 
     when(processorDetailSupplier.get()).thenReturn(detail);
 

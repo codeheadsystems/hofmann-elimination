@@ -3,7 +3,7 @@ package com.codeheadsystems.hofmann.springboot.config;
 import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpecImpl;
 import com.codeheadsystems.hofmann.server.auth.JwtManager;
 import com.codeheadsystems.hofmann.server.manager.OprfManager;
-import com.codeheadsystems.hofmann.server.model.ProcessorDetail;
+import com.codeheadsystems.oprf.model.ServerProcessorDetail;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemoryCredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemorySessionStore;
@@ -142,7 +142,7 @@ public class HofmannAutoConfiguration {
       masterKey = new BigInteger(masterKeyHex, 16);
     }
 
-    ProcessorDetail processorDetail = new ProcessorDetail(masterKey, processorId);
-    return new OprfManager(() -> processorDetail);
+    ServerProcessorDetail serverProcessorDetail = new ServerProcessorDetail(masterKey, processorId);
+    return new OprfManager(() -> serverProcessorDetail);
   }
 }

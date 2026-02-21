@@ -5,7 +5,7 @@ import com.codeheadsystems.hofmann.dropwizard.auth.HofmannPrincipal;
 import com.codeheadsystems.hofmann.dropwizard.health.OpaqueServerHealthCheck;
 import com.codeheadsystems.hofmann.server.auth.JwtManager;
 import com.codeheadsystems.hofmann.server.manager.OprfManager;
-import com.codeheadsystems.hofmann.server.model.ProcessorDetail;
+import com.codeheadsystems.oprf.model.ServerProcessorDetail;
 import com.codeheadsystems.hofmann.server.resource.OpaqueResource;
 import com.codeheadsystems.hofmann.server.resource.OprfResource;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
@@ -100,8 +100,8 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     environment.jersey().register(new AuthValueFactoryProvider.Binder<>(HofmannPrincipal.class));
 
     // OPRF endpoint
-    ProcessorDetail processorDetail = buildProcessorDetail(configuration, opaqueConfig);
-    OprfManager oprfManager = new OprfManager(() -> processorDetail);
+    ServerProcessorDetail serverProcessorDetail = buildProcessorDetail(configuration, opaqueConfig);
+    OprfManager oprfManager = new OprfManager(() -> serverProcessorDetail);
     environment.jersey().register(new OprfResource(oprfManager, WeierstrassGroupSpecImpl.P256_SHA256));
   }
 
@@ -173,7 +173,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     return new Server(skFixed, pk, oprfSeed, opaqueConfig);
   }
 
-  private ProcessorDetail buildProcessorDetail(C configuration, OpaqueConfig opaqueConfig) {
+  private ServerProcessorDetail buildProcessorDetail(C configuration, OpaqueConfig opaqueConfig) {
     String masterKeyHex = configuration.getOprfMasterKeyHex();
     String processorId = configuration.getOprfProcessorId();
 
@@ -181,10 +181,10 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
       log.warn("No OPRF master key configured — generating randomly. "
           + "OPRF outputs will change on restart. Do not use in production.");
       BigInteger masterKey = opaqueConfig.cipherSuite().oprfSuite().randomScalar();
-      return new ProcessorDetail(masterKey, processorId);
+      return new ServerProcessorDetail(masterKey, processorId);
     }
 
     BigInteger masterKey = new BigInteger(masterKeyHex, 16);
-    return new ProcessorDetail(masterKey, processorId);
+    return new ServerProcessorDetail(masterKey, processorId);
   }
 }
