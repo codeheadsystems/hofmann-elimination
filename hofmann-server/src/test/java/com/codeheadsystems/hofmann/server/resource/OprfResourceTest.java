@@ -45,7 +45,7 @@ class OprfResourceTest {
 
     OprfResponse response = resource.evaluate(request);
 
-    assertThat(response.hexCodedEcPoint()).isEqualTo(evaluatedHex);
+    assertThat(response.ecPoint()).isEqualTo(evaluatedHex);
     assertThat(response.processIdentifier()).isEqualTo(processIdentifier);
   }
 
@@ -65,7 +65,7 @@ class OprfResourceTest {
     OprfResponse response = resource.evaluate(request);
 
     // The hex in the response should decode back to the same point
-    ECPoint decoded = GROUP_SPEC.toEcPoint(response.hexCodedEcPoint());
+    ECPoint decoded = GROUP_SPEC.toEcPoint(response.ecPoint());
     assertThat(decoded.normalize()).isEqualTo(point);
   }
 }

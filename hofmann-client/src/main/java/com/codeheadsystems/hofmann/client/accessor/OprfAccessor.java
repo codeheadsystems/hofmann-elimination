@@ -61,7 +61,7 @@ public class OprfAccessor {
       final HttpResponse<String> httpResponse = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
 
       final OprfResponse response = objectMapper.readValue(httpResponse.body(), OprfResponse.class);
-      final byte[] evaluatedElement = Hex.decode(response.hexCodedEcPoint());
+      final byte[] evaluatedElement = Hex.decode(response.ecPoint());
       return new Response(evaluatedElement, response.processIdentifier());
     } catch (IOException e) {
       throw new OprfAccessorException("HTTP request failed for server: " + serverIdentifier, e);

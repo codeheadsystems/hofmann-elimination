@@ -26,14 +26,14 @@ public class OprfController {
 
   @PostMapping
   public OprfResponse evaluate(@RequestBody OprfRequest request) {
-    if (request.hexCodedEcPoint() == null || request.hexCodedEcPoint().isBlank()) {
+    if (request.ecPoint() == null || request.ecPoint().isBlank()) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing required field: ecPoint");
     }
     if (request.requestId() == null || request.requestId().isBlank()) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing required field: requestId");
     }
     try {
-      ECPoint blindedPoint = groupSpec.toEcPoint(request.hexCodedEcPoint());
+      ECPoint blindedPoint = groupSpec.toEcPoint(request.ecPoint());
       OprfManager.EvaluationResult result = oprfManager.evaluate(request.requestId(), blindedPoint);
       return new OprfResponse(groupSpec.toHex(result.evaluatedPoint()), result.processIdentifier());
     } catch (IllegalArgumentException e) {

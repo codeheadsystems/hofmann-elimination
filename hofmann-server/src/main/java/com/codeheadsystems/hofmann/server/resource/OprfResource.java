@@ -38,14 +38,14 @@ public class OprfResource {
   public OprfResponse evaluate(final OprfRequest request) {
     log.trace("evaluate(requestId={})", request.requestId());
     // Validate inputs before passing to crypto layer to return 400 instead of 500 for bad input
-    if (request.hexCodedEcPoint() == null || request.hexCodedEcPoint().isBlank()) {
+    if (request.ecPoint() == null || request.ecPoint().isBlank()) {
       throw new WebApplicationException("Missing required field: ecPoint", Response.Status.BAD_REQUEST);
     }
     if (request.requestId() == null || request.requestId().isBlank()) {
       throw new WebApplicationException("Missing required field: requestId", Response.Status.BAD_REQUEST);
     }
     try {
-      final ECPoint blindedPoint = groupSpec.toEcPoint(request.hexCodedEcPoint());
+      final ECPoint blindedPoint = groupSpec.toEcPoint(request.ecPoint());
       final OprfManager.EvaluationResult result = oprfManager.evaluate(request.requestId(), blindedPoint);
       return new OprfResponse(groupSpec.toHex(result.evaluatedPoint()), result.processIdentifier());
     } catch (IllegalArgumentException e) {
