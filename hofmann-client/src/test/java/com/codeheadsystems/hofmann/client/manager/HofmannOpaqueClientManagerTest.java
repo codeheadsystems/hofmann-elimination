@@ -7,7 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.codeheadsystems.hofmann.client.accessor.OpaqueAccessor;
+import com.codeheadsystems.hofmann.client.accessor.HofmannOpaqueAccessor;
 import com.codeheadsystems.hofmann.client.config.OpaqueClientConfig;
 import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
 import com.codeheadsystems.hofmann.model.opaque.AuthFinishResponse;
@@ -22,14 +22,14 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * Unit tests for {@link OpaqueManager}.
+ * Unit tests for {@link HofmannOpaqueClientManager}.
  * <p>
  * Uses the real opaque {@link com.codeheadsystems.opaque.Client} with a P-256 / identity-KSF
  * test config so that all cryptographic operations execute correctly, while the
- * {@link OpaqueAccessor} HTTP layer is mocked out.
+ * {@link HofmannOpaqueAccessor} HTTP layer is mocked out.
  */
 @ExtendWith(MockitoExtension.class)
-class OpaqueManagerTest {
+class HofmannOpaqueClientManagerTest {
 
   private static final Base64.Encoder B64 = Base64.getEncoder();
   private static final ServerIdentifier SERVER_ID = new ServerIdentifier("test-server");
@@ -38,12 +38,12 @@ class OpaqueManagerTest {
   // A real opaque Client is used via OpaqueManager so we can exercise the full crypto path.
   // We use the identity KSF and a fixed context so the test is deterministic (no Argon2 cost).
   private static final OpaqueClientConfig CONFIG = OpaqueClientConfig.forTesting("opaque-manager-test");
-  @Mock private OpaqueAccessor accessor;
-  private OpaqueManager manager;
+  @Mock private HofmannOpaqueAccessor accessor;
+  private HofmannOpaqueClientManager manager;
 
   @BeforeEach
   void setUp() {
-    manager = new OpaqueManager(CONFIG, accessor);
+    manager = new HofmannOpaqueClientManager(CONFIG, accessor);
   }
 
   @Test

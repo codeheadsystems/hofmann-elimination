@@ -35,18 +35,18 @@ import org.slf4j.LoggerFactory;
  * I/O errors and interruptions are wrapped in {@link OpaqueAccessorException}.
  */
 @Singleton
-public class OpaqueAccessor {
+public class HofmannOpaqueAccessor {
 
-  private static final Logger log = LoggerFactory.getLogger(OpaqueAccessor.class);
+  private static final Logger log = LoggerFactory.getLogger(HofmannOpaqueAccessor.class);
 
   private final HttpClient httpClient;
   private final ObjectMapper objectMapper;
   private final Map<ServerIdentifier, ServerConnectionInfo> serverConnections;
 
   @Inject
-  public OpaqueAccessor(final HttpClient httpClient,
-                        final ObjectMapper objectMapper,
-                        final Map<ServerIdentifier, ServerConnectionInfo> serverConnections) {
+  public HofmannOpaqueAccessor(final HttpClient httpClient,
+                               final ObjectMapper objectMapper,
+                               final Map<ServerIdentifier, ServerConnectionInfo> serverConnections) {
     log.info("OpaqueAccessor()");
     this.httpClient = httpClient;
     this.objectMapper = objectMapper;

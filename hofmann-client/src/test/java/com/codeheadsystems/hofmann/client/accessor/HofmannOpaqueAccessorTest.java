@@ -30,7 +30,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
-class OpaqueAccessorTest {
+class HofmannOpaqueAccessorTest {
 
   private static final ServerIdentifier SERVER_ID = new ServerIdentifier("test-server");
   private static final URI BASE_URI = URI.create("http://localhost:8080");
@@ -39,13 +39,13 @@ class OpaqueAccessorTest {
   @Mock private HttpResponse<String> httpResponse;
   @Mock private ObjectMapper objectMapper;
 
-  private OpaqueAccessor accessor;
+  private HofmannOpaqueAccessor accessor;
 
   @BeforeEach
   void setUp() {
     Map<ServerIdentifier, ServerConnectionInfo> connections = new HashMap<>();
     connections.put(SERVER_ID, new ServerConnectionInfo(BASE_URI));
-    accessor = new OpaqueAccessor(httpClient, objectMapper, connections);
+    accessor = new HofmannOpaqueAccessor(httpClient, objectMapper, connections);
   }
 
   // ── Registration start ────────────────────────────────────────────────────

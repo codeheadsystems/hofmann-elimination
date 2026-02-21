@@ -4,6 +4,7 @@ import com.codeheadsystems.hofmann.dropwizard.auth.HofmannAuthenticator;
 import com.codeheadsystems.hofmann.dropwizard.auth.HofmannPrincipal;
 import com.codeheadsystems.hofmann.dropwizard.health.OpaqueServerHealthCheck;
 import com.codeheadsystems.hofmann.server.auth.JwtManager;
+import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
 import com.codeheadsystems.hofmann.server.resource.OpaqueResource;
 import com.codeheadsystems.hofmann.server.resource.OprfResource;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
@@ -89,8 +90,8 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     Server server = buildServer(configuration, opaqueConfig);
     JwtManager jwtManager = buildJwtManager(configuration);
 
-    environment.jersey().register(
-        new OpaqueResource(server, credentialStore, jwtManager));
+    HofmannOpaqueServerManager hofmannOpaqueServerManager = new HofmannOpaqueServerManager(server, credentialStore, jwtManager);
+    environment.jersey().register(new OpaqueResource(hofmannOpaqueServerManager));
     environment.healthChecks().register("opaque-server", new OpaqueServerHealthCheck(server));
 
     // JWT auth filter

@@ -3,7 +3,7 @@ package com.codeheadsystems.hofmann.dropwizard;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.codeheadsystems.hofmann.client.accessor.HofmannOprfAccessor;
-import com.codeheadsystems.hofmann.client.config.OprfConfig;
+import com.codeheadsystems.hofmann.client.config.OprfClientConfig;
 import com.codeheadsystems.hofmann.client.manager.HofmannOprfClientManager;
 import com.codeheadsystems.hofmann.client.model.HofmannHashResult;
 import com.codeheadsystems.hofmann.client.model.ServerConnectionInfo;
@@ -41,12 +41,12 @@ class OprfIntegrationTest {
 
   @BeforeEach
   void setUp() {
-    OprfConfig oprfConfig = new OprfConfig();
+    OprfClientConfig oprfClientConfig = new OprfClientConfig();
     Map<ServerIdentifier, ServerConnectionInfo> connections = Map.of(
         SERVER_ID, new ServerConnectionInfo(URI.create(baseUrl() + "/oprf")));
-    HofmannOprfAccessor accessor = new HofmannOprfAccessor(oprfConfig, HttpClient.newHttpClient(),
+    HofmannOprfAccessor accessor = new HofmannOprfAccessor(oprfClientConfig, HttpClient.newHttpClient(),
         new ObjectMapper(), connections);
-    final OprfClientManager oprfClientManager = new OprfClientManager(oprfConfig.suite());
+    final OprfClientManager oprfClientManager = new OprfClientManager(oprfClientConfig.suite());
     hofmannOprfClientManager = new HofmannOprfClientManager(accessor, oprfClientManager);
   }
 

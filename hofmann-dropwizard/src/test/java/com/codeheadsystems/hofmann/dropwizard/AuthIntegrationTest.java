@@ -2,9 +2,9 @@ package com.codeheadsystems.hofmann.dropwizard;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.codeheadsystems.hofmann.client.accessor.OpaqueAccessor;
+import com.codeheadsystems.hofmann.client.accessor.HofmannOpaqueAccessor;
 import com.codeheadsystems.hofmann.client.config.OpaqueClientConfig;
-import com.codeheadsystems.hofmann.client.manager.OpaqueManager;
+import com.codeheadsystems.hofmann.client.manager.HofmannOpaqueClientManager;
 import com.codeheadsystems.hofmann.client.model.ServerConnectionInfo;
 import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
 import com.codeheadsystems.hofmann.model.opaque.AuthFinishResponse;
@@ -38,7 +38,7 @@ class AuthIntegrationTest {
   private static final byte[] CREDENTIAL_ID = "jwt-test@example.com".getBytes(StandardCharsets.UTF_8);
   private static final byte[] PASSWORD = "correct-horse-battery-staple".getBytes(StandardCharsets.UTF_8);
 
-  private OpaqueManager opaqueManager;
+  private HofmannOpaqueClientManager hofmannOpaqueClientManager;
   private HttpClient httpClient;
 
   @BeforeEach
@@ -47,14 +47,14 @@ class AuthIntegrationTest {
     OpaqueClientConfig config = OpaqueClientConfig.forTesting("hofmann-test");
     Map<ServerIdentifier, ServerConnectionInfo> connections = Map.of(
         SERVER_ID, new ServerConnectionInfo(URI.create(baseUrl())));
-    OpaqueAccessor accessor = new OpaqueAccessor(httpClient, new ObjectMapper(), connections);
-    opaqueManager = new OpaqueManager(config, accessor);
+    HofmannOpaqueAccessor accessor = new HofmannOpaqueAccessor(httpClient, new ObjectMapper(), connections);
+    hofmannOpaqueClientManager = new HofmannOpaqueClientManager(config, accessor);
   }
 
   @Test
   void authenticateAndCallProtectedEndpoint_returns200() throws Exception {
-    opaqueManager.register(SERVER_ID, CREDENTIAL_ID, PASSWORD);
-    AuthFinishResponse authResp = opaqueManager.authenticate(SERVER_ID, CREDENTIAL_ID, PASSWORD);
+    hofmannOpaqueClientManager.register(SERVER_ID, CREDENTIAL_ID, PASSWORD);
+    AuthFinishResponse authResp = hofmannOpaqueClientManager.authenticate(SERVER_ID, CREDENTIAL_ID, PASSWORD);
 
     HttpRequest request = HttpRequest.newBuilder()
         .uri(URI.create(baseUrl() + "/api/whoami"))

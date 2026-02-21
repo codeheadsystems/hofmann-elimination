@@ -1,6 +1,6 @@
 package com.codeheadsystems.hofmann.client.accessor;
 
-import com.codeheadsystems.hofmann.client.config.OprfConfig;
+import com.codeheadsystems.hofmann.client.config.OprfClientConfig;
 import com.codeheadsystems.hofmann.client.exceptions.OprfAccessorException;
 import com.codeheadsystems.hofmann.client.model.ServerConnectionInfo;
 import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
@@ -26,11 +26,11 @@ public class HofmannOprfAccessor {
   private final Map<ServerIdentifier, ServerConnectionInfo> serverConnections;
 
   @Inject
-  public HofmannOprfAccessor(final OprfConfig oprfConfig,
+  public HofmannOprfAccessor(final OprfClientConfig oprfClientConfig,
                              final HttpClient httpClient,
                              final ObjectMapper objectMapper,
                              final Map<ServerIdentifier, ServerConnectionInfo> serverConnections) {
-    log.info("OprfAccessor({})", oprfConfig);
+    log.info("OprfAccessor({})", oprfClientConfig);
     this.httpClient = httpClient;
     this.objectMapper = objectMapper;
     this.serverConnections = serverConnections;

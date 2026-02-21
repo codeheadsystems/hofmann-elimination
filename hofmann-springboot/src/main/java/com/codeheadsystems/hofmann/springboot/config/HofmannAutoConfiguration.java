@@ -1,6 +1,7 @@
 package com.codeheadsystems.hofmann.springboot.config;
 
 import com.codeheadsystems.hofmann.server.auth.JwtManager;
+import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemoryCredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemorySessionStore;
@@ -113,6 +114,13 @@ public class HofmannAutoConfiguration {
       secret = HexFormat.of().parseHex(secretHex);
     }
     return new JwtManager(secret, props.getJwtIssuer(), props.getJwtTtlSeconds(), sessionStore);
+  }
+
+  @Bean
+  @ConditionalOnMissingBean
+  public HofmannOpaqueServerManager opaqueServerManager(Server server, CredentialStore credentialStore,
+                                                        JwtManager jwtManager) {
+    return new HofmannOpaqueServerManager(server, credentialStore, jwtManager);
   }
 
   @Bean

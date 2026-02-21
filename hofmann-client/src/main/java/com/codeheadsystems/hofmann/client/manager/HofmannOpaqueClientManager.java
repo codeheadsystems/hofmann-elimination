@@ -1,6 +1,6 @@
 package com.codeheadsystems.hofmann.client.manager;
 
-import com.codeheadsystems.hofmann.client.accessor.OpaqueAccessor;
+import com.codeheadsystems.hofmann.client.accessor.HofmannOpaqueAccessor;
 import com.codeheadsystems.hofmann.client.config.OpaqueClientConfig;
 import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
 import com.codeheadsystems.hofmann.model.opaque.AuthFinishRequest;
@@ -26,7 +26,7 @@ import org.slf4j.LoggerFactory;
  * <p>
  * Handles both the registration flow (3 steps) and the authentication flow (3 steps) by
  * coordinating the cryptographic operations (via the opaque {@link Client}) with the HTTP
- * transport layer (via {@link OpaqueAccessor}).  Callers deal only with plain passwords and
+ * transport layer (via {@link HofmannOpaqueAccessor}).  Callers deal only with plain passwords and
  * credential identifiers; all protocol details are hidden inside this class.
  * <p>
  * <strong>Registration:</strong>
@@ -43,15 +43,15 @@ import org.slf4j.LoggerFactory;
  * </ol>
  */
 @Singleton
-public class OpaqueManager {
+public class HofmannOpaqueClientManager {
 
-  private static final Logger log = LoggerFactory.getLogger(OpaqueManager.class);
+  private static final Logger log = LoggerFactory.getLogger(HofmannOpaqueClientManager.class);
 
   private final Client client;
-  private final OpaqueAccessor accessor;
+  private final HofmannOpaqueAccessor accessor;
 
   @Inject
-  public OpaqueManager(final OpaqueClientConfig config, final OpaqueAccessor accessor) {
+  public HofmannOpaqueClientManager(final OpaqueClientConfig config, final HofmannOpaqueAccessor accessor) {
     log.info("OpaqueManager()");
     this.client = new Client(config.opaqueConfig());
     this.accessor = accessor;

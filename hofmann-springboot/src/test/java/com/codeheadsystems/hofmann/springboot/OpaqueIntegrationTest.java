@@ -3,9 +3,9 @@ package com.codeheadsystems.hofmann.springboot;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.codeheadsystems.hofmann.client.accessor.OpaqueAccessor;
+import com.codeheadsystems.hofmann.client.accessor.HofmannOpaqueAccessor;
 import com.codeheadsystems.hofmann.client.config.OpaqueClientConfig;
-import com.codeheadsystems.hofmann.client.manager.OpaqueManager;
+import com.codeheadsystems.hofmann.client.manager.HofmannOpaqueClientManager;
 import com.codeheadsystems.hofmann.client.model.ServerConnectionInfo;
 import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
 import com.codeheadsystems.hofmann.model.opaque.AuthFinishResponse;
@@ -29,29 +29,29 @@ class OpaqueIntegrationTest {
   @LocalServerPort
   private int port;
 
-  private OpaqueManager opaqueManager;
+  private HofmannOpaqueClientManager hofmannOpaqueClientManager;
 
   @BeforeEach
   void setUp() {
     OpaqueClientConfig config = OpaqueClientConfig.forTesting("hofmann-test");
     Map<ServerIdentifier, ServerConnectionInfo> connections = Map.of(
         SERVER_ID, new ServerConnectionInfo(URI.create(baseUrl())));
-    OpaqueAccessor accessor = new OpaqueAccessor(HttpClient.newHttpClient(),
+    HofmannOpaqueAccessor accessor = new HofmannOpaqueAccessor(HttpClient.newHttpClient(),
         new ObjectMapper(), connections);
-    opaqueManager = new OpaqueManager(config, accessor);
+    hofmannOpaqueClientManager = new HofmannOpaqueClientManager(config, accessor);
   }
 
   @Test
   void register_completesWithoutError() {
     byte[] credId = "register-only@example.com".getBytes(StandardCharsets.UTF_8);
-    opaqueManager.register(SERVER_ID, credId, PASSWORD);
+    hofmannOpaqueClientManager.register(SERVER_ID, credId, PASSWORD);
   }
 
   @Test
   void registerThenAuthenticate_derivesMatchingSessionKey() {
-    opaqueManager.register(SERVER_ID, CREDENTIAL_ID, PASSWORD);
+    hofmannOpaqueClientManager.register(SERVER_ID, CREDENTIAL_ID, PASSWORD);
 
-    AuthFinishResponse response = opaqueManager.authenticate(SERVER_ID, CREDENTIAL_ID, PASSWORD);
+    AuthFinishResponse response = hofmannOpaqueClientManager.authenticate(SERVER_ID, CREDENTIAL_ID, PASSWORD);
 
     assertThat(response.sessionKeyBase64()).isNotEmpty();
     assertThat(response.token()).isNotEmpty();
@@ -59,10 +59,10 @@ class OpaqueIntegrationTest {
 
   @Test
   void authenticateTwice_producesDifferentSessionKeys() {
-    opaqueManager.register(SERVER_ID, CREDENTIAL_ID, PASSWORD);
+    hofmannOpaqueClientManager.register(SERVER_ID, CREDENTIAL_ID, PASSWORD);
 
-    AuthFinishResponse resp1 = opaqueManager.authenticate(SERVER_ID, CREDENTIAL_ID, PASSWORD);
-    AuthFinishResponse resp2 = opaqueManager.authenticate(SERVER_ID, CREDENTIAL_ID, PASSWORD);
+    AuthFinishResponse resp1 = hofmannOpaqueClientManager.authenticate(SERVER_ID, CREDENTIAL_ID, PASSWORD);
+    AuthFinishResponse resp2 = hofmannOpaqueClientManager.authenticate(SERVER_ID, CREDENTIAL_ID, PASSWORD);
 
     assertThat(resp1.sessionKeyBase64()).isNotEqualTo(resp2.sessionKeyBase64());
     assertThat(resp1.token()).isNotEqualTo(resp2.token());
@@ -71,19 +71,19 @@ class OpaqueIntegrationTest {
   @Test
   void authenticate_wrongPassword_throwsSecurityException() {
     byte[] credId = "wrong-pwd@example.com".getBytes(StandardCharsets.UTF_8);
-    opaqueManager.register(SERVER_ID, credId, PASSWORD);
+    hofmannOpaqueClientManager.register(SERVER_ID, credId, PASSWORD);
 
     byte[] wrongPassword = "wrong-password".getBytes(StandardCharsets.UTF_8);
 
-    assertThatThrownBy(() -> opaqueManager.authenticate(SERVER_ID, credId, wrongPassword))
+    assertThatThrownBy(() -> hofmannOpaqueClientManager.authenticate(SERVER_ID, credId, wrongPassword))
         .isInstanceOf(SecurityException.class);
   }
 
   @Test
   void deleteRegistration_completesWithoutError() {
     byte[] credId = "delete-me@example.com".getBytes(StandardCharsets.UTF_8);
-    opaqueManager.register(SERVER_ID, credId, PASSWORD);
-    opaqueManager.deleteRegistration(SERVER_ID, credId);
+    hofmannOpaqueClientManager.register(SERVER_ID, credId, PASSWORD);
+    hofmannOpaqueClientManager.deleteRegistration(SERVER_ID, credId);
   }
 
   private String baseUrl() {

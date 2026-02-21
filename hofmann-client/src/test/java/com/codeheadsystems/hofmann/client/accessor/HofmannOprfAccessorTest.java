@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
-import com.codeheadsystems.hofmann.client.config.OprfConfig;
+import com.codeheadsystems.hofmann.client.config.OprfClientConfig;
 import com.codeheadsystems.hofmann.client.exceptions.OprfAccessorException;
 import com.codeheadsystems.hofmann.client.model.ServerConnectionInfo;
 import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
@@ -28,7 +28,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class HofmannOprfAccessorTest {
 
-  private static final OprfConfig CONFIG = new OprfConfig();
+  private static final OprfClientConfig CONFIG = new OprfClientConfig();
   private static final ServerIdentifier SERVER_ID = new ServerIdentifier("test-server");
   private static final ServerIdentifier UNKNOWN_SERVER_ID = new ServerIdentifier("unknown-server");
   private static final URI ENDPOINT = URI.create("http://localhost:8080/oprf");
