@@ -27,6 +27,22 @@ public class OprfCipherSuite {
   public static final OprfCipherSuite P384_SHA384 = buildP384Sha384();
   public static final OprfCipherSuite P521_SHA512 = buildP521Sha512();
 
+  /**
+   * Returns the cipher suite for the given name.  Accepted names: {@code "P256_SHA256"},
+   * {@code "P384_SHA384"}, {@code "P521_SHA512"}.
+   *
+   * @throws IllegalArgumentException for unrecognised names
+   */
+  public static OprfCipherSuite fromName(String name) {
+    return switch (name) {
+      case "P256_SHA256" -> P256_SHA256;
+      case "P384_SHA384" -> P384_SHA384;
+      case "P521_SHA512" -> P521_SHA512;
+      default -> throw new IllegalArgumentException("Unknown OPRF cipher suite: " + name
+          + ". Valid values: P256_SHA256, P384_SHA384, P521_SHA512");
+    };
+  }
+
   private final String identifier;
   private final byte[] contextString;
   private final byte[] hashToGroupDst;

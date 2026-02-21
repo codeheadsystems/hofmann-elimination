@@ -12,6 +12,7 @@ import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.internal.OpaqueCrypto;
 import com.codeheadsystems.oprf.manager.OprfServerManager;
 import com.codeheadsystems.oprf.model.ServerProcessorDetail;
+import com.codeheadsystems.oprf.rfc9497.OprfCipherSuite;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
@@ -46,12 +47,14 @@ public class HofmannAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   public OpaqueConfig opaqueConfig(HofmannProperties props) {
+    OpaqueCipherSuite suite = OpaqueCipherSuite.fromName(props.getOpaqueCipherSuite());
     byte[] context = props.getContext().getBytes(StandardCharsets.UTF_8);
     if (props.getArgon2MemoryKib() == 0) {
       log.warn("Argon2 disabled — using identity KSF. Do not use in production.");
-      return new OpaqueConfig(OpaqueCipherSuite.P256_SHA256, 0, 0, 0, context, new OpaqueConfig.IdentityKsf());
+      return new OpaqueConfig(suite, 0, 0, 0, context, new OpaqueConfig.IdentityKsf());
     }
     return OpaqueConfig.withArgon2id(
+        suite,
         context,
         props.getArgon2MemoryKib(),
         props.getArgon2Iterations(),
@@ -125,7 +128,8 @@ public class HofmannAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean
-  public OprfServerManager oprfServerManager(HofmannProperties props, OpaqueConfig opaqueConfig) {
+  public OprfServerManager oprfServerManager(HofmannProperties props) {
+    OprfCipherSuite oprfSuite = OprfCipherSuite.fromName(props.getOprfCipherSuite());
     String masterKeyHex = props.getOprfMasterKeyHex();
     String processorId = props.getOprfProcessorId();
 
@@ -133,12 +137,12 @@ public class HofmannAutoConfiguration {
     if (masterKeyHex == null || masterKeyHex.isEmpty()) {
       log.warn("No OPRF master key configured — generating randomly. "
           + "OPRF outputs will change on restart. Do not use in production.");
-      masterKey = opaqueConfig.cipherSuite().oprfSuite().randomScalar();
+      masterKey = oprfSuite.randomScalar();
     } else {
       masterKey = new BigInteger(masterKeyHex, 16);
     }
 
     ServerProcessorDetail serverProcessorDetail = new ServerProcessorDetail(masterKey, processorId);
-    return new OprfServerManager(opaqueConfig.cipherSuite().oprfSuite(), () -> serverProcessorDetail);
+    return new OprfServerManager(oprfSuite, () -> serverProcessorDetail);
   }
 }

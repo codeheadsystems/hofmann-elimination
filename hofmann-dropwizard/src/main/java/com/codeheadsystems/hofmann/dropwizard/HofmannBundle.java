@@ -17,6 +17,7 @@ import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.internal.OpaqueCrypto;
 import com.codeheadsystems.oprf.manager.OprfServerManager;
 import com.codeheadsystems.oprf.model.ServerProcessorDetail;
+import com.codeheadsystems.oprf.rfc9497.OprfCipherSuite;
 import io.dropwizard.auth.AuthDynamicFeature;
 import io.dropwizard.auth.AuthValueFactoryProvider;
 import io.dropwizard.auth.oauth.OAuthCredentialAuthFilter;
@@ -104,8 +105,9 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     environment.jersey().register(new AuthValueFactoryProvider.Binder<>(HofmannPrincipal.class));
 
     // OPRF endpoint
-    ServerProcessorDetail serverProcessorDetail = buildProcessorDetail(configuration, opaqueConfig);
-    OprfServerManager oprfServerManager = new OprfServerManager(opaqueConfig.cipherSuite().oprfSuite(), () -> serverProcessorDetail);
+    OprfCipherSuite oprfSuite = OprfCipherSuite.fromName(configuration.getOprfCipherSuite());
+    ServerProcessorDetail serverProcessorDetail = buildProcessorDetail(configuration, oprfSuite);
+    OprfServerManager oprfServerManager = new OprfServerManager(oprfSuite, () -> serverProcessorDetail);
     environment.jersey().register(new OprfResource(oprfServerManager));
   }
 
@@ -125,12 +127,14 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
   }
 
   private OpaqueConfig buildOpaqueConfig(C configuration) {
+    OpaqueCipherSuite suite = OpaqueCipherSuite.fromName(configuration.getOpaqueCipherSuite());
     byte[] context = configuration.getContext().getBytes(StandardCharsets.UTF_8);
     if (configuration.getArgon2MemoryKib() == 0) {
       log.warn("Argon2 disabled — using identity KSF. Do not use in production.");
-      return new OpaqueConfig(OpaqueCipherSuite.P256_SHA256, 0, 0, 0, context, new OpaqueConfig.IdentityKsf());
+      return new OpaqueConfig(suite, 0, 0, 0, context, new OpaqueConfig.IdentityKsf());
     }
     return OpaqueConfig.withArgon2id(
+        suite,
         context,
         configuration.getArgon2MemoryKib(),
         configuration.getArgon2Iterations(),
@@ -177,14 +181,14 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     return new Server(skFixed, pk, oprfSeed, opaqueConfig);
   }
 
-  private ServerProcessorDetail buildProcessorDetail(C configuration, OpaqueConfig opaqueConfig) {
+  private ServerProcessorDetail buildProcessorDetail(C configuration, OprfCipherSuite oprfSuite) {
     String masterKeyHex = configuration.getOprfMasterKeyHex();
     String processorId = configuration.getOprfProcessorId();
 
     if (masterKeyHex == null || masterKeyHex.isEmpty()) {
       log.warn("No OPRF master key configured — generating randomly. "
           + "OPRF outputs will change on restart. Do not use in production.");
-      BigInteger masterKey = opaqueConfig.cipherSuite().oprfSuite().randomScalar();
+      BigInteger masterKey = oprfSuite.randomScalar();
       return new ServerProcessorDetail(masterKey, processorId);
     }
 

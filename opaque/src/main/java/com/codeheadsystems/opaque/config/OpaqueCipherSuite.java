@@ -20,6 +20,22 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
   public static final OpaqueCipherSuite P521_SHA512 = new OpaqueCipherSuite(OprfCipherSuite.P521_SHA512);
 
   /**
+   * Returns the OPAQUE cipher suite for the given name.  Accepted names: {@code "P256_SHA256"},
+   * {@code "P384_SHA384"}, {@code "P521_SHA512"}.
+   *
+   * @throws IllegalArgumentException for unrecognised names
+   */
+  public static OpaqueCipherSuite fromName(String name) {
+    return switch (name) {
+      case "P256_SHA256" -> P256_SHA256;
+      case "P384_SHA384" -> P384_SHA384;
+      case "P521_SHA512" -> P521_SHA512;
+      default -> throw new IllegalArgumentException("Unknown OPAQUE cipher suite: " + name
+          + ". Valid values: P256_SHA256, P384_SHA384, P521_SHA512");
+    };
+  }
+
+  /**
    * Compressed public key size in bytes (33, 49, or 67).
    */
   public int Npk() {

@@ -5,6 +5,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "hofmann")
 public class HofmannProperties {
 
+  private String opaqueCipherSuite = "P256_SHA256";
+  private String oprfCipherSuite = "P256_SHA256";
   private String serverKeySeedHex = "";
   private String oprfSeedHex = "";
   private String oprfMasterKeyHex = "";
@@ -16,6 +18,22 @@ public class HofmannProperties {
   private int argon2MemoryKib = 65536;
   private int argon2Iterations = 3;
   private int argon2Parallelism = 1;
+
+  public String getOpaqueCipherSuite() {
+    return opaqueCipherSuite;
+  }
+
+  public void setOpaqueCipherSuite(String opaqueCipherSuite) {
+    this.opaqueCipherSuite = opaqueCipherSuite;
+  }
+
+  public String getOprfCipherSuite() {
+    return oprfCipherSuite;
+  }
+
+  public void setOprfCipherSuite(String oprfCipherSuite) {
+    this.oprfCipherSuite = oprfCipherSuite;
+  }
 
   public String getServerKeySeedHex() {
     return serverKeySeedHex;

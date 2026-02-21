@@ -22,6 +22,20 @@ import jakarta.validation.constraints.NotEmpty;
 public class HofmannConfiguration extends Configuration {
 
   /**
+   * OPAQUE cipher suite to use.  Valid values: {@code P256_SHA256} (default),
+   * {@code P384_SHA384}, {@code P521_SHA512}.
+   * Must match the client's configuration exactly.
+   */
+  private String opaqueCipherSuite = "P256_SHA256";
+
+  /**
+   * Cipher suite for the standalone OPRF endpoint.  Valid values: {@code P256_SHA256} (default),
+   * {@code P384_SHA384}, {@code P521_SHA512}.
+   * Independent of the OPAQUE cipher suite.
+   */
+  private String oprfCipherSuite = "P256_SHA256";
+
+  /**
    * Hex-encoded 32-byte seed for deriving the server's long-term AKE key pair.
    * Leave empty for random generation (dev only — invalidates all registrations on restart).
    */
@@ -89,6 +103,26 @@ public class HofmannConfiguration extends Configuration {
    */
   @Min(1)
   private int argon2Parallelism = 1;
+
+  @JsonProperty
+  public String getOpaqueCipherSuite() {
+    return opaqueCipherSuite;
+  }
+
+  @JsonProperty
+  public void setOpaqueCipherSuite(String opaqueCipherSuite) {
+    this.opaqueCipherSuite = opaqueCipherSuite;
+  }
+
+  @JsonProperty
+  public String getOprfCipherSuite() {
+    return oprfCipherSuite;
+  }
+
+  @JsonProperty
+  public void setOprfCipherSuite(String oprfCipherSuite) {
+    this.oprfCipherSuite = oprfCipherSuite;
+  }
 
   @JsonProperty
   public String getJwtSecretHex() {

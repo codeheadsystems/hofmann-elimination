@@ -13,10 +13,34 @@ import java.nio.charset.StandardCharsets;
  * is stretched before blinding).
  * <p>
  * For testing use {@link #forTesting(byte[])} which sets up a P-256/identity-KSF config.
+ * For production use {@link #withArgon2id(String, byte[], int, int, int)} which matches the
+ * server's default Argon2id KSF.
  *
  * @param opaqueConfig the opaque library config holding cipher suite, KSF, and context
  */
 public record OpaqueClientConfig(OpaqueConfig opaqueConfig) {
+
+  /**
+   * Creates a production config with Argon2id KSF and the given cipher suite.
+   * The cipher suite name, context, and Argon2id parameters must exactly match the server's.
+   * Accepted suite names: {@code "P256_SHA256"} (default), {@code "P384_SHA384"},
+   * {@code "P521_SHA512"}.
+   */
+  public static OpaqueClientConfig withArgon2id(String cipherSuiteName, byte[] context,
+      int argon2MemoryKib, int argon2Iterations, int argon2Parallelism) {
+    OpaqueCipherSuite suite = OpaqueCipherSuite.fromName(cipherSuiteName);
+    return new OpaqueClientConfig(
+        OpaqueConfig.withArgon2id(suite, context, argon2MemoryKib, argon2Iterations, argon2Parallelism));
+  }
+
+  /**
+   * Convenience overload accepting a context string in UTF-8.
+   */
+  public static OpaqueClientConfig withArgon2id(String cipherSuiteName, String context,
+      int argon2MemoryKib, int argon2Iterations, int argon2Parallelism) {
+    return withArgon2id(cipherSuiteName, context.getBytes(StandardCharsets.UTF_8),
+        argon2MemoryKib, argon2Iterations, argon2Parallelism);
+  }
 
   /**
    * Creates a test-only config with identity KSF (no Argon2), P-256/SHA-256 cipher suite,
