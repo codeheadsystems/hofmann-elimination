@@ -18,10 +18,19 @@ public class OprfServerManager {
     this(OprfCipherSuite.P256_SHA256);
   }
 
+  /**
+   * Used mostly for testing.
+   *
+   * @param suite the cipher suite.
+   */
   public OprfServerManager(OprfCipherSuite suite) {
+    this(suite, suite.randomScalar(), "SP:" + UUID.randomUUID());
+  }
+
+  public OprfServerManager(OprfCipherSuite suite, BigInteger masterKey, String processIdentifier) {
     this.groupSpec = suite.groupSpec();
-    this.masterKey = suite.randomScalar();
-    this.processIdentifier = "SP:" + UUID.randomUUID();
+    this.masterKey = masterKey;
+    this.processIdentifier = processIdentifier;
   }
 
   public OprfServerManager(byte[] seed, byte[] info) {
@@ -40,8 +49,8 @@ public class OprfServerManager {
    * then returned to the client in a hex-encoded format. That process is difficult to reverse due to computational
    * complexity. However, to reverse it is subject to attack from quantum computers by the first party.
    *
-   * @param eliminationRequest
-   * @return
+   * @param eliminationRequest the request from the client containing the hex-encoded blinded elliptic curve point.
+   * @return the response containing the hex-encoded elliptic curve point resulting from the server's process, along with a process identifier for tracking and correlation purposes.
    */
   public EliminationResponse process(final EliminationRequest eliminationRequest) {
     byte[] q = Hex.decode(eliminationRequest.hexCodedEcPoint());

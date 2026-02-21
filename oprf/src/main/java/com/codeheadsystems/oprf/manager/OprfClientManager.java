@@ -3,6 +3,7 @@ package com.codeheadsystems.oprf.manager;
 import com.codeheadsystems.oprf.model.EliminationRequest;
 import com.codeheadsystems.oprf.model.EliminationResponse;
 import com.codeheadsystems.ellipticcurve.rfc9380.GroupSpec;
+import com.codeheadsystems.oprf.model.HashingContext;
 import com.codeheadsystems.oprf.rfc9497.OprfCipherSuite;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -24,29 +25,41 @@ public class OprfClientManager {
   }
 
   /**
-   * Defines the steps the client takes to convert sensitive data into a key that can be used for elimination.
-   * Implements RFC 9497 OPRF mode 0 (OPRF).
-   *
-   * @param oprfServerManager        The server that provides the elimination process.
-   * @param sensitiveData The sensitive data that we want to convert into a key for elimination.
-   * @return an identity key that represents the original sensitive data after processing through the elimination protocol.
+   * This method generates the necessary components for the OPRF hashing process. It creates a unique request ID,
+   * generates a random blinding factor, and converts the sensitive data into a byte array format. The resulting
+   * context is used for the start and completion of the hashing process.
+   * @param sensitiveData the sensitive data you want to hash.
+   * @return a hashing context.
    */
-  public String convertToIdentityKey(final OprfServerManager oprfServerManager,
-                                     final String sensitiveData) {
+  public HashingContext hashingContext(final String sensitiveData) {
     final String requestId = UUID.randomUUID().toString();
     final BigInteger blindingFactor = suite.randomScalar();
-
     final byte[] input = sensitiveData.getBytes(StandardCharsets.UTF_8);
+    return new HashingContext(requestId, blindingFactor, input);
+  }
 
-    final byte[] hashedElement = groupSpec.hashToGroup(input, suite.hashToGroupDst());
-    final byte[] blindedElement = groupSpec.scalarMultiply(blindingFactor, hashedElement);
+  /**
+   * Creates a elimination request for the hashing context. This is largely deterministic based on the hashing context.
+   * @param hashingContext to generate the elimination request from.
+   * @return an elimination request that can be sent to the OPRF server manager.
+   */
+  public EliminationRequest eliminationRequest(final HashingContext hashingContext) {
+    final byte[] hashedElement = groupSpec.hashToGroup(hashingContext.input(), suite.hashToGroupDst());
+    final byte[] blindedElement = groupSpec.scalarMultiply(hashingContext.blindingFactor(), hashedElement);
     final String blindedPointHex = Hex.toHexString(blindedElement);
+    return new EliminationRequest(blindedPointHex, hashingContext.requestId());
+  }
 
-    final EliminationRequest eliminationRequest = new EliminationRequest(blindedPointHex, requestId);
-    final EliminationResponse eliminationResponse = oprfServerManager.process(eliminationRequest);
-
+  /**
+   * Takes the elimination response from the server and the original hashing context to produce the final hash result.
+   * This involves unblinding the evaluated element from the server and applying the finalization step as defined in RFC 9497.
+   * @param eliminationResponse the response from the OPRF server manager after processing the elimination request.
+   * @param hashingContext the original context that was used to generate the elimination request, which contains the necessary information for finalizing the hash.
+   * @return a string that represents the final hash result.
+   */
+  public String hashResult(final EliminationResponse eliminationResponse, final HashingContext hashingContext) {
     final byte[] evaluatedElement = Hex.decode(eliminationResponse.hexCodedEcPoint());
-    final byte[] finalHash = suite.finalize(input, blindingFactor, evaluatedElement);
+    final byte[] finalHash = suite.finalize(hashingContext.input(), hashingContext.blindingFactor(), evaluatedElement);
     return eliminationResponse.processIdentifier() + ":" + Hex.toHexString(finalHash);
   }
 

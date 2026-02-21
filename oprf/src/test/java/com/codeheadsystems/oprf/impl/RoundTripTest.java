@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.codeheadsystems.oprf.manager.OprfClientManager;
 import com.codeheadsystems.oprf.manager.OprfServerManager;
+import com.codeheadsystems.oprf.model.EliminationRequest;
+import com.codeheadsystems.oprf.model.EliminationResponse;
+import com.codeheadsystems.oprf.model.HashingContext;
 import com.codeheadsystems.oprf.rfc9497.OprfCipherSuite;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -23,6 +26,22 @@ public class RoundTripTest {
     );
   }
 
+
+  /**
+   * Defines the steps the client takes to convert sensitive data into a key that can be used for elimination.
+   * Implements RFC 9497 OPRF mode 0 (OPRF).
+   * \
+   */
+  public String convertToIdentityKey(final OprfClientManager oprfClientManager,
+                                     final OprfServerManager oprfServerManager,
+                                     final String sensitiveData) {
+    final HashingContext hashingContext = oprfClientManager.hashingContext(sensitiveData);
+    final EliminationRequest eliminationRequest = oprfClientManager.eliminationRequest(hashingContext);
+    final EliminationResponse eliminationResponse = oprfServerManager.process(eliminationRequest);
+    return oprfClientManager.hashResult(eliminationResponse, hashingContext);
+  }
+
+
   // ─── Existing P256-SHA256 tests (backward compat) ─────────────────────────
 
   @Test
@@ -31,10 +50,10 @@ public class RoundTripTest {
     OprfClientManager alice = new OprfClientManager();
     OprfClientManager bob = new OprfClientManager();
 
-    String aliceHash = alice.convertToIdentityKey(oprfServerManager, TEST_DATA);
-    String bobHash = bob.convertToIdentityKey(oprfServerManager, TEST_DATA);
-    String aliceHash2 = alice.convertToIdentityKey(oprfServerManager, TEST_DATA2);
-    String bobHash2 = bob.convertToIdentityKey(oprfServerManager, TEST_DATA2);
+    String aliceHash = convertToIdentityKey(alice, oprfServerManager, TEST_DATA);
+    String bobHash = convertToIdentityKey(bob, oprfServerManager, TEST_DATA);
+    String aliceHash2 = convertToIdentityKey(alice, oprfServerManager, TEST_DATA2);
+    String bobHash2 = convertToIdentityKey(bob, oprfServerManager, TEST_DATA2);
 
     assertThat(aliceHash).isEqualTo(bobHash)
         .isNotEqualTo(aliceHash2).isNotEqualTo(bobHash2);
@@ -48,8 +67,8 @@ public class RoundTripTest {
     OprfServerManager oprfServerManager2 = new OprfServerManager();
     OprfClientManager alice = new OprfClientManager();
 
-    String hash1 = alice.convertToIdentityKey(oprfServerManager1, TEST_DATA);
-    String hash2 = alice.convertToIdentityKey(oprfServerManager2, TEST_DATA);
+    String hash1 = convertToIdentityKey(alice, oprfServerManager1, TEST_DATA);
+    String hash2 = convertToIdentityKey(alice, oprfServerManager2, TEST_DATA);
 
     assertThat(hash1).isNotEqualTo(hash2);
   }
@@ -63,10 +82,10 @@ public class RoundTripTest {
     OprfClientManager alice = new OprfClientManager(suite);
     OprfClientManager bob = new OprfClientManager(suite);
 
-    String aliceHash = alice.convertToIdentityKey(oprfServerManager, TEST_DATA);
-    String bobHash = bob.convertToIdentityKey(oprfServerManager, TEST_DATA);
-    String aliceHash2 = alice.convertToIdentityKey(oprfServerManager, TEST_DATA2);
-    String bobHash2 = bob.convertToIdentityKey(oprfServerManager, TEST_DATA2);
+    String aliceHash = convertToIdentityKey(alice, oprfServerManager, TEST_DATA);
+    String bobHash = convertToIdentityKey(bob, oprfServerManager, TEST_DATA);
+    String aliceHash2 = convertToIdentityKey(alice, oprfServerManager, TEST_DATA2);
+    String bobHash2 = convertToIdentityKey(bob, oprfServerManager, TEST_DATA2);
 
     assertThat(aliceHash).isEqualTo(bobHash)
         .isNotEqualTo(aliceHash2).isNotEqualTo(bobHash2);
@@ -81,8 +100,8 @@ public class RoundTripTest {
     OprfServerManager oprfServerManager2 = new OprfServerManager(suite);
     OprfClientManager alice = new OprfClientManager(suite);
 
-    String hash1 = alice.convertToIdentityKey(oprfServerManager1, TEST_DATA);
-    String hash2 = alice.convertToIdentityKey(oprfServerManager2, TEST_DATA);
+    String hash1 = convertToIdentityKey(alice, oprfServerManager1, TEST_DATA);
+    String hash2 = convertToIdentityKey(alice, oprfServerManager2, TEST_DATA);
 
     assertThat(hash1).isNotEqualTo(hash2);
   }
