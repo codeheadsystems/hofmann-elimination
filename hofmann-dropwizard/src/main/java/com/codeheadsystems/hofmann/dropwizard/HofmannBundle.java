@@ -90,7 +90,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     JwtManager jwtManager = buildJwtManager(configuration);
 
     environment.jersey().register(
-        new OpaqueResource(server, opaqueConfig, credentialStore, jwtManager));
+        new OpaqueResource(server, credentialStore, jwtManager));
     environment.healthChecks().register("opaque-server", new OpaqueServerHealthCheck(server));
 
     // JWT auth filter

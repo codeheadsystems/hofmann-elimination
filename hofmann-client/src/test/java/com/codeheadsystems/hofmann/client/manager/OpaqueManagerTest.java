@@ -48,14 +48,8 @@ class OpaqueManagerTest {
 
   @Test
   void register_callsAllThreeEndpoints() {
-    // The registration start response must carry valid base64 that the real Client can process.
-    // We run a real server-side registration here by embedding the opaque Server in the test.
     com.codeheadsystems.opaque.Server server =
         com.codeheadsystems.opaque.Server.generate(CONFIG.opaqueConfig());
-
-    // Simulate server's registration start response
-    com.codeheadsystems.opaque.model.RegistrationRequest regReq =
-        new com.codeheadsystems.opaque.model.RegistrationRequest(new byte[33]); // placeholder
 
     // Do the full registration via manager by having the accessor mock return real server outputs
     com.codeheadsystems.opaque.Client realClient = new com.codeheadsystems.opaque.Client(CONFIG.opaqueConfig());
@@ -68,11 +62,8 @@ class OpaqueManagerTest {
                 regState.request().blindedElement()),
             CREDENTIAL_ID);
 
-    RegistrationStartResponse startResponse = new RegistrationStartResponse(
-        B64.encodeToString(regResp.evaluatedElement()),
-        B64.encodeToString(regResp.serverPublicKey()));
-
-    when(accessor.registrationStart(eq(SERVER_ID), any())).thenReturn(startResponse);
+    when(accessor.registrationStart(eq(SERVER_ID), any()))
+        .thenReturn(new RegistrationStartResponse(regResp));
 
     manager.register(SERVER_ID, CREDENTIAL_ID, PASSWORD);
 
@@ -100,35 +91,18 @@ class OpaqueManagerTest {
     // Now set up auth: have accessor return a real KE2 from the server
     when(accessor.authStart(eq(SERVER_ID), any())).thenAnswer(inv -> {
       com.codeheadsystems.hofmann.model.opaque.AuthStartRequest req = inv.getArgument(1);
-      byte[] blindedElement = Base64.getDecoder().decode(req.blindedElementBase64());
-      byte[] clientNonce = Base64.getDecoder().decode(req.clientNonceBase64());
-      byte[] clientAkePk = Base64.getDecoder().decode(req.clientAkePublicKeyBase64());
-
-      com.codeheadsystems.opaque.model.KE1 ke1 = new com.codeheadsystems.opaque.model.KE1(
-          new com.codeheadsystems.opaque.model.CredentialRequest(blindedElement),
-          clientNonce, clientAkePk);
 
       com.codeheadsystems.opaque.model.ServerKE2Result ke2Result =
-          server.generateKE2(null, record, CREDENTIAL_ID, ke1, null);
+          server.generateKE2(null, record, CREDENTIAL_ID, req.ke1(), null);
 
       // Stash server auth state so we can use it in authFinish
-      com.codeheadsystems.opaque.model.KE2 ke2 = ke2Result.ke2();
       when(accessor.authFinish(eq(SERVER_ID), any())).thenAnswer(finInv -> {
         com.codeheadsystems.hofmann.model.opaque.AuthFinishRequest finReq = finInv.getArgument(1);
-        byte[] clientMac = Base64.getDecoder().decode(finReq.clientMacBase64());
-        byte[] sessionKey = server.serverFinish(ke2Result.serverAuthState(),
-            new com.codeheadsystems.opaque.model.KE3(clientMac));
+        byte[] sessionKey = server.serverFinish(ke2Result.serverAuthState(), finReq.ke3());
         return new AuthFinishResponse(B64.encodeToString(sessionKey), "test-jwt-token");
       });
 
-      return new AuthStartResponse(
-          "session-token",
-          B64.encodeToString(ke2.credentialResponse().evaluatedElement()),
-          B64.encodeToString(ke2.credentialResponse().maskingNonce()),
-          B64.encodeToString(ke2.credentialResponse().maskedResponse()),
-          B64.encodeToString(ke2.serverNonce()),
-          B64.encodeToString(ke2.serverAkePublicKey()),
-          B64.encodeToString(ke2.serverMac()));
+      return new AuthStartResponse("session-token", ke2Result.ke2());
     });
 
     AuthFinishResponse response = manager.authenticate(SERVER_ID, CREDENTIAL_ID, PASSWORD);
@@ -161,26 +135,9 @@ class OpaqueManagerTest {
     // Auth start: server generates KE2 with the real record
     when(accessor.authStart(eq(SERVER_ID), any())).thenAnswer(inv -> {
       com.codeheadsystems.hofmann.model.opaque.AuthStartRequest req = inv.getArgument(1);
-      byte[] blindedElement = Base64.getDecoder().decode(req.blindedElementBase64());
-      byte[] clientNonce = Base64.getDecoder().decode(req.clientNonceBase64());
-      byte[] clientAkePk = Base64.getDecoder().decode(req.clientAkePublicKeyBase64());
-
-      com.codeheadsystems.opaque.model.KE1 ke1 = new com.codeheadsystems.opaque.model.KE1(
-          new com.codeheadsystems.opaque.model.CredentialRequest(blindedElement),
-          clientNonce, clientAkePk);
-
       com.codeheadsystems.opaque.model.ServerKE2Result ke2Result =
-          server.generateKE2(null, record, CREDENTIAL_ID, ke1, null);
-      com.codeheadsystems.opaque.model.KE2 ke2 = ke2Result.ke2();
-
-      return new AuthStartResponse(
-          "session-token",
-          B64.encodeToString(ke2.credentialResponse().evaluatedElement()),
-          B64.encodeToString(ke2.credentialResponse().maskingNonce()),
-          B64.encodeToString(ke2.credentialResponse().maskedResponse()),
-          B64.encodeToString(ke2.serverNonce()),
-          B64.encodeToString(ke2.serverAkePublicKey()),
-          B64.encodeToString(ke2.serverMac()));
+          server.generateKE2(null, record, CREDENTIAL_ID, req.ke1(), null);
+      return new AuthStartResponse("session-token", ke2Result.ke2());
     });
 
     // The client will fail to verify the server MAC when using the wrong password,

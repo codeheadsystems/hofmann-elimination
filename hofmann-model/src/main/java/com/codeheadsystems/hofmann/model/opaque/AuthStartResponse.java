@@ -1,6 +1,9 @@
 package com.codeheadsystems.hofmann.model.opaque;
 
+import com.codeheadsystems.opaque.model.CredentialResponse;
+import com.codeheadsystems.opaque.model.KE2;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.Base64;
 
 /**
  * Wire model for KE2 — the server's response to the client's KE1 during OPAQUE authentication
@@ -51,4 +54,39 @@ public record AuthStartResponse(
     @JsonProperty("serverNonce") String serverNonceBase64,
     @JsonProperty("serverAkePublicKey") String serverAkePublicKeyBase64,
     @JsonProperty("serverMac") String serverMacBase64) {
+
+  private static final Base64.Encoder B64 = Base64.getEncoder();
+  private static final Base64.Decoder B64D = Base64.getDecoder();
+
+  public AuthStartResponse(String sessionToken, KE2 ke2) {
+    this(sessionToken,
+        B64.encodeToString(ke2.credentialResponse().evaluatedElement()),
+        B64.encodeToString(ke2.credentialResponse().maskingNonce()),
+        B64.encodeToString(ke2.credentialResponse().maskedResponse()),
+        B64.encodeToString(ke2.serverNonce()),
+        B64.encodeToString(ke2.serverAkePublicKey()),
+        B64.encodeToString(ke2.serverMac()));
+  }
+
+  public KE2 ke2() {
+    return new KE2(
+        new CredentialResponse(
+            decode(evaluatedElementBase64, "evaluatedElement"),
+            decode(maskingNonceBase64, "maskingNonce"),
+            decode(maskedResponseBase64, "maskedResponse")),
+        decode(serverNonceBase64, "serverNonce"),
+        decode(serverAkePublicKeyBase64, "serverAkePublicKey"),
+        decode(serverMacBase64, "serverMac"));
+  }
+
+  private static byte[] decode(String value, String fieldName) {
+    if (value == null || value.isBlank()) {
+      throw new IllegalArgumentException("Missing required field: " + fieldName);
+    }
+    try {
+      return B64D.decode(value);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("Invalid base64 in field: " + fieldName, e);
+    }
+  }
 }

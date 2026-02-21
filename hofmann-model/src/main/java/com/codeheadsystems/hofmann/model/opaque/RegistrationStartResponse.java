@@ -1,6 +1,8 @@
 package com.codeheadsystems.hofmann.model.opaque;
 
+import com.codeheadsystems.opaque.model.RegistrationResponse;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.Base64;
 
 /**
  * Server's response to OPAQUE registration phase 1 (RFC 9807 §5.1 — RegistrationResponse).
@@ -25,4 +27,29 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 public record RegistrationStartResponse(
     @JsonProperty("evaluatedElement") String evaluatedElementBase64,
     @JsonProperty("serverPublicKey") String serverPublicKeyBase64) {
+
+  private static final Base64.Encoder B64 = Base64.getEncoder();
+  private static final Base64.Decoder B64D = Base64.getDecoder();
+
+  public RegistrationStartResponse(RegistrationResponse response) {
+    this(B64.encodeToString(response.evaluatedElement()),
+        B64.encodeToString(response.serverPublicKey()));
+  }
+
+  public RegistrationResponse registrationResponse() {
+    return new RegistrationResponse(
+        decode(evaluatedElementBase64, "evaluatedElement"),
+        decode(serverPublicKeyBase64, "serverPublicKey"));
+  }
+
+  private static byte[] decode(String value, String fieldName) {
+    if (value == null || value.isBlank()) {
+      throw new IllegalArgumentException("Missing required field: " + fieldName);
+    }
+    try {
+      return B64D.decode(value);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("Invalid base64 in field: " + fieldName, e);
+    }
+  }
 }

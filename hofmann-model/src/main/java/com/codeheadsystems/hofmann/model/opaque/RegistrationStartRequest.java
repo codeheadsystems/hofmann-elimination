@@ -1,6 +1,8 @@
 package com.codeheadsystems.hofmann.model.opaque;
 
+import com.codeheadsystems.opaque.model.RegistrationRequest;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.Base64;
 
 /**
  * Wire model for the first message the client sends during OPAQUE registration
@@ -21,4 +23,31 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 public record RegistrationStartRequest(
     @JsonProperty("credentialIdentifier") String credentialIdentifierBase64,
     @JsonProperty("blindedElement") String blindedElementBase64) {
+
+  private static final Base64.Encoder B64 = Base64.getEncoder();
+  private static final Base64.Decoder B64D = Base64.getDecoder();
+
+  public RegistrationStartRequest(byte[] credentialIdentifier, RegistrationRequest request) {
+    this(B64.encodeToString(credentialIdentifier),
+        B64.encodeToString(request.blindedElement()));
+  }
+
+  public byte[] credentialIdentifier() {
+    return decode(credentialIdentifierBase64, "credentialIdentifier");
+  }
+
+  public RegistrationRequest registrationRequest() {
+    return new RegistrationRequest(decode(blindedElementBase64, "blindedElement"));
+  }
+
+  private static byte[] decode(String value, String fieldName) {
+    if (value == null || value.isBlank()) {
+      throw new IllegalArgumentException("Missing required field: " + fieldName);
+    }
+    try {
+      return B64D.decode(value);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("Invalid base64 in field: " + fieldName, e);
+    }
+  }
 }

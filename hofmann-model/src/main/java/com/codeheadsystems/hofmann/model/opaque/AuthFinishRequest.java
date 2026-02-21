@@ -1,6 +1,8 @@
 package com.codeheadsystems.hofmann.model.opaque;
 
+import com.codeheadsystems.opaque.model.KE3;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.Base64;
 
 /**
  * Wire model for KE3 — the final message the client sends during OPAQUE authentication
@@ -28,4 +30,22 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 public record AuthFinishRequest(
     @JsonProperty("sessionToken") String sessionToken,
     @JsonProperty("clientMac") String clientMacBase64) {
+
+  private static final Base64.Encoder B64 = Base64.getEncoder();
+  private static final Base64.Decoder B64D = Base64.getDecoder();
+
+  public AuthFinishRequest(String sessionToken, KE3 ke3) {
+    this(sessionToken, B64.encodeToString(ke3.clientMac()));
+  }
+
+  public KE3 ke3() {
+    if (clientMacBase64 == null || clientMacBase64.isBlank()) {
+      throw new IllegalArgumentException("Missing required field: clientMac");
+    }
+    try {
+      return new KE3(B64D.decode(clientMacBase64));
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("Invalid base64 in field: clientMac", e);
+    }
+  }
 }

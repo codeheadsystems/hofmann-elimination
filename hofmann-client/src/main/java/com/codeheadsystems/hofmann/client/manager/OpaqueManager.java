@@ -12,13 +12,10 @@ import com.codeheadsystems.hofmann.model.opaque.RegistrationFinishRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartResponse;
 import com.codeheadsystems.opaque.Client;
+import com.codeheadsystems.opaque.model.AuthResult;
 import com.codeheadsystems.opaque.model.ClientAuthState;
 import com.codeheadsystems.opaque.model.ClientRegistrationState;
-import com.codeheadsystems.opaque.model.CredentialResponse;
-import com.codeheadsystems.opaque.model.KE2;
 import com.codeheadsystems.opaque.model.RegistrationRecord;
-import com.codeheadsystems.opaque.model.RegistrationResponse;
-import java.util.Base64;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
@@ -50,9 +47,6 @@ public class OpaqueManager {
 
   private static final Logger log = LoggerFactory.getLogger(OpaqueManager.class);
 
-  private static final Base64.Encoder B64 = Base64.getEncoder();
-  private static final Base64.Decoder B64D = Base64.getDecoder();
-
   private final Client client;
   private final OpaqueAccessor accessor;
 
@@ -79,25 +73,15 @@ public class OpaqueManager {
     // Step 1 — blind the password and obtain the OPRF-evaluated element from the server
     ClientRegistrationState regState = client.createRegistrationRequest(password);
     RegistrationStartResponse startResp = accessor.registrationStart(serverId,
-        new RegistrationStartRequest(
-            B64.encodeToString(credentialIdentifier),
-            B64.encodeToString(regState.request().blindedElement())));
+        new RegistrationStartRequest(credentialIdentifier, regState.request()));
 
-    // Step 2 — finalize locally: unbind, derive the envelope, and build the registration record
-    RegistrationResponse registrationResponse = new RegistrationResponse(
-        B64D.decode(startResp.evaluatedElementBase64()),
-        B64D.decode(startResp.serverPublicKeyBase64()));
-    RegistrationRecord record = client.finalizeRegistration(regState, registrationResponse,
-        null, null);
+    // Step 2 — finalize locally: unblind, derive the envelope, and build the registration record
+    RegistrationRecord record = client.finalizeRegistration(
+        regState, startResp.registrationResponse(), null, null);
 
     // Step 3 — upload the completed registration record to the server
     accessor.registrationFinish(serverId,
-        new RegistrationFinishRequest(
-            B64.encodeToString(credentialIdentifier),
-            B64.encodeToString(record.clientPublicKey()),
-            B64.encodeToString(record.maskingKey()),
-            B64.encodeToString(record.envelope().envelopeNonce()),
-            B64.encodeToString(record.envelope().authTag())));
+        new RegistrationFinishRequest(credentialIdentifier, record));
   }
 
   /**
@@ -119,30 +103,14 @@ public class OpaqueManager {
     // Step 1 — generate KE1 and send it to the server
     ClientAuthState authState = client.generateKE1(password);
     AuthStartResponse startResp = accessor.authStart(serverId,
-        new AuthStartRequest(
-            B64.encodeToString(credentialIdentifier),
-            B64.encodeToString(authState.ke1().credentialRequest().blindedElement()),
-            B64.encodeToString(authState.ke1().clientNonce()),
-            B64.encodeToString(authState.ke1().clientAkePublicKey())));
+        new AuthStartRequest(credentialIdentifier, authState.ke1()));
 
     // Step 2 — reconstruct KE2 and compute KE3 (throws SecurityException on bad server MAC)
-    KE2 ke2 = new KE2(
-        new CredentialResponse(
-            B64D.decode(startResp.evaluatedElementBase64()),
-            B64D.decode(startResp.maskingNonceBase64()),
-            B64D.decode(startResp.maskedResponseBase64())),
-        B64D.decode(startResp.serverNonceBase64()),
-        B64D.decode(startResp.serverAkePublicKeyBase64()),
-        B64D.decode(startResp.serverMacBase64()));
-
-    com.codeheadsystems.opaque.model.AuthResult authResult =
-        client.generateKE3(authState, null, null, ke2);
+    AuthResult authResult = client.generateKE3(authState, null, null, startResp.ke2());
 
     // Step 3 — send KE3 to the server; throws SecurityException on 401
     return accessor.authFinish(serverId,
-        new AuthFinishRequest(
-            startResp.sessionToken(),
-            B64.encodeToString(authResult.ke3().clientMac())));
+        new AuthFinishRequest(startResp.sessionToken(), authResult.ke3()));
   }
 
   /**
@@ -155,6 +123,6 @@ public class OpaqueManager {
                                  final byte[] credentialIdentifier) {
     log.debug("deleteRegistration(serverId={})", serverId);
     accessor.registrationDelete(serverId,
-        new RegistrationDeleteRequest(B64.encodeToString(credentialIdentifier)));
+        new RegistrationDeleteRequest(credentialIdentifier));
   }
 }

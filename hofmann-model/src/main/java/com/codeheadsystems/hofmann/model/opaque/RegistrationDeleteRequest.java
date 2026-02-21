@@ -1,6 +1,7 @@
 package com.codeheadsystems.hofmann.model.opaque;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.Base64;
 
 /**
  * Wire model for a credential deletion request.
@@ -19,4 +20,22 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  */
 public record RegistrationDeleteRequest(
     @JsonProperty("credentialIdentifier") String credentialIdentifierBase64) {
+
+  private static final Base64.Encoder B64 = Base64.getEncoder();
+  private static final Base64.Decoder B64D = Base64.getDecoder();
+
+  public RegistrationDeleteRequest(byte[] credentialIdentifier) {
+    this(B64.encodeToString(credentialIdentifier));
+  }
+
+  public byte[] credentialIdentifier() {
+    if (credentialIdentifierBase64 == null || credentialIdentifierBase64.isBlank()) {
+      throw new IllegalArgumentException("Missing required field: credentialIdentifier");
+    }
+    try {
+      return B64D.decode(credentialIdentifierBase64);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("Invalid base64 in field: credentialIdentifier", e);
+    }
+  }
 }

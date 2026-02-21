@@ -1,6 +1,9 @@
 package com.codeheadsystems.hofmann.model.opaque;
 
+import com.codeheadsystems.opaque.model.Envelope;
+import com.codeheadsystems.opaque.model.RegistrationRecord;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.Base64;
 
 /**
  * Wire model for the second (final) message the client sends during OPAQUE registration
@@ -44,4 +47,38 @@ public record RegistrationFinishRequest(
     @JsonProperty("maskingKey") String maskingKeyBase64,
     @JsonProperty("envelopeNonce") String envelopeNonceBase64,
     @JsonProperty("authTag") String authTagBase64) {
+
+  private static final Base64.Encoder B64 = Base64.getEncoder();
+  private static final Base64.Decoder B64D = Base64.getDecoder();
+
+  public RegistrationFinishRequest(byte[] credentialIdentifier, RegistrationRecord record) {
+    this(B64.encodeToString(credentialIdentifier),
+        B64.encodeToString(record.clientPublicKey()),
+        B64.encodeToString(record.maskingKey()),
+        B64.encodeToString(record.envelope().envelopeNonce()),
+        B64.encodeToString(record.envelope().authTag()));
+  }
+
+  public byte[] credentialIdentifier() {
+    return decode(credentialIdentifierBase64, "credentialIdentifier");
+  }
+
+  public RegistrationRecord registrationRecord() {
+    return new RegistrationRecord(
+        decode(clientPublicKeyBase64, "clientPublicKey"),
+        decode(maskingKeyBase64, "maskingKey"),
+        new Envelope(decode(envelopeNonceBase64, "envelopeNonce"),
+            decode(authTagBase64, "authTag")));
+  }
+
+  private static byte[] decode(String value, String fieldName) {
+    if (value == null || value.isBlank()) {
+      throw new IllegalArgumentException("Missing required field: " + fieldName);
+    }
+    try {
+      return B64D.decode(value);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("Invalid base64 in field: " + fieldName, e);
+    }
+  }
 }

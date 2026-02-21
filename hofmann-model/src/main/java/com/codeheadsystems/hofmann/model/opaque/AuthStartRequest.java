@@ -1,6 +1,9 @@
 package com.codeheadsystems.hofmann.model.opaque;
 
+import com.codeheadsystems.opaque.model.CredentialRequest;
+import com.codeheadsystems.opaque.model.KE1;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.Base64;
 
 /**
  * Wire model for KE1 — the first message the client sends during OPAQUE authentication
@@ -33,4 +36,36 @@ public record AuthStartRequest(
     @JsonProperty("blindedElement") String blindedElementBase64,
     @JsonProperty("clientNonce") String clientNonceBase64,
     @JsonProperty("clientAkePublicKey") String clientAkePublicKeyBase64) {
+
+  private static final Base64.Encoder B64 = Base64.getEncoder();
+  private static final Base64.Decoder B64D = Base64.getDecoder();
+
+  public AuthStartRequest(byte[] credentialIdentifier, KE1 ke1) {
+    this(B64.encodeToString(credentialIdentifier),
+        B64.encodeToString(ke1.credentialRequest().blindedElement()),
+        B64.encodeToString(ke1.clientNonce()),
+        B64.encodeToString(ke1.clientAkePublicKey()));
+  }
+
+  public byte[] credentialIdentifier() {
+    return decode(credentialIdentifierBase64, "credentialIdentifier");
+  }
+
+  public KE1 ke1() {
+    return new KE1(
+        new CredentialRequest(decode(blindedElementBase64, "blindedElement")),
+        decode(clientNonceBase64, "clientNonce"),
+        decode(clientAkePublicKeyBase64, "clientAkePublicKey"));
+  }
+
+  private static byte[] decode(String value, String fieldName) {
+    if (value == null || value.isBlank()) {
+      throw new IllegalArgumentException("Missing required field: " + fieldName);
+    }
+    try {
+      return B64D.decode(value);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("Invalid base64 in field: " + fieldName, e);
+    }
+  }
 }
