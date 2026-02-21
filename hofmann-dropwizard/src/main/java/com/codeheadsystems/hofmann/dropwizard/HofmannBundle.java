@@ -38,26 +38,28 @@ import org.slf4j.LoggerFactory;
  * Dropwizard bundle that wires the Hofmann OPAQUE server into an existing Dropwizard application.
  * <p>
  * Registers the OPAQUE JAX-RS resource, health check, and JWT authentication filter.
- * Requires a {@link HofmannConfiguration}
- * block in the application's YAML config.
+ * Requires a {@link HofmannConfiguration} block in the application's YAML config.
  * <p>
  * Embed in your application with in-memory stores (dev/test only):
  * <pre>{@code
  *   bootstrap.addBundle(new HofmannBundle<>());
  * }</pre>
  * <p>
- * Or supply persistent stores:
+ * Or supply persistent stores (requires {@code oprfMasterKeyHex} in config):
  * <pre>{@code
- *   bootstrap.addBundle(new HofmannBundle<>(myCredentialStore, mySessionStore));
+ *   bootstrap.addBundle(new HofmannBundle<>(myCredentialStore, mySessionStore, null));
  * }</pre>
  * <p>
- * To implement key rotation or custom key management for the OPRF endpoint, supply a
- * {@code Supplier<ServerProcessorDetail>}:
+ * To implement key rotation or custom key management for the OPRF endpoint:
  * <pre>{@code
  *   bootstrap.addBundle(new HofmannBundle<>(credentialStore, sessionStore,
  *       () -> keyRotationService.currentDetail()));
  * }</pre>
- * When no supplier is provided, {@code oprfMasterKeyHex} must be set in the configuration.
+ * <p>
+ * To supply a custom {@link SecureRandom} (e.g., HSM-backed), use the fluent setter:
+ * <pre>{@code
+ *   bootstrap.addBundle(new HofmannBundle<>().withSecureRandom(mySecureRandom));
+ * }</pre>
  */
 @Singleton
 public class HofmannBundle<C extends HofmannConfiguration> implements ConfiguredBundle<C> {
@@ -68,6 +70,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
   private final SessionStore sessionStore;
   private final Supplier<ServerProcessorDetail> processorDetailSupplier;
   private final boolean ephemeralKey;
+  private SecureRandom secureRandom = new SecureRandom();
 
   /**
    * Creates a bundle backed by in-memory stores and an ephemeral random OPRF master key.
@@ -91,10 +94,11 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
   }
 
   /**
-   * Creates a bundle backed by the supplied stores and a custom OPRF key supplier.
-   * The supplier is called on every OPRF request, so it may return different
-   * {@link ServerProcessorDetail} instances (e.g., for key rotation).
-   * When a non-null supplier is given, {@code oprfMasterKeyHex} in the configuration is ignored.
+   * Creates a bundle backed by the supplied stores and an optional custom OPRF key supplier.
+   * <p>
+   * When {@code processorDetailSupplier} is non-null it is called on every OPRF request,
+   * allowing key rotation — and {@code oprfMasterKeyHex} in the configuration is ignored.
+   * When {@code null}, {@code oprfMasterKeyHex} must be set in the configuration.
    */
   @Inject
   public HofmannBundle(CredentialStore credentialStore,
@@ -106,11 +110,21 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     this.ephemeralKey = false;
   }
 
-  private static Supplier<ServerProcessorDetail> buildEphemeralProcessorSupplier(String processorId) {
-    // randomScalar() is intentional here — ephemeral mode is dev/test only.
-    BigInteger masterKey = OprfCipherSuite.P256_SHA256.randomScalar();
-    ServerProcessorDetail detail = new ServerProcessorDetail(masterKey, processorId);
-    return () -> detail;
+  /**
+   * Sets a custom {@link SecureRandom} to use for all random scalar generation
+   * (OPRF blinding, ephemeral AKE keys, JWT secret generation when not configured).
+   * If not called, a default {@link SecureRandom} is used.
+   * <p>
+   * Call this before the application starts (i.e., during {@code bootstrap.addBundle(...)}):
+   * <pre>{@code
+   *   bootstrap.addBundle(new HofmannBundle<>().withSecureRandom(mySecureRandom));
+   * }</pre>
+   *
+   * @return {@code this}, for fluent chaining
+   */
+  public HofmannBundle<C> withSecureRandom(SecureRandom secureRandom) {
+    this.secureRandom = secureRandom;
+    return this;
   }
 
   @Override
@@ -138,7 +152,8 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     environment.jersey().register(new AuthValueFactoryProvider.Binder<>(HofmannPrincipal.class));
 
     // OPRF endpoint
-    OprfCipherSuite oprfSuite = OprfCipherSuite.fromName(configuration.getOprfCipherSuite());
+    OprfCipherSuite oprfSuite = OprfCipherSuite.fromName(configuration.getOprfCipherSuite())
+        .withRandom(secureRandom);
     Supplier<ServerProcessorDetail> oprfSupplier;
     if (processorDetailSupplier != null) {
       oprfSupplier = processorDetailSupplier;
@@ -158,7 +173,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
       log.warn("No JWT secret configured — generating randomly. "
           + "Tokens will be invalidated on restart. Do not use in production.");
       secret = new byte[32];
-      new SecureRandom().nextBytes(secret);
+      secureRandom.nextBytes(secret);
     } else {
       secret = HexFormat.of().parseHex(secretHex);
     }
@@ -167,7 +182,9 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
   }
 
   private OpaqueConfig buildOpaqueConfig(C configuration) {
-    OpaqueCipherSuite suite = OpaqueCipherSuite.fromName(configuration.getOpaqueCipherSuite());
+    OprfCipherSuite oprfSuite = OprfCipherSuite.fromName(configuration.getOpaqueCipherSuite())
+        .withRandom(secureRandom);
+    OpaqueCipherSuite suite = new OpaqueCipherSuite(oprfSuite);
     byte[] context = configuration.getContext().getBytes(StandardCharsets.UTF_8);
     if (configuration.getArgon2MemoryKib() == 0) {
       log.warn("Argon2 disabled — using identity KSF. Do not use in production.");
@@ -221,11 +238,18 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     return new Server(skFixed, pk, oprfSeed, opaqueConfig);
   }
 
+  private Supplier<ServerProcessorDetail> buildEphemeralProcessorSupplier(String processorId) {
+    // randomScalar() via the configured SecureRandom is intentional — ephemeral mode is dev/test only.
+    BigInteger masterKey = OprfCipherSuite.P256_SHA256.withRandom(secureRandom).randomScalar();
+    ServerProcessorDetail detail = new ServerProcessorDetail(masterKey, processorId);
+    return () -> detail;
+  }
+
   private Supplier<ServerProcessorDetail> buildDefaultProcessorSupplier(C configuration) {
     String masterKeyHex = configuration.getOprfMasterKeyHex();
     if (masterKeyHex == null || masterKeyHex.isEmpty()) {
       throw new IllegalStateException(
-          "oprfMasterKeyHex must be configured in the OPRF endpoint. "
+          "oprfMasterKeyHex must be configured for the OPRF endpoint. "
               + "Generate a value with: openssl rand -hex 32. "
               + "Alternatively, supply a custom Supplier<ServerProcessorDetail> to the HofmannBundle constructor.");
     }

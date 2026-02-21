@@ -31,6 +31,22 @@ public class HofmannAutoConfiguration {
 
   private static final Logger log = LoggerFactory.getLogger(HofmannAutoConfiguration.class);
 
+  /**
+   * Default {@link SecureRandom} instance.  Override this bean to supply a custom implementation
+   * (e.g. an HSM-backed or seeded provider for testing):
+   * <pre>{@code
+   *   @Bean
+   *   public SecureRandom secureRandom() {
+   *     return SecureRandom.getInstance("NativePRNG");
+   *   }
+   * }</pre>
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public SecureRandom secureRandom() {
+    return new SecureRandom();
+  }
+
   @Bean
   @ConditionalOnMissingBean
   public CredentialStore credentialStore() {
@@ -47,8 +63,10 @@ public class HofmannAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean
-  public OpaqueConfig opaqueConfig(HofmannProperties props) {
-    OpaqueCipherSuite suite = OpaqueCipherSuite.fromName(props.getOpaqueCipherSuite());
+  public OpaqueConfig opaqueConfig(HofmannProperties props, SecureRandom secureRandom) {
+    OprfCipherSuite oprfSuite = OprfCipherSuite.fromName(props.getOpaqueCipherSuite())
+        .withRandom(secureRandom);
+    OpaqueCipherSuite suite = new OpaqueCipherSuite(oprfSuite);
     byte[] context = props.getContext().getBytes(StandardCharsets.UTF_8);
     if (props.getArgon2MemoryKib() == 0) {
       log.warn("Argon2 disabled — using identity KSF. Do not use in production.");
@@ -106,14 +124,15 @@ public class HofmannAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean
-  public JwtManager jwtManager(HofmannProperties props, SessionStore sessionStore) {
+  public JwtManager jwtManager(HofmannProperties props, SessionStore sessionStore,
+      SecureRandom secureRandom) {
     String secretHex = props.getJwtSecretHex();
     byte[] secret;
     if (secretHex == null || secretHex.isEmpty()) {
       log.warn("No JWT secret configured — generating randomly. "
           + "Tokens will be invalidated on restart. Do not use in production.");
       secret = new byte[32];
-      new SecureRandom().nextBytes(secret);
+      secureRandom.nextBytes(secret);
     } else {
       secret = HexFormat.of().parseHex(secretHex);
     }
@@ -158,9 +177,10 @@ public class HofmannAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean
-  public OprfServerManager oprfServerManager(HofmannProperties props,
+  public OprfServerManager oprfServerManager(HofmannProperties props, SecureRandom secureRandom,
       Supplier<ServerProcessorDetail> serverProcessorDetailSupplier) {
-    OprfCipherSuite oprfSuite = OprfCipherSuite.fromName(props.getOprfCipherSuite());
+    OprfCipherSuite oprfSuite = OprfCipherSuite.fromName(props.getOprfCipherSuite())
+        .withRandom(secureRandom);
     return new OprfServerManager(oprfSuite, serverProcessorDetailSupplier);
   }
 }
