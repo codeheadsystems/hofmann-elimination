@@ -26,6 +26,13 @@ public record OpaqueClientConfig(OpaqueConfig opaqueConfig) {
    * The cipher suite name, context, and Argon2id parameters must exactly match the server's.
    * Accepted suite names: {@code "P256_SHA256"} (default), {@code "P384_SHA384"},
    * {@code "P521_SHA512"}.
+   *
+   * @param cipherSuiteName   the cipher suite name
+   * @param context           the context
+   * @param argon2MemoryKib   the argon 2 memory kib
+   * @param argon2Iterations  the argon 2 iterations
+   * @param argon2Parallelism the argon 2 parallelism
+   * @return the opaque client config
    */
   public static OpaqueClientConfig withArgon2id(String cipherSuiteName, byte[] context,
                                                 int argon2MemoryKib, int argon2Iterations, int argon2Parallelism) {
@@ -36,6 +43,13 @@ public record OpaqueClientConfig(OpaqueConfig opaqueConfig) {
 
   /**
    * Convenience overload accepting a context string in UTF-8.
+   *
+   * @param cipherSuiteName   the cipher suite name
+   * @param context           the context
+   * @param argon2MemoryKib   the argon 2 memory kib
+   * @param argon2Iterations  the argon 2 iterations
+   * @param argon2Parallelism the argon 2 parallelism
+   * @return the opaque client config
    */
   public static OpaqueClientConfig withArgon2id(String cipherSuiteName, String context,
                                                 int argon2MemoryKib, int argon2Iterations, int argon2Parallelism) {
@@ -46,6 +60,9 @@ public record OpaqueClientConfig(OpaqueConfig opaqueConfig) {
   /**
    * Creates a test-only config with identity KSF (no Argon2), P-256/SHA-256 cipher suite,
    * and the supplied context bytes.  Do not use in production.
+   *
+   * @param context the context
+   * @return the opaque client config
    */
   public static OpaqueClientConfig forTesting(byte[] context) {
     return new OpaqueClientConfig(
@@ -55,6 +72,9 @@ public record OpaqueClientConfig(OpaqueConfig opaqueConfig) {
 
   /**
    * Convenience overload accepting a context string in UTF-8.
+   *
+   * @param context the context
+   * @return the opaque client config
    */
   public static OpaqueClientConfig forTesting(String context) {
     return forTesting(context.getBytes(StandardCharsets.UTF_8));

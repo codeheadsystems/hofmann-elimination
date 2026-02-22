@@ -33,6 +33,8 @@ public class HashToField {
   /**
    * Factory method for secp256k1 field parameters.
    * L = 48, SHA-256.
+   *
+   * @return the hash to field
    */
   public static HashToField forSecp256k1() {
     BigInteger p = new BigInteger(
@@ -45,6 +47,8 @@ public class HashToField {
   /**
    * Factory method for P-256 base field parameters.
    * L = 48, SHA-256.
+   *
+   * @return the hash to field
    */
   public static HashToField forP256() {
     BigInteger p = Curve.P256_CURVE.curve().getField().getCharacteristic();
@@ -54,6 +58,8 @@ public class HashToField {
   /**
    * Factory method for P-256 scalar field parameters (group order as modulus).
    * L = 48, SHA-256.
+   *
+   * @return the hash to field
    */
   public static HashToField forP256Scalar() {
     return new HashToField(Curve.P256_CURVE.n(), 48, ExpandMessageXmd.forSha256());
@@ -62,6 +68,8 @@ public class HashToField {
   /**
    * Factory method for P-384 base field parameters.
    * L = 72, SHA-384.
+   *
+   * @return the hash to field
    */
   public static HashToField forP384() {
     BigInteger p = Curve.P384_CURVE.curve().getField().getCharacteristic();
@@ -71,6 +79,8 @@ public class HashToField {
   /**
    * Factory method for P-384 scalar field parameters (group order as modulus).
    * L = 72, SHA-384.
+   *
+   * @return the hash to field
    */
   public static HashToField forP384Scalar() {
     return new HashToField(Curve.P384_CURVE.n(), 72, ExpandMessageXmd.forSha384());
@@ -79,6 +89,8 @@ public class HashToField {
   /**
    * Factory method for P-521 base field parameters.
    * L = 98, SHA-512.
+   *
+   * @return the hash to field
    */
   public static HashToField forP521() {
     BigInteger p = Curve.P521_CURVE.curve().getField().getCharacteristic();
@@ -88,6 +100,8 @@ public class HashToField {
   /**
    * Factory method for P-521 scalar field parameters (group order as modulus).
    * L = 98, SHA-512.
+   *
+   * @return the hash to field
    */
   public static HashToField forP521Scalar() {
     return new HashToField(Curve.P521_CURVE.n(), 98, ExpandMessageXmd.forSha512());

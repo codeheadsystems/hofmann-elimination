@@ -5,11 +5,19 @@ import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.stereotype.Component;
 
+/**
+ * The type Opaque server health indicator.
+ */
 @Component
 public class OpaqueServerHealthIndicator implements HealthIndicator {
 
   private final Server server;
 
+  /**
+   * Instantiates a new Opaque server health indicator.
+   *
+   * @param server the server
+   */
   public OpaqueServerHealthIndicator(Server server) {
     this.server = server;
   }

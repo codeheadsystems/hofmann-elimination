@@ -32,6 +32,8 @@ public record WeierstrassGroupSpecImpl(
 
   /**
    * secp256k1 instance (used in RFC 9380 tests).
+   *
+   * @return the weierstrass group spec
    */
   public static WeierstrassGroupSpecImpl forSecp256k1() {
     return buildSecp256k1();

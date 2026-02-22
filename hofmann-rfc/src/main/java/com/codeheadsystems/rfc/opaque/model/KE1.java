@@ -8,6 +8,8 @@ public record KE1(CredentialRequest credentialRequest, byte[] clientNonce, byte[
 
   /**
    * Serializes to wire format (33 + 32 + 33 = 98 bytes).
+   *
+   * @return the byte [ ]
    */
   public byte[] serialize() {
     byte[] be = credentialRequest.blindedElement();

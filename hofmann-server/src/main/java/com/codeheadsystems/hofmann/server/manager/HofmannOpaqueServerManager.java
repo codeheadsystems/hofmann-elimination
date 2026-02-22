@@ -71,6 +71,13 @@ public class HofmannOpaqueServerManager {
         return t;
       });
 
+  /**
+   * Instantiates a new Hofmann opaque server manager.
+   *
+   * @param server          the server
+   * @param credentialStore the credential store
+   * @param jwtManager      the jwt manager
+   */
   public HofmannOpaqueServerManager(Server server, CredentialStore credentialStore, JwtManager jwtManager) {
     this.server = server;
     this.credentialStore = credentialStore;
@@ -99,6 +106,8 @@ public class HofmannOpaqueServerManager {
    * Phase 1 of registration: evaluates the OPRF on the blinded element and returns
    * the evaluated element + server public key.
    *
+   * @param req the req
+   * @return the registration start response
    * @throws IllegalArgumentException if the request contains missing or invalid fields
    */
   public RegistrationStartResponse registrationStart(RegistrationStartRequest req) {
@@ -110,6 +119,7 @@ public class HofmannOpaqueServerManager {
   /**
    * Phase 2 of registration: stores the client's registration record.
    *
+   * @param req the req
    * @throws IllegalArgumentException if the request contains missing or invalid fields
    */
   public void registrationFinish(RegistrationFinishRequest req) {
@@ -126,8 +136,7 @@ public class HofmannOpaqueServerManager {
    * @param req         the delete request containing the credential identifier
    * @param bearerToken the JWT bearer token (without "Bearer " prefix)
    * @throws IllegalArgumentException if the request contains missing or invalid fields
-   * @throws SecurityException        if the token is missing, invalid, expired, or does not
-   *                                  match the credential being deleted
+   * @throws SecurityException        if the token is missing, invalid, expired, or does not                                  match the credential being deleted
    */
   public void registrationDelete(RegistrationDeleteRequest req, String bearerToken) {
     log.debug("registrationDelete()");
@@ -149,6 +158,8 @@ public class HofmannOpaqueServerManager {
    * When the credential identifier is unknown, a fake KE2 is returned to prevent
    * user enumeration (RFC 9807 §10.6).
    *
+   * @param req the req
+   * @return the auth start response
    * @throws IllegalArgumentException if the request contains missing or invalid fields
    * @throws IllegalStateException    if the session store has reached capacity
    */
@@ -176,9 +187,10 @@ public class HofmannOpaqueServerManager {
   /**
    * AKE phase 2: verifies the client MAC and returns the session key.
    *
+   * @param req the req
+   * @return the auth finish response
    * @throws IllegalArgumentException if the request contains missing or invalid fields
-   * @throws SecurityException        if the session token is unknown / expired, or if
-   *                                  the client MAC does not verify
+   * @throws SecurityException        if the session token is unknown / expired, or if                                  the client MAC does not verify
    */
   public AuthFinishResponse authFinish(AuthFinishRequest req) {
     log.debug("authFinish(sessionToken={})", req.sessionToken());

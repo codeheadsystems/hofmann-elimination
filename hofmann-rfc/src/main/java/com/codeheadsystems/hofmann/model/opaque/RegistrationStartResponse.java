@@ -21,8 +21,7 @@ import java.util.Base64;
  * Used by: {@code POST /opaque/registration/start} response
  *
  * @param evaluatedElementBase64 base64-encoded OPRF-evaluated element (compressed SEC1 EC point)
- * @param serverPublicKeyBase64  base64-encoded server long-term public key (compressed SEC1 EC point,
- *                               first byte 0x02 or 0x03)
+ * @param serverPublicKeyBase64  base64-encoded server long-term public key (compressed SEC1 EC point,                               first byte 0x02 or 0x03)
  */
 public record RegistrationStartResponse(
     @JsonProperty("evaluatedElement") String evaluatedElementBase64,
@@ -31,6 +30,11 @@ public record RegistrationStartResponse(
   private static final Base64.Encoder B64 = Base64.getEncoder();
   private static final Base64.Decoder B64D = Base64.getDecoder();
 
+  /**
+   * Instantiates a new Registration start response.
+   *
+   * @param response the response
+   */
   public RegistrationStartResponse(RegistrationResponse response) {
     this(B64.encodeToString(response.evaluatedElement()),
         B64.encodeToString(response.serverPublicKey()));
@@ -47,6 +51,11 @@ public record RegistrationStartResponse(
     }
   }
 
+  /**
+   * Registration response registration response.
+   *
+   * @return the registration response
+   */
   public RegistrationResponse registrationResponse() {
     return new RegistrationResponse(
         decode(evaluatedElementBase64, "evaluatedElement"),

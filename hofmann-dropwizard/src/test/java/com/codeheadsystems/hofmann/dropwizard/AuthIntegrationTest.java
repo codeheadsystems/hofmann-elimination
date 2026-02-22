@@ -29,6 +29,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 @ExtendWith(DropwizardExtensionsSupport.class)
 class AuthIntegrationTest {
 
+  /**
+   * The App.
+   */
   static final DropwizardAppExtension<HofmannConfiguration> APP =
       new DropwizardAppExtension<>(
           HofmannApplication.class,
@@ -41,6 +44,9 @@ class AuthIntegrationTest {
   private HofmannOpaqueClientManager hofmannOpaqueClientManager;
   private HttpClient httpClient;
 
+  /**
+   * Sets up.
+   */
   @BeforeEach
   void setUp() {
     httpClient = HttpClient.newHttpClient();
@@ -51,6 +57,11 @@ class AuthIntegrationTest {
     hofmannOpaqueClientManager = new HofmannOpaqueClientManager(config, accessor);
   }
 
+  /**
+   * Authenticate and call protected endpoint returns 200.
+   *
+   * @throws Exception the exception
+   */
   @Test
   void authenticateAndCallProtectedEndpoint_returns200() throws Exception {
     hofmannOpaqueClientManager.register(SERVER_ID, CREDENTIAL_ID, PASSWORD);
@@ -68,6 +79,11 @@ class AuthIntegrationTest {
     assertThat(response.body()).contains("credentialIdentifier");
   }
 
+  /**
+   * Call protected endpoint no token returns 401.
+   *
+   * @throws Exception the exception
+   */
   @Test
   void callProtectedEndpoint_noToken_returns401() throws Exception {
     HttpRequest request = HttpRequest.newBuilder()
@@ -80,6 +96,11 @@ class AuthIntegrationTest {
     assertThat(response.statusCode()).isEqualTo(401);
   }
 
+  /**
+   * Call protected endpoint bogus token returns 401.
+   *
+   * @throws Exception the exception
+   */
   @Test
   void callProtectedEndpoint_bogusToken_returns401() throws Exception {
     HttpRequest request = HttpRequest.newBuilder()

@@ -31,6 +31,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 @ExtendWith(DropwizardExtensionsSupport.class)
 class OpaqueIntegrationTest {
 
+  /**
+   * The App.
+   */
   static final DropwizardAppExtension<HofmannConfiguration> APP =
       new DropwizardAppExtension<>(
           HofmannApplication.class,
@@ -42,6 +45,9 @@ class OpaqueIntegrationTest {
 
   private HofmannOpaqueClientManager hofmannOpaqueClientManager;
 
+  /**
+   * Sets up.
+   */
   @BeforeEach
   void setUp() {
     // Context must match test-config.yml so the preamble hash aligns between client and server
@@ -55,6 +61,9 @@ class OpaqueIntegrationTest {
 
   // ── Registration ─────────────────────────────────────────────────────────
 
+  /**
+   * Register completes without error.
+   */
   @Test
   void register_completesWithoutError() {
     byte[] credId = "register-only@example.com".getBytes(StandardCharsets.UTF_8);
@@ -64,6 +73,9 @@ class OpaqueIntegrationTest {
 
   // ── Full round trip ───────────────────────────────────────────────────────
 
+  /**
+   * Register then authenticate derives matching session key.
+   */
   @Test
   void registerThenAuthenticate_derivesMatchingSessionKey() {
     hofmannOpaqueClientManager.register(SERVER_ID, CREDENTIAL_ID, PASSWORD);
@@ -74,6 +86,9 @@ class OpaqueIntegrationTest {
     assertThat(response.token()).isNotEmpty();
   }
 
+  /**
+   * Authenticate twice produces different session keys.
+   */
   @Test
   void authenticateTwice_producesDifferentSessionKeys() {
     hofmannOpaqueClientManager.register(SERVER_ID, CREDENTIAL_ID, PASSWORD);
@@ -89,6 +104,9 @@ class OpaqueIntegrationTest {
 
   // ── Wrong password ────────────────────────────────────────────────────────
 
+  /**
+   * Authenticate wrong password throws security exception.
+   */
   @Test
   void authenticate_wrongPassword_throwsSecurityException() {
     byte[] credId = "wrong-pwd@example.com".getBytes(StandardCharsets.UTF_8);
@@ -104,6 +122,9 @@ class OpaqueIntegrationTest {
 
   // ── Delete ────────────────────────────────────────────────────────────────
 
+  /**
+   * Delete registration with valid token completes without error.
+   */
   @Test
   void deleteRegistration_withValidToken_completesWithoutError() {
     byte[] credId = "delete-me@example.com".getBytes(StandardCharsets.UTF_8);
@@ -113,6 +134,9 @@ class OpaqueIntegrationTest {
     // No exception = server accepted the delete
   }
 
+  /**
+   * Delete registration without token throws security exception.
+   */
   @Test
   void deleteRegistration_withoutToken_throwsSecurityException() {
     byte[] credId = "delete-noauth@example.com".getBytes(StandardCharsets.UTF_8);

@@ -8,6 +8,12 @@ public record Envelope(byte[] envelopeNonce, byte[] authTag) {
 
   /**
    * Deserializes from envelopeNonce || authTag.
+   *
+   * @param bytes    the bytes
+   * @param offset   the offset
+   * @param nonceLen the nonce len
+   * @param tagLen   the tag len
+   * @return the envelope
    */
   public static Envelope deserialize(byte[] bytes, int offset, int nonceLen, int tagLen) {
     // Validate input bounds before deserialization to prevent ArrayIndexOutOfBoundsException
@@ -26,6 +32,8 @@ public record Envelope(byte[] envelopeNonce, byte[] authTag) {
 
   /**
    * Serializes to envelopeNonce || authTag (64 bytes total).
+   *
+   * @return the byte [ ]
    */
   public byte[] serialize() {
     byte[] out = new byte[envelopeNonce.length + authTag.length];

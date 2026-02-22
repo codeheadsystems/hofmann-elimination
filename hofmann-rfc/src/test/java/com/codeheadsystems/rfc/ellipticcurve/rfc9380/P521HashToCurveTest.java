@@ -19,11 +19,17 @@ public class P521HashToCurveTest {
   private static final String DST = "QUUX-V01-CS02-with-P521_XMD:SHA-512_SSWU_RO_";
   private HashToCurve hashToCurve;
 
+  /**
+   * Sets up.
+   */
   @BeforeEach
   void setUp() {
     hashToCurve = HashToCurve.forP521();
   }
 
+  /**
+   * Test hash to curve empty string.
+   */
   @Test
   void testHashToCurveEmptyString() {
     // Test vector from RFC 9380 Appendix J.4.1
@@ -46,6 +52,9 @@ public class P521HashToCurveTest {
     assertThat(point.getYCoord().toBigInteger()).isEqualTo(expectedY);
   }
 
+  /**
+   * Test hash to curve abc.
+   */
   @Test
   void testHashToCurveABC() {
     // Test vector from RFC 9380 Appendix J.4.1
@@ -67,6 +76,9 @@ public class P521HashToCurveTest {
     assertThat(point.getYCoord().toBigInteger()).isEqualTo(expectedY);
   }
 
+  /**
+   * Test hash to curve abcdef.
+   */
   @Test
   void testHashToCurveAbcdef() {
     // Test vector from RFC 9380 Appendix J.4.1
@@ -88,6 +100,9 @@ public class P521HashToCurveTest {
     assertThat(point.getYCoord().toBigInteger()).isEqualTo(expectedY);
   }
 
+  /**
+   * Test hash to curve long message.
+   */
   @Test
   void testHashToCurveLongMessage() {
     // Test vector from RFC 9380 Appendix J.4.1
@@ -113,6 +128,9 @@ public class P521HashToCurveTest {
     assertThat(point.getYCoord().toBigInteger()).isEqualTo(expectedY);
   }
 
+  /**
+   * Test hash to curve a 512 times.
+   */
   @Test
   void testHashToCurveA512Times() {
     // Test vector from RFC 9380 Appendix J.4.1
@@ -138,6 +156,9 @@ public class P521HashToCurveTest {
     assertThat(point.getYCoord().toBigInteger()).isEqualTo(expectedY);
   }
 
+  /**
+   * Test hash to curve result is on curve.
+   */
   @Test
   void testHashToCurveResultIsOnCurve() {
     // Verify that the result is actually on the P-521 curve: y^2 = x^3 - 3x + b

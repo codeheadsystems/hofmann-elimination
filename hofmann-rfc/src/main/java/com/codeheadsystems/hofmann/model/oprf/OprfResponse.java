@@ -12,10 +12,20 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 public record OprfResponse(@JsonProperty("ecPoint") String ecPoint,
                            @JsonProperty("processIdentifier") String processIdentifier) {
 
+  /**
+   * Instantiates a new Oprf response.
+   *
+   * @param evaluatedResponse the evaluated response
+   */
   public OprfResponse(EvaluatedResponse evaluatedResponse) {
     this(evaluatedResponse.evaluatedPoint(), evaluatedResponse.processIdentifier());
   }
 
+  /**
+   * Evaluated response evaluated response.
+   *
+   * @return the evaluated response
+   */
   public EvaluatedResponse evaluatedResponse() {
     return new EvaluatedResponse(ecPoint(), processIdentifier());
   }

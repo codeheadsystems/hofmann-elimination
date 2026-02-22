@@ -32,6 +32,15 @@ public class OpaqueAke {
    * preamble = "OPAQUEv1-" || encode_vector(context) || encode_vector(clientIdentity)
    * || serialize(ke1) || encode_vector(serverIdentity)
    * || serialize(credentialResponse) || serverNonce || serverAkePublicKey
+   *
+   * @param context            the context
+   * @param clientIdentity     the client identity
+   * @param ke1                the ke 1
+   * @param serverIdentity     the server identity
+   * @param credentialResponse the credential response
+   * @param serverNonce        the server nonce
+   * @param serverAkePublicKey the server ake public key
+   * @return the byte [ ]
    */
   public static byte[] buildPreamble(byte[] context, byte[] clientIdentity, KE1 ke1,
                                      byte[] serverIdentity, CredentialResponse credentialResponse,
@@ -100,6 +109,20 @@ public class OpaqueAke {
 
   /**
    * Server GenerateKE2 with deterministic server nonce (for testing).
+   *
+   * @param config               the config
+   * @param serverIdentity       the server identity
+   * @param serverPrivateKey     the server private key
+   * @param serverPublicKey      the server public key
+   * @param record               the record
+   * @param credentialIdentifier the credential identifier
+   * @param oprfSeed             the oprf seed
+   * @param ke1                  the ke 1
+   * @param clientIdentity       the client identity
+   * @param maskingNonce         the masking nonce
+   * @param serverAkeKeySeed     the server ake key seed
+   * @param serverNonce          the server nonce
+   * @return the server ke 2 result
    */
   public static ServerKE2Result generateKE2Deterministic(OpaqueConfig config, byte[] serverIdentity,
                                                          BigInteger serverPrivateKey, byte[] serverPublicKey,

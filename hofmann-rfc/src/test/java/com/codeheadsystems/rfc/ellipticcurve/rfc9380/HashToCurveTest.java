@@ -19,11 +19,17 @@ public class HashToCurveTest {
   private static final String DST = "QUUX-V01-CS02-with-secp256k1_XMD:SHA-256_SSWU_RO_";
   private HashToCurve hashToCurve;
 
+  /**
+   * Sets up.
+   */
   @BeforeEach
   void setUp() {
     hashToCurve = HashToCurve.forSecp256k1();
   }
 
+  /**
+   * Test hash to curve empty string.
+   */
   @Test
   void testHashToCurveEmptyString() {
     // Test vector from RFC 9380 Appendix J.7.1
@@ -46,6 +52,9 @@ public class HashToCurveTest {
     assertThat(point.getYCoord().toBigInteger()).isEqualTo(expectedY);
   }
 
+  /**
+   * Test hash to curve abc.
+   */
   @Test
   void testHashToCurveABC() {
     // Test vector from RFC 9380 Appendix J.7.1
@@ -68,6 +77,9 @@ public class HashToCurveTest {
     assertThat(point.getYCoord().toBigInteger()).isEqualTo(expectedY);
   }
 
+  /**
+   * Test hash to curve abcdef.
+   */
   @Test
   void testHashToCurveAbcdef() {
     // Test vector from RFC 9380 Appendix J.7.1
@@ -90,6 +102,9 @@ public class HashToCurveTest {
     assertThat(point.getYCoord().toBigInteger()).isEqualTo(expectedY);
   }
 
+  /**
+   * Test hash to curve long message.
+   */
   @Test
   void testHashToCurveLongMessage() {
     // Test vector from RFC 9380 Appendix J.7.1
@@ -116,6 +131,9 @@ public class HashToCurveTest {
     assertThat(point.getYCoord().toBigInteger()).isEqualTo(expectedY);
   }
 
+  /**
+   * Test hash to curve a 512 times.
+   */
   @Test
   void testHashToCurveA512Times() {
     // Test vector from RFC 9380 Appendix J.7.1
@@ -142,6 +160,9 @@ public class HashToCurveTest {
     assertThat(point.getYCoord().toBigInteger()).isEqualTo(expectedY);
   }
 
+  /**
+   * Test hash to curve result is on curve.
+   */
   @Test
   void testHashToCurveResultIsOnCurve() {
     // Verify that the result is actually on the secp256k1 curve
@@ -168,6 +189,9 @@ public class HashToCurveTest {
     assertThat(lhs).isEqualTo(rhs);
   }
 
+  /**
+   * Test deterministic output.
+   */
   @Test
   void testDeterministicOutput() {
     // Same input should always produce the same output
@@ -182,6 +206,9 @@ public class HashToCurveTest {
         .isEqualTo(point2.getYCoord().toBigInteger());
   }
 
+  /**
+   * Test different messages produce different points.
+   */
   @Test
   void testDifferentMessagesProduceDifferentPoints() {
     // Different inputs should produce different outputs
@@ -195,6 +222,9 @@ public class HashToCurveTest {
         .isNotEqualTo(point2.getXCoord().toBigInteger());
   }
 
+  /**
+   * Test domain separation works.
+   */
   @Test
   void testDomainSeparationWorks() {
     // Same message with different DST should produce different outputs

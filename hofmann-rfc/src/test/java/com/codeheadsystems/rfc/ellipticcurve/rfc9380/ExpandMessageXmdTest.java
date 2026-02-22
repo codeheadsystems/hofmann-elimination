@@ -39,6 +39,9 @@ public class ExpandMessageXmdTest {
         lenInBytes);
   }
 
+  /**
+   * Expand xmd standard dst empty msg 32 bytes.
+   */
   @Test
   void expandXmd_standardDst_emptyMsg_32bytes() {
     byte[] result = expand("", STANDARD_DST, 32);
@@ -46,6 +49,9 @@ public class ExpandMessageXmdTest {
         .isEqualTo("68a985b87eb6b46952128911f2a4412bbc302a9d759667f87f7a21d803f07235");
   }
 
+  /**
+   * Expand xmd standard dst abc 32 bytes.
+   */
   @Test
   void expandXmd_standardDst_abc_32bytes() {
     byte[] result = expand("abc", STANDARD_DST, 32);
@@ -53,6 +59,9 @@ public class ExpandMessageXmdTest {
         .isEqualTo("d8ccab23b5985ccea865c6c97b6e5b8350e794e603b4b97902f53a8a0d605615");
   }
 
+  /**
+   * Expand xmd standard dst abcdef 0123456789 32 bytes.
+   */
   @Test
   void expandXmd_standardDst_abcdef0123456789_32bytes() {
     byte[] result = expand("abcdef0123456789", STANDARD_DST, 32);
@@ -60,6 +69,9 @@ public class ExpandMessageXmdTest {
         .isEqualTo("eff31487c770a893cfb36f912fbfcbff40d5661771ca4b2cb4eafe524333f5c1");
   }
 
+  /**
+   * Expand xmd standard dst q 128 32 bytes.
+   */
   @Test
   void expandXmd_standardDst_q128_32bytes() {
     StringBuilder sb = new StringBuilder("q128_");
@@ -71,6 +83,9 @@ public class ExpandMessageXmdTest {
 
   // --- RFC 9380 Appendix K.1: standard DST, len_in_bytes = 128 ---
 
+  /**
+   * Expand xmd standard dst a 512 32 bytes.
+   */
   @Test
   void expandXmd_standardDst_a512_32bytes() {
     StringBuilder sb = new StringBuilder("a512_");
@@ -80,6 +95,9 @@ public class ExpandMessageXmdTest {
         .isEqualTo("4623227bcc01293b8c130bf771da8c298dede7383243dc0993d2d94823958c4c");
   }
 
+  /**
+   * Expand xmd standard dst empty msg 128 bytes.
+   */
   @Test
   void expandXmd_standardDst_emptyMsg_128bytes() {
     byte[] result = expand("", STANDARD_DST, 128);
@@ -90,6 +108,9 @@ public class ExpandMessageXmdTest {
                 + "1708d3491184472c2c29bb749d4286b004ceb5ee6b9a7fa5b646c993f0ced");
   }
 
+  /**
+   * Expand xmd standard dst abc 128 bytes.
+   */
   @Test
   void expandXmd_standardDst_abc_128bytes() {
     byte[] result = expand("abc", STANDARD_DST, 128);
@@ -100,6 +121,9 @@ public class ExpandMessageXmdTest {
                 + "8e77b7b72a298425cd1b941ad4ec65e8afc50303a22c0f99b0509b4c895f40");
   }
 
+  /**
+   * Expand xmd standard dst abcdef 0123456789 128 bytes.
+   */
   @Test
   void expandXmd_standardDst_abcdef0123456789_128bytes() {
     byte[] result = expand("abcdef0123456789", STANDARD_DST, 128);
@@ -110,6 +134,9 @@ public class ExpandMessageXmdTest {
                 + "489b37fe1a72f7de2d10be453b2c9d9eb20c7e3f6edc5a60629178d9478df");
   }
 
+  /**
+   * Expand xmd standard dst q 128 128 bytes.
+   */
   @Test
   void expandXmd_standardDst_q128_128bytes() {
     StringBuilder sb = new StringBuilder("q128_");
@@ -124,6 +151,9 @@ public class ExpandMessageXmdTest {
 
   // --- RFC 9380 Appendix K.2: long DST (256 bytes), len_in_bytes = 32 ---
 
+  /**
+   * Expand xmd standard dst a 512 128 bytes.
+   */
   @Test
   void expandXmd_standardDst_a512_128bytes() {
     StringBuilder sb = new StringBuilder("a512_");
@@ -136,6 +166,9 @@ public class ExpandMessageXmdTest {
                 + "d22e86f6db5dd43d98a294bebb9125d5b794e9d2a81181066eb954966a487");
   }
 
+  /**
+   * Expand xmd long dst empty msg 32 bytes.
+   */
   @Test
   void expandXmd_longDst_emptyMsg_32bytes() {
     byte[] result = expand("", LONG_DST, 32);
@@ -143,6 +176,9 @@ public class ExpandMessageXmdTest {
         .isEqualTo("e8dc0c8b686b7ef2074086fbdd2f30e3f8bfbd3bdf177f73f04b97ce618a3ed3");
   }
 
+  /**
+   * Expand xmd long dst abc 32 bytes.
+   */
   @Test
   void expandXmd_longDst_abc_32bytes() {
     byte[] result = expand("abc", LONG_DST, 32);
@@ -150,6 +186,9 @@ public class ExpandMessageXmdTest {
         .isEqualTo("52dbf4f36cf560fca57dedec2ad924ee9c266341d8f3d6afe5171733b16bbb12");
   }
 
+  /**
+   * Expand xmd long dst abcdef 0123456789 32 bytes.
+   */
   @Test
   void expandXmd_longDst_abcdef0123456789_32bytes() {
     byte[] result = expand("abcdef0123456789", LONG_DST, 32);
@@ -157,6 +196,9 @@ public class ExpandMessageXmdTest {
         .isEqualTo("35387dcf22618f3728e6c686490f8b431f76550b0b2c61cbc1ce7001536f4521");
   }
 
+  /**
+   * Expand xmd long dst q 128 32 bytes.
+   */
   @Test
   void expandXmd_longDst_q128_32bytes() {
     StringBuilder sb = new StringBuilder("q128_");
@@ -168,6 +210,9 @@ public class ExpandMessageXmdTest {
 
   // --- RFC 9380 Appendix K.2: long DST (256 bytes), len_in_bytes = 128 ---
 
+  /**
+   * Expand xmd long dst a 512 32 bytes.
+   */
   @Test
   void expandXmd_longDst_a512_32bytes() {
     StringBuilder sb = new StringBuilder("a512_");
@@ -177,6 +222,9 @@ public class ExpandMessageXmdTest {
         .isEqualTo("20cce7033cabc5460743180be6fa8aac5a103f56d481cf369a8accc0c374431b");
   }
 
+  /**
+   * Expand xmd long dst empty msg 128 bytes.
+   */
   @Test
   void expandXmd_longDst_emptyMsg_128bytes() {
     byte[] result = expand("", LONG_DST, 128);
@@ -187,6 +235,9 @@ public class ExpandMessageXmdTest {
                 + "7e126604bcab1a3ee2dc0778102ae8a5cfd1429ebc0fa6bf1a53c36f55dfc");
   }
 
+  /**
+   * Expand xmd long dst abc 128 bytes.
+   */
   @Test
   void expandXmd_longDst_abc_128bytes() {
     byte[] result = expand("abc", LONG_DST, 128);
@@ -197,6 +248,9 @@ public class ExpandMessageXmdTest {
                 + "5762dbc39fb0cee4474d2cbbd468a835ae5b2f20e4f959f56ab24cd6fe267");
   }
 
+  /**
+   * Expand xmd long dst abcdef 0123456789 128 bytes.
+   */
   @Test
   void expandXmd_longDst_abcdef0123456789_128bytes() {
     byte[] result = expand("abcdef0123456789", LONG_DST, 128);
@@ -207,6 +261,9 @@ public class ExpandMessageXmdTest {
                 + "1fa48ef1c07e494bdc37054ba96ecb9dbd666417e3de289d4f424f502a982");
   }
 
+  /**
+   * Expand xmd long dst q 128 128 bytes.
+   */
   @Test
   void expandXmd_longDst_q128_128bytes() {
     StringBuilder sb = new StringBuilder("q128_");
@@ -221,6 +278,9 @@ public class ExpandMessageXmdTest {
 
   // ── Input validation ─────────────────────────────────────────────────────
 
+  /**
+   * Expand xmd long dst a 512 128 bytes.
+   */
   @Test
   void expandXmd_longDst_a512_128bytes() {
     StringBuilder sb = new StringBuilder("a512_");
@@ -233,6 +293,9 @@ public class ExpandMessageXmdTest {
                 + "3d6c14bf7618b35fc1f4c4b30538236b4b08c9fbf90462447a8ada60be495");
   }
 
+  /**
+   * Expand rejects zero len in bytes.
+   */
   @Test
   void expandRejectsZeroLenInBytes() {
     assertThatThrownBy(() -> expand("msg", STANDARD_DST, 0))
@@ -240,6 +303,9 @@ public class ExpandMessageXmdTest {
         .hasMessageContaining("lenInBytes");
   }
 
+  /**
+   * Expand rejects negative len in bytes.
+   */
   @Test
   void expandRejectsNegativeLenInBytes() {
     assertThatThrownBy(() -> expand("msg", STANDARD_DST, -1))
@@ -247,6 +313,9 @@ public class ExpandMessageXmdTest {
         .hasMessageContaining("lenInBytes");
   }
 
+  /**
+   * Expand rejects len in bytes over 65535.
+   */
   @Test
   void expandRejectsLenInBytesOver65535() {
     assertThatThrownBy(() -> expand("msg", STANDARD_DST, 65536))
@@ -254,6 +323,9 @@ public class ExpandMessageXmdTest {
         .hasMessageContaining("lenInBytes");
   }
 
+  /**
+   * Expand rejects ell over 255 sha 256.
+   */
   @Test
   void expandRejectsEllOver255_sha256() {
     // For SHA-256, bInBytes=32 → ell = ceil(lenInBytes / 32).

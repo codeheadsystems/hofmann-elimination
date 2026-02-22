@@ -24,6 +24,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+/**
+ * The type Hofmann oprf client manager test.
+ */
 @ExtendWith(MockitoExtension.class)
 class HofmannOprfClientManagerTest {
 
@@ -41,11 +44,17 @@ class HofmannOprfClientManagerTest {
 
   private HofmannOprfClientManager manager;
 
+  /**
+   * Sets up.
+   */
   @BeforeEach
   void setUp() {
     manager = new HofmannOprfClientManager(hofmannOprfAccessor, oprfClientManager);
   }
 
+  /**
+   * Perform hash success returns correct hash result.
+   */
   @Test
   void performHash_success_returnsCorrectHashResult() {
     ClientHashingContext context = new ClientHashingContext(REQUEST_ID, BigInteger.TWO, SENSITIVE_DATA.getBytes());
@@ -66,6 +75,9 @@ class HofmannOprfClientManagerTest {
     assertThat(result.hash()).isEqualTo(HASH);
   }
 
+  /**
+   * Perform hash oprf request wraps blinded request fields not transposed.
+   */
   @Test
   void performHash_oprfRequestWrapsBlindedRequest_fieldsNotTransposed() {
     ClientHashingContext context = new ClientHashingContext(REQUEST_ID, BigInteger.TWO, SENSITIVE_DATA.getBytes());

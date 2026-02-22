@@ -10,6 +10,12 @@ import io.dropwizard.core.setup.Environment;
  */
 public class HofmannApplication extends Application<HofmannConfiguration> {
 
+  /**
+   * The entry point of application.
+   *
+   * @param args the input arguments
+   * @throws Exception the exception
+   */
   public static void main(String[] args) throws Exception {
     new HofmannApplication().run(args);
   }

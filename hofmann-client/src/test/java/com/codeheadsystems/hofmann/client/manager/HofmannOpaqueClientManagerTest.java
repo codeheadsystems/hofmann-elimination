@@ -48,11 +48,17 @@ class HofmannOpaqueClientManagerTest {
   @Mock private HofmannOpaqueAccessor accessor;
   private HofmannOpaqueClientManager manager;
 
+  /**
+   * Sets up.
+   */
   @BeforeEach
   void setUp() {
     manager = new HofmannOpaqueClientManager(CONFIG, accessor);
   }
 
+  /**
+   * Register calls all three endpoints.
+   */
   @Test
   void register_callsAllThreeEndpoints() {
     Server server =
@@ -78,6 +84,9 @@ class HofmannOpaqueClientManagerTest {
     verify(accessor).registrationFinish(eq(SERVER_ID), any());
   }
 
+  /**
+   * Authenticate successful handshake returns session key.
+   */
   @Test
   void authenticate_successfulHandshake_returnsSessionKey() {
     Server server =
@@ -120,6 +129,9 @@ class HofmannOpaqueClientManagerTest {
     verify(accessor).authFinish(eq(SERVER_ID), any());
   }
 
+  /**
+   * Authenticate wrong password throws security exception.
+   */
   @Test
   void authenticate_wrongPassword_throwsSecurityException() {
     Server server =
@@ -153,6 +165,9 @@ class HofmannOpaqueClientManagerTest {
         .isInstanceOf(SecurityException.class);
   }
 
+  /**
+   * Delete registration calls accessor with token.
+   */
   @Test
   void deleteRegistration_callsAccessorWithToken() {
     manager.deleteRegistration(SERVER_ID, CREDENTIAL_ID, "test-jwt-token");

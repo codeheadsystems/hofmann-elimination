@@ -23,14 +23,25 @@ import org.bouncycastle.math.ec.ECPoint;
  */
 public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
 
+  /**
+   * The constant P256_SHA256.
+   */
   public static final OpaqueCipherSuite P256_SHA256 = new OpaqueCipherSuite(OprfCipherSuite.builder().withSuite(CurveHashSuite.P256_SHA256).build());
+  /**
+   * The constant P384_SHA384.
+   */
   public static final OpaqueCipherSuite P384_SHA384 = new OpaqueCipherSuite(OprfCipherSuite.builder().withSuite(CurveHashSuite.P384_SHA384).build());
+  /**
+   * The constant P521_SHA512.
+   */
   public static final OpaqueCipherSuite P521_SHA512 = new OpaqueCipherSuite(OprfCipherSuite.builder().withSuite(CurveHashSuite.P256_SHA256).build());
 
   /**
    * Returns the OPAQUE cipher suite for the given name.  Accepted names: {@code "P256_SHA256"},
    * {@code "P384_SHA384"}, {@code "P521_SHA512"}.
    *
+   * @param name the name
+   * @return the opaque cipher suite
    * @throws IllegalArgumentException for unrecognised names
    */
   public static OpaqueCipherSuite fromName(String name) {
@@ -45,6 +56,8 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
 
   /**
    * Compressed public key size in bytes (33, 49, or 67).
+   *
+   * @return the int
    */
   public int Npk() {
     return oprfSuite().elementSize();
@@ -52,6 +65,8 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
 
   /**
    * Scalar (private key) size in bytes (32, 48, or 66).
+   *
+   * @return the int
    */
   public int Nsk() {
     return (oprfSuite().groupSpec().groupOrder().bitLength() + 7) / 8;
@@ -59,6 +74,8 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
 
   /**
    * Hash output length in bytes (32, 48, or 64).
+   *
+   * @return the int
    */
   public int Nh() {
     return oprfSuite().hashOutputLength();
@@ -66,6 +83,8 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
 
   /**
    * MAC output length — equals hash output length.
+   *
+   * @return the int
    */
   public int Nm() {
     return Nh();
@@ -73,6 +92,8 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
 
   /**
    * HKDF output length — equals hash output length.
+   *
+   * @return the int
    */
   public int Nx() {
     return Nh();
@@ -80,6 +101,8 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
 
   /**
    * OPRF evaluated element size — equals compressed public key size.
+   *
+   * @return the int
    */
   public int Noe() {
     return Npk();
@@ -87,6 +110,8 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
 
   /**
    * OPRF key size — equals scalar size.
+   *
+   * @return the int
    */
   public int Nok() {
     return Nsk();
@@ -94,6 +119,8 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
 
   /**
    * Nonce length — always 32, suite-independent.
+   *
+   * @return the int
    */
   public int Nn() {
     return 32;
@@ -101,6 +128,8 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
 
   /**
    * Envelope size = Nn + Nm.
+   *
+   * @return the int
    */
   public int envelopeSize() {
     return Nn() + Nm();
@@ -108,6 +137,8 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
 
   /**
    * Masked response size = Npk + envelopeSize.
+   *
+   * @return the int
    */
   public int maskedResponseSize() {
     return Npk() + envelopeSize();
@@ -118,6 +149,10 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
   /**
    * HKDF-Extract(salt, ikm) = HMAC-H(salt, ikm).
    * Empty salt uses HashLen zeros per RFC 5869.
+   *
+   * @param salt the salt
+   * @param ikm  the ikm
+   * @return the byte [ ]
    */
   public byte[] hkdfExtract(byte[] salt, byte[] ikm) {
     byte[] emptySalt = new byte[Nh()];
@@ -127,6 +162,11 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
 
   /**
    * HKDF-Expand(prk, info, len) per RFC 5869 §2.3.
+   *
+   * @param prk  the prk
+   * @param info the info
+   * @param len  the len
+   * @return the byte [ ]
    */
   public byte[] hkdfExpand(byte[] prk, byte[] info, int len) {
     int hashLen = Nh();
@@ -147,6 +187,12 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
 
   /**
    * HKDF-Expand-Label(secret, label, context, length) in OPAQUE TLS-style format.
+   *
+   * @param secret  the secret
+   * @param label   the label
+   * @param context the context
+   * @param length  the length
+   * @return the byte [ ]
    */
   public byte[] hkdfExpandLabel(byte[] secret, byte[] label, byte[] context, int length) {
     byte[] prefix = "OPAQUE-".getBytes(StandardCharsets.US_ASCII);
@@ -163,6 +209,10 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
 
   /**
    * HMAC-H(key, data) using the suite's hash.
+   *
+   * @param key  the key
+   * @param data the data
+   * @return the byte [ ]
    */
   public byte[] hmac(byte[] key, byte[] data) {
     return oprfSuite().hmac(key, data);
@@ -170,6 +220,9 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
 
   /**
    * H(data) using the suite's hash.
+   *
+   * @param data the data
+   * @return the byte [ ]
    */
   public byte[] hash(byte[] data) {
     return oprfSuite().hash(data);
@@ -179,6 +232,9 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
    * Deserializes a compressed SEC1 byte array to an EC point using the suite's curve.
    * Validates the point is on the curve and not the identity element to prevent
    * invalid-curve and small-subgroup attacks on DH computations.
+   *
+   * @param bytes the bytes
+   * @return the ec point
    */
   public ECPoint deserializePoint(byte[] bytes) {
     GroupSpec wgs = oprfSuite().groupSpec();
@@ -187,6 +243,9 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
 
   /**
    * Derives an AKE key pair from a seed using the suite's deriveKeyPair.
+   *
+   * @param seed the seed
+   * @return the ake key pair
    */
   public AkeKeyPair deriveAkeKeyPair(byte[] seed) {
     BigInteger sk = oprfSuite().deriveKeyPair(seed,

@@ -56,6 +56,11 @@ class OpaqueRoundTripTest {
     return out;
   }
 
+  /**
+   * All suites stream.
+   *
+   * @return the stream
+   */
   static Stream<OpaqueCipherSuite> allSuites() {
     return Stream.of(
         OpaqueCipherSuite.P256_SHA256,
@@ -64,6 +69,9 @@ class OpaqueRoundTripTest {
     );
   }
 
+  /**
+   * Sets up.
+   */
   @BeforeEach
   void setUp() {
     client = new Client(CONFIG);
@@ -90,6 +98,9 @@ class OpaqueRoundTripTest {
     return client.generateKE3(authState, clientIdentity, serverIdentity, ke2);
   }
 
+  /**
+   * Registration then successful authentication.
+   */
   @Test
   void registrationThenSuccessfulAuthentication() {
     RegistrationRecord record = register(PASSWORD_CORRECT);
@@ -100,6 +111,9 @@ class OpaqueRoundTripTest {
     assertThat(clientResult.ke3().clientMac()).isNotNull().hasSize(32);
   }
 
+  /**
+   * Server and client agree on session key.
+   */
   @Test
   void serverAndClientAgreeOnSessionKey() {
     RegistrationRecord record = register(PASSWORD_CORRECT);
@@ -115,6 +129,9 @@ class OpaqueRoundTripTest {
     assertThat(clientResult.sessionKey()).isEqualTo(serverSessionKey);
   }
 
+  /**
+   * Wrong password causes envelope auth failure.
+   */
   @Test
   void wrongPasswordCausesEnvelopeAuthFailure() {
     RegistrationRecord record = register(PASSWORD_CORRECT);
@@ -124,6 +141,9 @@ class OpaqueRoundTripTest {
         .hasMessageContaining("Authentication failed");
   }
 
+  /**
+   * Two registrations produce different records.
+   */
   @Test
   void twoRegistrationsProduceDifferentRecords() {
     RegistrationRecord record1 = register(PASSWORD_CORRECT);
@@ -134,6 +154,9 @@ class OpaqueRoundTripTest {
     assertThat(record1.envelope().authTag()).isNotEqualTo(record2.envelope().authTag());
   }
 
+  /**
+   * Server finish with wrong ke 3 throws.
+   */
   @Test
   void serverFinishWithWrongKE3Throws() {
     RegistrationRecord record = register(PASSWORD_CORRECT);
@@ -150,6 +173,9 @@ class OpaqueRoundTripTest {
         .hasMessageContaining("Authentication failed");
   }
 
+  /**
+   * Two consecutive authentications produce different session keys.
+   */
   @Test
   void twoConsecutiveAuthenticationsProduceDifferentSessionKeys() {
     RegistrationRecord record = register(PASSWORD_CORRECT);
@@ -161,6 +187,9 @@ class OpaqueRoundTripTest {
     assertThat(result1.sessionKey()).isNotEqualTo(result2.sessionKey());
   }
 
+  /**
+   * Authentication with explicit identities.
+   */
   @Test
   void authenticationWithExplicitIdentities() {
     byte[] serverIdentity = "server.example.com".getBytes(StandardCharsets.UTF_8);
@@ -181,6 +210,9 @@ class OpaqueRoundTripTest {
     assertThat(clientResult.exportKey()).isNotNull().hasSize(32);
   }
 
+  /**
+   * Authentication with wrong identity fails.
+   */
   @Test
   void authenticationWithWrongIdentityFails() {
     byte[] correctServerIdentity = "server.example.com".getBytes(StandardCharsets.UTF_8);
@@ -199,6 +231,9 @@ class OpaqueRoundTripTest {
     }).isInstanceOf(SecurityException.class);
   }
 
+  /**
+   * Wrong client identity during login fails.
+   */
   @Test
   void wrongClientIdentityDuringLoginFails() {
     byte[] serverIdentity = "server.example.com".getBytes(StandardCharsets.UTF_8);
@@ -219,6 +254,9 @@ class OpaqueRoundTripTest {
     }).isInstanceOf(SecurityException.class);
   }
 
+  /**
+   * Server impersonation fails authentication.
+   */
   @Test
   void serverImpersonationFailsAuthentication() {
     // An attacker who knows the real server's public key but has a different private key
@@ -243,6 +281,9 @@ class OpaqueRoundTripTest {
     }).isInstanceOf(SecurityException.class);
   }
 
+  /**
+   * Fake ke 2 causes authentication failure.
+   */
   @Test
   void fakeKE2CausesAuthenticationFailure() {
     // When a user has not registered, the server responds with a fake KE2.
@@ -258,6 +299,9 @@ class OpaqueRoundTripTest {
         .hasMessageContaining("Authentication failed");
   }
 
+  /**
+   * Fake ke 2 is indistinguishable from wrong password.
+   */
   @Test
   void fakeKE2IsIndistinguishableFromWrongPassword() {
     // Both scenarios produce the same SecurityException at the same protocol step,
@@ -292,6 +336,9 @@ class OpaqueRoundTripTest {
 
   // ─── Additional coverage ──────────────────────────────────────────────────
 
+  /**
+   * Export key is reproducible across sessions.
+   */
   @Test
   void exportKeyIsReproducibleAcrossSessions() {
     // The export_key is derived from randomizedPwd (deterministic given correct password)
@@ -306,6 +353,9 @@ class OpaqueRoundTripTest {
     assertThat(result1.sessionKey()).isNotEqualTo(result2.sessionKey());
   }
 
+  /**
+   * Multiple independent users.
+   */
   @Test
   void multipleIndependentUsers() {
     // Two distinct users can register and authenticate on the same server without interference.
@@ -340,6 +390,9 @@ class OpaqueRoundTripTest {
     assertThat(res1.sessionKey()).isNotEqualTo(res2.sessionKey());
   }
 
+  /**
+   * Argon 2 id ksf round trip.
+   */
   @Test
   void argon2idKsfRoundTrip() {
     // OpaqueConfig.DEFAULT uses Argon2id but all other tests use IdentityKsf.
@@ -374,6 +427,9 @@ class OpaqueRoundTripTest {
         .hasMessageContaining("Authentication failed");
   }
 
+  /**
+   * Tampered server mac in ke 2 causes security exception.
+   */
   @Test
   void tamperedServerMacInKE2CausesSecurityException() {
     // "Server MAC verification failed" is only reachable when the credential response
@@ -397,6 +453,9 @@ class OpaqueRoundTripTest {
         .hasMessageContaining("Authentication failed");
   }
 
+  /**
+   * Different contexts cause mac mismatch.
+   */
   @Test
   void differentContextsCauseMacMismatch() {
     // RFC §6.1: the context string must be globally unique and is bound into the preamble.
@@ -425,6 +484,9 @@ class OpaqueRoundTripTest {
         .hasMessageContaining("Authentication failed");
   }
 
+  /**
+   * Re registration changes export key.
+   */
   @Test
   void reRegistrationChangesExportKey() {
     // Each registration uses a fresh random envelope nonce, so the export_key changes.
@@ -440,6 +502,9 @@ class OpaqueRoundTripTest {
     assertThat(result2.sessionKey()).isNotNull().hasSize(32);
   }
 
+  /**
+   * Wrong credential identifier causes auth failure.
+   */
   @Test
   void wrongCredentialIdentifierCausesAuthFailure() {
     // If the server looks up the wrong credential identifier when evaluating the OPRF,
@@ -460,6 +525,9 @@ class OpaqueRoundTripTest {
         .hasMessageContaining("Authentication failed");
   }
 
+  /**
+   * Generate produces valid key pair.
+   */
   @Test
   void generateProducesValidKeyPair() {
     // OpaqueServer.generate() must produce a valid compressed P-256 public key
@@ -489,6 +557,9 @@ class OpaqueRoundTripTest {
 
   // ─── Additional tests ────────────────────────────────────────────────────
 
+  /**
+   * Different oprf seeds cannot cross authenticate.
+   */
   @Test
   void differentOprfSeedsCannotCrossAuthenticate() {
     // Two servers with identical long-term AKE keys but different OPRF seeds derive different
@@ -524,6 +595,9 @@ class OpaqueRoundTripTest {
         .hasMessageContaining("Authentication failed");
   }
 
+  /**
+   * Registration requests are unique.
+   */
   @Test
   void registrationRequestsAreUnique() {
     // createRegistrationRequest() applies a random blind on each call, so two requests
@@ -535,6 +609,9 @@ class OpaqueRoundTripTest {
         .isNotEqualTo(state2.request().blindedElement());
   }
 
+  /**
+   * Masking key is deterministic for same password.
+   */
   @Test
   void maskingKeyIsDeterministicForSamePassword() {
     // maskingKey = HKDF-Expand(randomized_pwd, "MaskingKey", 32) depends only on
@@ -549,6 +626,9 @@ class OpaqueRoundTripTest {
     assertThat(record1.envelope().envelopeNonce()).isNotEqualTo(record2.envelope().envelopeNonce());
   }
 
+  /**
+   * Tampered masked response causes auth failure.
+   */
   @Test
   void tamperedMaskedResponseCausesAuthFailure() {
     // The maskedResponse XOR-decrypts to serverPublicKey || envelopeNonce || authTag.
@@ -577,6 +657,9 @@ class OpaqueRoundTripTest {
         .hasMessageContaining("Authentication failed");
   }
 
+  /**
+   * Tampered evaluated element causes envelope failure.
+   */
   @Test
   void tamperedEvaluatedElementCausesEnvelopeFailure() {
     // A modified OPRF evaluated element produces the wrong randomized_pwd after unblinding,
@@ -606,6 +689,9 @@ class OpaqueRoundTripTest {
         .hasMessageContaining("Authentication failed");
   }
 
+  /**
+   * Ke 2 deserialization round trip.
+   */
   @Test
   void ke2DeserializationRoundTrip() {
     // KE2.deserialize() must reconstruct all fields from the wire format and the
@@ -623,6 +709,9 @@ class OpaqueRoundTripTest {
     assertThat(result.exportKey()).isNotNull().hasSize(32);
   }
 
+  /**
+   * Fake ke 2 with explicit identities fails authentication.
+   */
   @Test
   void fakeKE2WithExplicitIdentitiesFailsAuthentication() {
     // User-enumeration protection must work even when explicit identities are supplied;
@@ -641,6 +730,9 @@ class OpaqueRoundTripTest {
         .hasMessageContaining("Authentication failed");
   }
 
+  /**
+   * Concurrent auth sessions for same user.
+   */
   @Test
   void concurrentAuthSessionsForSameUser() {
     // Two in-flight auth sessions for the same registered record must each complete
@@ -664,6 +756,9 @@ class OpaqueRoundTripTest {
     assertThat(result1.exportKey()).isEqualTo(result2.exportKey());
   }
 
+  /**
+   * Export key is independent of session key.
+   */
   @Test
   void exportKeyIsIndependentOfSessionKey() {
     // RFC §10.7: export_key and session_key are derived via different HKDF-ExpandLabel
@@ -676,6 +771,9 @@ class OpaqueRoundTripTest {
     assertThat(result.exportKey()).isNotEqualTo(result.sessionKey());
   }
 
+  /**
+   * Empty password round trip.
+   */
   @Test
   void emptyPasswordRoundTrip() {
     // The protocol imposes no minimum password length; a zero-length password must
@@ -690,6 +788,9 @@ class OpaqueRoundTripTest {
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
 
+  /**
+   * Server finish called twice returns same key.
+   */
   @Test
   void serverFinishCalledTwiceReturnsSameKey() {
     // serverFinish is a stateless MAC-verification step; calling it twice with the
@@ -708,6 +809,9 @@ class OpaqueRoundTripTest {
 
   // ─── Parameterized multi-suite round-trip tests ────────────────────────────
 
+  /**
+   * Registration response contains server public key.
+   */
   @Test
   void registrationResponseContainsServerPublicKey() {
     // The server's long-term public key must be embedded in the registration response
@@ -718,6 +822,11 @@ class OpaqueRoundTripTest {
     assertThat(response.serverPublicKey()).isEqualTo(server.getServerPublicKey());
   }
 
+  /**
+   * Full round trip all suites.
+   *
+   * @param suite the suite
+   */
   @ParameterizedTest(name = "fullRoundTrip_{0}")
   @MethodSource("allSuites")
   void fullRoundTripAllSuites(OpaqueCipherSuite suite) {
@@ -742,6 +851,11 @@ class OpaqueRoundTripTest {
     assertThat(clientResult.sessionKey()).isEqualTo(serverSessionKey);
   }
 
+  /**
+   * Wrong password fails all suites.
+   *
+   * @param suite the suite
+   */
   @ParameterizedTest(name = "wrongPasswordFails_{0}")
   @MethodSource("allSuites")
   void wrongPasswordFailsAllSuites(OpaqueCipherSuite suite) {

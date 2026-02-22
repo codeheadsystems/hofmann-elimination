@@ -12,6 +12,11 @@ public class HofmannAuthenticator implements Authenticator<String, HofmannPrinci
 
   private final JwtManager jwtManager;
 
+  /**
+   * Instantiates a new Hofmann authenticator.
+   *
+   * @param jwtManager the jwt manager
+   */
   public HofmannAuthenticator(JwtManager jwtManager) {
     this.jwtManager = jwtManager;
   }

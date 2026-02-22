@@ -29,6 +29,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+/**
+ * The type Hofmann opaque accessor test.
+ */
 @ExtendWith(MockitoExtension.class)
 class HofmannOpaqueAccessorTest {
 
@@ -41,6 +44,9 @@ class HofmannOpaqueAccessorTest {
 
   private HofmannOpaqueAccessor accessor;
 
+  /**
+   * Sets up.
+   */
   @BeforeEach
   void setUp() {
     Map<ServerIdentifier, ServerConnectionInfo> connections = new HashMap<>();
@@ -50,6 +56,11 @@ class HofmannOpaqueAccessorTest {
 
   // ── Registration start ────────────────────────────────────────────────────
 
+  /**
+   * Registration start success returns response.
+   *
+   * @throws Exception the exception
+   */
   @Test
   @SuppressWarnings("unchecked")
   void registrationStart_success_returnsResponse() throws Exception {
@@ -69,6 +80,11 @@ class HofmannOpaqueAccessorTest {
     assertThat(result.serverPublicKeyBase64()).isEqualTo("serverPk");
   }
 
+  /**
+   * Registration start io exception throws opaque accessor exception.
+   *
+   * @throws Exception the exception
+   */
   @Test
   @SuppressWarnings("unchecked")
   void registrationStart_ioException_throwsOpaqueAccessorException() throws Exception {
@@ -84,6 +100,11 @@ class HofmannOpaqueAccessorTest {
 
   // ── Auth finish — 401 handling ────────────────────────────────────────────
 
+  /**
+   * Auth finish 401 throws security exception.
+   *
+   * @throws Exception the exception
+   */
   @Test
   @SuppressWarnings("unchecked")
   void authFinish_401_throwsSecurityException() throws Exception {
@@ -99,6 +120,11 @@ class HofmannOpaqueAccessorTest {
 
   // ── Auth start ────────────────────────────────────────────────────────────
 
+  /**
+   * Auth start success returns response.
+   *
+   * @throws Exception the exception
+   */
   @Test
   @SuppressWarnings("unchecked")
   void authStart_success_returnsResponse() throws Exception {
@@ -121,6 +147,9 @@ class HofmannOpaqueAccessorTest {
 
   // ── Unknown server ────────────────────────────────────────────────────────
 
+  /**
+   * Any method unknown server throws illegal argument exception.
+   */
   @Test
   void anyMethod_unknownServer_throwsIllegalArgumentException() {
     ServerIdentifier unknown = new ServerIdentifier("not-registered");
@@ -133,6 +162,11 @@ class HofmannOpaqueAccessorTest {
 
   // ── Interrupted ───────────────────────────────────────────────────────────
 
+  /**
+   * Auth start interrupted throws opaque accessor exception and restores interrupt flag.
+   *
+   * @throws Exception the exception
+   */
   @Test
   @SuppressWarnings("unchecked")
   void authStart_interrupted_throwsOpaqueAccessorExceptionAndRestoresInterruptFlag()

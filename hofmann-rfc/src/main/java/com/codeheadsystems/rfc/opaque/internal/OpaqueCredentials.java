@@ -25,6 +25,10 @@ public class OpaqueCredentials {
 
   /**
    * Client creates a registration request by blinding the password.
+   *
+   * @param password the password
+   * @param config   the config
+   * @return the client registration state
    */
   public static ClientRegistrationState createRegistrationRequest(byte[] password, OpaqueConfig config) {
     BigInteger blind = config.cipherSuite().oprfSuite().randomScalar();
@@ -33,6 +37,11 @@ public class OpaqueCredentials {
 
   /**
    * Client creates a registration request with a given blinding factor (for deterministic testing).
+   *
+   * @param password the password
+   * @param blind    the blind
+   * @param config   the config
+   * @return the client registration state
    */
   public static ClientRegistrationState createRegistrationRequestWithBlind(byte[] password,
                                                                            BigInteger blind,
@@ -44,6 +53,13 @@ public class OpaqueCredentials {
 
   /**
    * Server creates a registration response: evaluates OPRF and includes server public key.
+   *
+   * @param config               the config
+   * @param request              the request
+   * @param serverPublicKey      the server public key
+   * @param credentialIdentifier the credential identifier
+   * @param oprfSeed             the oprf seed
+   * @return the registration response
    */
   public static RegistrationResponse createRegistrationResponse(OpaqueConfig config,
                                                                 RegistrationRequest request,
@@ -57,6 +73,13 @@ public class OpaqueCredentials {
 
   /**
    * Client finalizes registration: derives randomized_pwd, stores envelope.
+   *
+   * @param state          the state
+   * @param response       the response
+   * @param serverIdentity the server identity
+   * @param clientIdentity the client identity
+   * @param config         the config
+   * @return the registration record
    */
   public static RegistrationRecord finalizeRegistration(ClientRegistrationState state,
                                                         RegistrationResponse response,
@@ -69,6 +92,14 @@ public class OpaqueCredentials {
 
   /**
    * Client finalizes registration with a provided nonce (for deterministic testing).
+   *
+   * @param state          the state
+   * @param response       the response
+   * @param serverIdentity the server identity
+   * @param clientIdentity the client identity
+   * @param config         the config
+   * @param envelopeNonce  the envelope nonce
+   * @return the registration record
    */
   public static RegistrationRecord finalizeRegistrationWithNonce(ClientRegistrationState state,
                                                                  RegistrationResponse response,
@@ -86,6 +117,14 @@ public class OpaqueCredentials {
 
   /**
    * Server creates a credential response for authentication.
+   *
+   * @param config               the config
+   * @param request              the request
+   * @param serverPublicKey      the server public key
+   * @param record               the record
+   * @param credentialIdentifier the credential identifier
+   * @param oprfSeed             the oprf seed
+   * @return the credential response
    */
   public static CredentialResponse createCredentialResponse(OpaqueConfig config,
                                                             CredentialRequest request,
@@ -99,6 +138,15 @@ public class OpaqueCredentials {
 
   /**
    * Server creates a credential response with a provided masking nonce (for deterministic testing).
+   *
+   * @param config               the config
+   * @param request              the request
+   * @param serverPublicKey      the server public key
+   * @param record               the record
+   * @param credentialIdentifier the credential identifier
+   * @param oprfSeed             the oprf seed
+   * @param maskingNonce         the masking nonce
+   * @return the credential response
    */
   public static CredentialResponse createCredentialResponseWithNonce(OpaqueConfig config,
                                                                      CredentialRequest request,
@@ -127,6 +175,14 @@ public class OpaqueCredentials {
 
   /**
    * Client recovers credentials from the credential response during authentication.
+   *
+   * @param password       the password
+   * @param blind          the blind
+   * @param response       the response
+   * @param serverIdentity the server identity
+   * @param clientIdentity the client identity
+   * @param config         the config
+   * @return the recover result
    */
   public static RecoverResult recoverCredentials(byte[] password, BigInteger blind,
                                                  CredentialResponse response,
@@ -158,6 +214,12 @@ public class OpaqueCredentials {
 
   /**
    * Derives randomized password from OPRF output.
+   *
+   * @param password         the password
+   * @param blind            the blind
+   * @param evaluatedElement the evaluated element
+   * @param config           the config
+   * @return the byte [ ]
    */
   public static byte[] deriveRandomizedPwd(byte[] password, BigInteger blind,
                                            byte[] evaluatedElement, OpaqueConfig config) {

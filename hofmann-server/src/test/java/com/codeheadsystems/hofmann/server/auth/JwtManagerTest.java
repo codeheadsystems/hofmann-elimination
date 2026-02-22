@@ -11,6 +11,9 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+/**
+ * The type Jwt manager test.
+ */
 class JwtManagerTest {
 
   private static final byte[] SECRET = "test-secret-must-be-at-least-32-bytes!".getBytes();
@@ -19,12 +22,18 @@ class JwtManagerTest {
   private InMemorySessionStore sessionStore;
   private JwtManager jwtManager;
 
+  /**
+   * Sets up.
+   */
   @BeforeEach
   void setUp() {
     sessionStore = new InMemorySessionStore();
     jwtManager = new JwtManager(SECRET, "test-issuer", 3600, sessionStore);
   }
 
+  /**
+   * Issue and verify round trip.
+   */
   @Test
   void issueAndVerify_roundTrip() {
     String token = jwtManager.issueToken("Y3JlZA==", "a2V5");
@@ -33,6 +42,9 @@ class JwtManagerTest {
     assertThat(result.get().subject()).isEqualTo("Y3JlZA==");
   }
 
+  /**
+   * Verify revoked token returns empty.
+   */
   @Test
   void verify_revokedToken_returnsEmpty() {
     String token = jwtManager.issueToken("Y3JlZA==", "a2V5");
@@ -42,6 +54,9 @@ class JwtManagerTest {
     assertThat(jwtManager.verify(token)).isEmpty();
   }
 
+  /**
+   * Verify wrong secret returns empty.
+   */
   @Test
   void verify_wrongSecret_returnsEmpty() {
     String token = jwtManager.issueToken("Y3JlZA==", "a2V5");
@@ -51,6 +66,9 @@ class JwtManagerTest {
     assertThat(wrongManager.verify(token)).isEmpty();
   }
 
+  /**
+   * Verify expired token returns empty.
+   */
   @Test
   void verify_expiredToken_returnsEmpty() {
     // Create a manager with 0 TTL — token expires immediately
@@ -67,6 +85,9 @@ class JwtManagerTest {
     assertThat(jwtManager.verify(token)).isEmpty();
   }
 
+  /**
+   * Verify tampered token returns empty.
+   */
   @Test
   void verify_tamperedToken_returnsEmpty() {
     String token = jwtManager.issueToken("Y3JlZA==", "a2V5");

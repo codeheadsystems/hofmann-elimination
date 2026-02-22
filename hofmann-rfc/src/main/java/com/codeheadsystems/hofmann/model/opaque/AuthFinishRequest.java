@@ -22,10 +22,8 @@ import java.util.Base64;
  * <p>
  * Used by: {@code POST /opaque/auth/finish}
  *
- * @param sessionToken    the session token returned in {@link AuthStartResponse}; used
- *                        server-side to look up the pending AKE state for this handshake
- * @param clientMacBase64 base64-encoded client MAC authenticating the full AKE transcript;
- *                        computed as {@code HMAC(Km3, SHA256(preamble || serverMac))}
+ * @param sessionToken    the session token returned in {@link AuthStartResponse}; used                        server-side to look up the pending AKE state for this handshake
+ * @param clientMacBase64 base64-encoded client MAC authenticating the full AKE transcript;                        computed as {@code HMAC(Km3, SHA256(preamble || serverMac))}
  */
 public record AuthFinishRequest(
     @JsonProperty("sessionToken") String sessionToken,
@@ -34,10 +32,21 @@ public record AuthFinishRequest(
   private static final Base64.Encoder B64 = Base64.getEncoder();
   private static final Base64.Decoder B64D = Base64.getDecoder();
 
+  /**
+   * Instantiates a new Auth finish request.
+   *
+   * @param sessionToken the session token
+   * @param ke3          the ke 3
+   */
   public AuthFinishRequest(String sessionToken, KE3 ke3) {
     this(sessionToken, B64.encodeToString(ke3.clientMac()));
   }
 
+  /**
+   * Ke 3 ke 3.
+   *
+   * @return the ke 3
+   */
   public KE3 ke3() {
     if (clientMacBase64 == null || clientMacBase64.isBlank()) {
       throw new IllegalArgumentException("Missing required field: clientMac");

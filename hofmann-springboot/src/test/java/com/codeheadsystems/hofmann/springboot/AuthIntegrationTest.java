@@ -20,6 +20,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 
+/**
+ * The type Auth integration test.
+ */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class AuthIntegrationTest {
 
@@ -33,6 +36,9 @@ class AuthIntegrationTest {
   private HofmannOpaqueClientManager hofmannOpaqueClientManager;
   private HttpClient httpClient;
 
+  /**
+   * Sets up.
+   */
   @BeforeEach
   void setUp() {
     httpClient = HttpClient.newHttpClient();
@@ -43,6 +49,11 @@ class AuthIntegrationTest {
     hofmannOpaqueClientManager = new HofmannOpaqueClientManager(config, accessor);
   }
 
+  /**
+   * Authenticate and call protected endpoint returns 200.
+   *
+   * @throws Exception the exception
+   */
   @Test
   void authenticateAndCallProtectedEndpoint_returns200() throws Exception {
     hofmannOpaqueClientManager.register(SERVER_ID, CREDENTIAL_ID, PASSWORD);
@@ -60,6 +71,11 @@ class AuthIntegrationTest {
     assertThat(response.body()).contains("credentialIdentifier");
   }
 
+  /**
+   * Call protected endpoint no token returns 401.
+   *
+   * @throws Exception the exception
+   */
   @Test
   void callProtectedEndpoint_noToken_returns401() throws Exception {
     HttpRequest request = HttpRequest.newBuilder()
@@ -72,6 +88,11 @@ class AuthIntegrationTest {
     assertThat(response.statusCode()).isEqualTo(401);
   }
 
+  /**
+   * Call protected endpoint bogus token returns 401.
+   *
+   * @throws Exception the exception
+   */
   @Test
   void callProtectedEndpoint_bogusToken_returns401() throws Exception {
     HttpRequest request = HttpRequest.newBuilder()

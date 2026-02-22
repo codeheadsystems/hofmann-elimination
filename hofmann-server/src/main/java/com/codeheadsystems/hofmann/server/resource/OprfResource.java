@@ -16,6 +16,9 @@ import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * The type Oprf resource.
+ */
 @Singleton
 @Path("/oprf")
 public class OprfResource {
@@ -23,12 +26,23 @@ public class OprfResource {
 
   private final OprfServerManager oprfServerManager;
 
+  /**
+   * Instantiates a new Oprf resource.
+   *
+   * @param oprfServerManager the oprf server manager
+   */
   @Inject
   public OprfResource(final OprfServerManager oprfServerManager) {
     this.oprfServerManager = oprfServerManager;
     log.info("OprfResource({})", oprfServerManager);
   }
 
+  /**
+   * Evaluate oprf response.
+   *
+   * @param request the request
+   * @return the oprf response
+   */
   @POST
   @Consumes(MediaType.APPLICATION_JSON)
   @Produces(MediaType.APPLICATION_JSON)

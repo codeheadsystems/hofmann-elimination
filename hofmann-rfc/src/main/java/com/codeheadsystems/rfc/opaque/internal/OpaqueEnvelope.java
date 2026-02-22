@@ -28,6 +28,7 @@ public class OpaqueEnvelope {
    * @param serverIdentity  server identity bytes (may be null)
    * @param clientIdentity  client identity bytes (may be null)
    * @param envelopeNonce   Nn-byte nonce
+   * @return the store result
    */
   public static StoreResult store(OpaqueConfig config, byte[] randomizedPwd, byte[] serverPublicKey,
                                   byte[] serverIdentity, byte[] clientIdentity,
@@ -58,6 +59,13 @@ public class OpaqueEnvelope {
   /**
    * Recovers credentials from an envelope given the randomized password.
    *
+   * @param config          the config
+   * @param randomizedPwd   the randomized pwd
+   * @param serverPublicKey the server public key
+   * @param envelope        the envelope
+   * @param serverIdentity  the server identity
+   * @param clientIdentity  the client identity
+   * @return the recover result
    * @throws SecurityException if the auth_tag does not match
    */
   public static RecoverResult recover(OpaqueConfig config, byte[] randomizedPwd, byte[] serverPublicKey,

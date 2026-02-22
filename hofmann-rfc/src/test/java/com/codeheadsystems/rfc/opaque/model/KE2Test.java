@@ -63,6 +63,9 @@ class KE2Test {
     assertThat(ke2.serverMac()).containsOnly((byte) 0x06);
   }
 
+  /**
+   * Deserialize then round trip lengths match.
+   */
   @Test
   void deserializeThenRoundTripLengthsMatch() {
     // Verify that all deserialized field lengths match the config-defined sizes.

@@ -30,6 +30,8 @@ public class ExpandMessageXmd {
 
   /**
    * SHA-256: bInBytes=32, rInBytes=64.
+   *
+   * @return the expand message xmd
    */
   public static ExpandMessageXmd forSha256() {
     return new ExpandMessageXmd("SHA-256", 32, 64);
@@ -37,6 +39,8 @@ public class ExpandMessageXmd {
 
   /**
    * SHA-384: bInBytes=48, rInBytes=128 (SHA-384 uses the same 1024-bit block as SHA-512).
+   *
+   * @return the expand message xmd
    */
   public static ExpandMessageXmd forSha384() {
     return new ExpandMessageXmd("SHA-384", 48, 128);
@@ -44,6 +48,8 @@ public class ExpandMessageXmd {
 
   /**
    * SHA-512: bInBytes=64, rInBytes=128.
+   *
+   * @return the expand message xmd
    */
   public static ExpandMessageXmd forSha512() {
     return new ExpandMessageXmd("SHA-512", 64, 128);

@@ -18,12 +18,20 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
+/**
+ * The type Round trip test.
+ */
 public class RoundTripTest {
 
   private static final OprfCipherSuite DEFAULT_SUITE = OprfCipherSuite.builder().build();
   private static final String TEST_DATA = "test data for round trip";
   private static final String TEST_DATA2 = "Different Data";
 
+  /**
+   * All suites stream.
+   *
+   * @return the stream
+   */
   static Stream<OprfCipherSuite> allSuites() {
     return Stream.of(
         OprfCipherSuite.builder().withSuite(CurveHashSuite.P256_SHA256).build(),
@@ -36,6 +44,11 @@ public class RoundTripTest {
    * Defines the steps the client takes to convert sensitive data into a key that can be used for elimination.
    * Implements RFC 9497 OPRF mode 0 (OPRF).
    * \
+   *
+   * @param oprfClientManager the oprf client manager
+   * @param oprfServerManager the oprf server manager
+   * @param sensitiveData     the sensitive data
+   * @return the string
    */
   public String convertToIdentityKey(final OprfClientManager oprfClientManager,
                                      final OprfServerManager oprfServerManager,
@@ -54,6 +67,9 @@ public class RoundTripTest {
 
   // ─── Existing P256-SHA256 tests (backward compat) ─────────────────────────
 
+  /**
+   * Test round trip.
+   */
   @Test
   void testRoundTrip() {
     OprfServerManager oprfServerManager = oprfServerManager(DEFAULT_SUITE);
@@ -71,6 +87,9 @@ public class RoundTripTest {
         .isNotEqualTo(aliceHash).isNotEqualTo(bobHash);
   }
 
+  /**
+   * Test different servers have different results.
+   */
   @Test
   void testDifferentServersHaveDifferentResults() {
     OprfServerManager oprfServerManager1 = oprfServerManager(DEFAULT_SUITE);
@@ -85,6 +104,11 @@ public class RoundTripTest {
 
   // ─── Parameterized multi-suite round-trip tests ────────────────────────────
 
+  /**
+   * Round trip all suites.
+   *
+   * @param suite the suite
+   */
   @ParameterizedTest(name = "roundTrip_{0}")
   @MethodSource("allSuites")
   void roundTripAllSuites(OprfCipherSuite suite) {
@@ -103,6 +127,11 @@ public class RoundTripTest {
         .isNotEqualTo(aliceHash).isNotEqualTo(bobHash);
   }
 
+  /**
+   * Different servers have different results all suites.
+   *
+   * @param suite the suite
+   */
   @ParameterizedTest(name = "differentServers_{0}")
   @MethodSource("allSuites")
   void differentServersHaveDifferentResultsAllSuites(OprfCipherSuite suite) {

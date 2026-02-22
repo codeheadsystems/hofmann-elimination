@@ -10,6 +10,11 @@ public class OpaqueServerHealthCheck extends HealthCheck {
 
   private final Server server;
 
+  /**
+   * Instantiates a new Opaque server health check.
+   *
+   * @param server the server
+   */
   public OpaqueServerHealthCheck(Server server) {
     this.server = server;
   }

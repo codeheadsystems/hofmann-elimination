@@ -47,23 +47,25 @@ import org.slf4j.LoggerFactory;
  * Embed in your application with in-memory stores (dev/test only):
  * <pre>{@code
  *   bootstrap.addBundle(new HofmannBundle<>());
- * }</pre>
+ * }**</pre>
  * <p>
  * Or supply persistent stores (requires {@code oprfMasterKeyHex} in config):
  * <pre>{@code
  *   bootstrap.addBundle(new HofmannBundle<>(myCredentialStore, mySessionStore, null));
- * }</pre>
+ * }**</pre>
  * <p>
  * To implement key rotation or custom key management for the OPRF endpoint:
  * <pre>{@code
  *   bootstrap.addBundle(new HofmannBundle<>(credentialStore, sessionStore,
  *       () -> keyRotationService.currentDetail()));
- * }</pre>
+ * }**</pre>
  * <p>
  * To supply a custom {@link SecureRandom} (e.g., HSM-backed), use the fluent setter:
  * <pre>{@code
  *   bootstrap.addBundle(new HofmannBundle<>().withSecureRandom(mySecureRandom));
- * }</pre>
+ * }**</pre>
+ *
+ * @param <C> the type parameter
  */
 @Singleton
 public class HofmannBundle<C extends HofmannConfiguration> implements ConfiguredBundle<C> {
@@ -103,6 +105,10 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
    * When {@code processorDetailSupplier} is non-null it is called on every OPRF request,
    * allowing key rotation — and {@code oprfMasterKeyHex} in the configuration is ignored.
    * When {@code null}, {@code oprfMasterKeyHex} must be set in the configuration.
+   *
+   * @param credentialStore         the credential store
+   * @param sessionStore            the session store
+   * @param processorDetailSupplier the processor detail supplier
    */
   @Inject
   public HofmannBundle(CredentialStore credentialStore,
@@ -122,8 +128,9 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
    * Call this before the application starts (i.e., during {@code bootstrap.addBundle(...)}):
    * <pre>{@code
    *   bootstrap.addBundle(new HofmannBundle<>().withSecureRandom(mySecureRandom));
-   * }</pre>
+   * }**</pre>
    *
+   * @param secureRandom the secure random
    * @return {@code this}, for fluent chaining
    */
   public HofmannBundle<C> withSecureRandom(SecureRandom secureRandom) {

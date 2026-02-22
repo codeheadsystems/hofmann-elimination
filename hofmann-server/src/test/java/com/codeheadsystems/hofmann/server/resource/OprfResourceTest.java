@@ -23,6 +23,9 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+/**
+ * The type Oprf resource test.
+ */
 @ExtendWith(MockitoExtension.class)
 class OprfResourceTest {
 
@@ -33,6 +36,9 @@ class OprfResourceTest {
   @Mock private OprfServerManager oprfServerManager;
   private OprfResource resource;
 
+  /**
+   * Install runtime delegate.
+   */
   @BeforeAll
   static void installRuntimeDelegate() {
     // WebApplicationException constructor requires a JAX-RS RuntimeDelegate implementation.
@@ -50,16 +56,25 @@ class OprfResourceTest {
     RuntimeDelegate.setInstance(mockRd);
   }
 
+  /**
+   * Remove runtime delegate.
+   */
   @AfterAll
   static void removeRuntimeDelegate() {
     RuntimeDelegate.setInstance(null);
   }
 
+  /**
+   * Sets up.
+   */
   @BeforeEach
   void setUp() {
     resource = new OprfResource(oprfServerManager);
   }
 
+  /**
+   * Evaluate valid request returns oprf response.
+   */
   @Test
   void evaluate_validRequest_returnsOprfResponse() {
     OprfRequest request = new OprfRequest(EC_POINT, REQUEST_ID);
@@ -72,6 +87,9 @@ class OprfResourceTest {
     assertThat(response.processIdentifier()).isEqualTo(PROCESS_ID);
   }
 
+  /**
+   * Evaluate null ec point throws bad request.
+   */
   @Test
   void evaluate_nullEcPoint_throwsBadRequest() {
     OprfRequest request = new OprfRequest(null, REQUEST_ID);
@@ -82,6 +100,9 @@ class OprfResourceTest {
             .isEqualTo(Response.Status.BAD_REQUEST.getStatusCode()));
   }
 
+  /**
+   * Evaluate blank ec point throws bad request.
+   */
   @Test
   void evaluate_blankEcPoint_throwsBadRequest() {
     OprfRequest request = new OprfRequest("   ", REQUEST_ID);
@@ -92,6 +113,9 @@ class OprfResourceTest {
             .isEqualTo(Response.Status.BAD_REQUEST.getStatusCode()));
   }
 
+  /**
+   * Evaluate null request id throws bad request.
+   */
   @Test
   void evaluate_nullRequestId_throwsBadRequest() {
     OprfRequest request = new OprfRequest(EC_POINT, null);
@@ -102,6 +126,9 @@ class OprfResourceTest {
             .isEqualTo(Response.Status.BAD_REQUEST.getStatusCode()));
   }
 
+  /**
+   * Evaluate blank request id throws bad request.
+   */
   @Test
   void evaluate_blankRequestId_throwsBadRequest() {
     OprfRequest request = new OprfRequest(EC_POINT, "  ");
@@ -112,6 +139,9 @@ class OprfResourceTest {
             .isEqualTo(Response.Status.BAD_REQUEST.getStatusCode()));
   }
 
+  /**
+   * Evaluate illegal argument from server manager throws bad request.
+   */
   @Test
   void evaluate_illegalArgumentFromServerManager_throwsBadRequest() {
     OprfRequest request = new OprfRequest(EC_POINT, REQUEST_ID);

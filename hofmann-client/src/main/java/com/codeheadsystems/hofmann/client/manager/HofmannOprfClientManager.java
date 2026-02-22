@@ -15,6 +15,9 @@ import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * The type Hofmann oprf client manager.
+ */
 @Singleton
 public class HofmannOprfClientManager {
   private static final Logger log = LoggerFactory.getLogger(HofmannOprfClientManager.class);
@@ -23,6 +26,12 @@ public class HofmannOprfClientManager {
   private final OprfClientManager clientManager;
 
 
+  /**
+   * Instantiates a new Hofmann oprf client manager.
+   *
+   * @param hofmannOprfAccessor the hofmann oprf accessor
+   * @param clientManager       the client manager
+   */
   @Inject
   public HofmannOprfClientManager(final HofmannOprfAccessor hofmannOprfAccessor,
                                   final OprfClientManager clientManager) {
@@ -34,7 +43,8 @@ public class HofmannOprfClientManager {
   /**
    * Performs the OPRF hashing process using the server as the OPRF provider.
    *
-   * @param sensitiveData sensitive data to be hashed.
+   * @param sensitiveData    sensitive data to be hashed.
+   * @param serverIdentifier the server identifier
    * @return the RFC 9387 compliant OPRF hash of the input, using the server as the OPRF provider.
    */
   public HofmannHashResult performHash(String sensitiveData, ServerIdentifier serverIdentifier) {

@@ -40,10 +40,21 @@ public class OpaqueController {
 
   private final HofmannOpaqueServerManager manager;
 
+  /**
+   * Instantiates a new Opaque controller.
+   *
+   * @param manager the manager
+   */
   public OpaqueController(HofmannOpaqueServerManager manager) {
     this.manager = manager;
   }
 
+  /**
+   * Registration start registration start response.
+   *
+   * @param req the req
+   * @return the registration start response
+   */
   @PostMapping("/registration/start")
   public RegistrationStartResponse registrationStart(@RequestBody RegistrationStartRequest req) {
     log.trace("registrationStart()");
@@ -55,6 +66,12 @@ public class OpaqueController {
     }
   }
 
+  /**
+   * Registration finish response entity.
+   *
+   * @param req the req
+   * @return the response entity
+   */
   @PostMapping("/registration/finish")
   public ResponseEntity<Void> registrationFinish(@RequestBody RegistrationFinishRequest req) {
     log.trace("registrationFinish()");
@@ -67,6 +84,13 @@ public class OpaqueController {
     }
   }
 
+  /**
+   * Registration delete response entity.
+   *
+   * @param req        the req
+   * @param authHeader the auth header
+   * @return the response entity
+   */
   @DeleteMapping("/registration")
   public ResponseEntity<Void> registrationDelete(
       @RequestBody RegistrationDeleteRequest req,
@@ -91,6 +115,12 @@ public class OpaqueController {
     return null;
   }
 
+  /**
+   * Auth start auth start response.
+   *
+   * @param req the req
+   * @return the auth start response
+   */
   @PostMapping("/auth/start")
   public AuthStartResponse authStart(@RequestBody AuthStartRequest req) {
     log.trace("authStart()");
@@ -105,6 +135,12 @@ public class OpaqueController {
     }
   }
 
+  /**
+   * Auth finish auth finish response.
+   *
+   * @param req the req
+   * @return the auth finish response
+   */
   @PostMapping("/auth/finish")
   public AuthFinishResponse authFinish(@RequestBody AuthFinishRequest req) {
     log.trace("authFinish()");

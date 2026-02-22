@@ -10,10 +10,18 @@ import org.bouncycastle.jce.spec.ECNamedCurveParameterSpec;
 import org.bouncycastle.math.ec.ECPoint;
 import org.junit.jupiter.api.Test;
 
+/**
+ * The type Byte utils test.
+ */
 class ByteUtilsTest {
 
   // ─── Constructor ──────────────────────────────────────────────────────────
 
+  /**
+   * Private constructor is inaccessible.
+   *
+   * @throws Exception the exception
+   */
   @Test
   void privateConstructorIsInaccessible() throws Exception {
     Constructor<ByteUtils> ctor = ByteUtils.class.getDeclaredConstructor();
@@ -23,33 +31,51 @@ class ByteUtilsTest {
 
   // ─── I2OSP ────────────────────────────────────────────────────────────────
 
+  /**
+   * 2 osp single byte zero.
+   */
   @Test
   void i2osp_singleByteZero() {
     assertThat(ByteUtils.I2OSP(0, 1)).isEqualTo(new byte[]{0x00});
   }
 
+  /**
+   * 2 osp single byte max value.
+   */
   @Test
   void i2osp_singleByteMaxValue() {
     assertThat(ByteUtils.I2OSP(255, 1)).isEqualTo(new byte[]{(byte) 0xFF});
   }
 
+  /**
+   * 2 osp two byte encoding.
+   */
   @Test
   void i2osp_twoByteEncoding() {
     // 256 = 0x0100
     assertThat(ByteUtils.I2OSP(256, 2)).isEqualTo(new byte[]{0x01, 0x00});
   }
 
+  /**
+   * 2 osp two byte zero.
+   */
   @Test
   void i2osp_twoByteZero() {
     assertThat(ByteUtils.I2OSP(0, 2)).isEqualTo(new byte[]{0x00, 0x00});
   }
 
+  /**
+   * 2 osp zero length with zero value.
+   */
   @Test
   void i2osp_zeroLengthWithZeroValue() {
     // length=0, loop does not execute, result is empty array
     assertThat(ByteUtils.I2OSP(0, 0)).isEmpty();
   }
 
+  /**
+   * 2 osp negative value throws.
+   */
   @Test
   void i2osp_negativeValueThrows() {
     // value < 0 branch
@@ -58,6 +84,9 @@ class ByteUtilsTest {
         .hasMessageContaining("Value too large for specified length");
   }
 
+  /**
+   * 2 osp value too large for length throws.
+   */
   @Test
   void i2osp_valueTooLargeForLengthThrows() {
     // value >= (1L << (8 * length)) branch: 256 does not fit in 1 byte
@@ -68,18 +97,27 @@ class ByteUtilsTest {
 
   // ─── concat ───────────────────────────────────────────────────────────────
 
+  /**
+   * Concat no arrays returns empty.
+   */
   @Test
   void concat_noArraysReturnsEmpty() {
     // Both loops execute 0 times
     assertThat(ByteUtils.concat()).isEmpty();
   }
 
+  /**
+   * Concat single array.
+   */
   @Test
   void concat_singleArray() {
     byte[] a = {1, 2, 3};
     assertThat(ByteUtils.concat(a)).isEqualTo(new byte[]{1, 2, 3});
   }
 
+  /**
+   * Concat two arrays.
+   */
   @Test
   void concat_twoArrays() {
     byte[] a = {1, 2};
@@ -87,6 +125,9 @@ class ByteUtilsTest {
     assertThat(ByteUtils.concat(a, b)).isEqualTo(new byte[]{1, 2, 3, 4});
   }
 
+  /**
+   * Concat three arrays.
+   */
   @Test
   void concat_threeArrays() {
     byte[] a = {1};
@@ -95,6 +136,9 @@ class ByteUtilsTest {
     assertThat(ByteUtils.concat(a, b, c)).isEqualTo(new byte[]{1, 2, 3});
   }
 
+  /**
+   * Concat empty array among others.
+   */
   @Test
   void concat_emptyArrayAmongOthers() {
     byte[] a = {1, 2};
@@ -103,11 +147,17 @@ class ByteUtilsTest {
     assertThat(ByteUtils.concat(a, empty, b)).isEqualTo(new byte[]{1, 2, 3, 4});
   }
 
+  /**
+   * Concat all empty arrays.
+   */
   @Test
   void concat_allEmptyArrays() {
     assertThat(ByteUtils.concat(new byte[0], new byte[0])).isEmpty();
   }
 
+  /**
+   * Concat does not mutate inputs.
+   */
   @Test
   void concat_doesNotMutateInputs() {
     byte[] a = {1, 2};
@@ -119,6 +169,9 @@ class ByteUtilsTest {
 
   // ─── xor ────────────────────────────────────────────────────────────────────
 
+  /**
+   * Xor basic operation.
+   */
   @Test
   void xor_basicOperation() {
     byte[] a = {(byte) 0xFF, 0x00, 0x0F};
@@ -126,6 +179,9 @@ class ByteUtilsTest {
     assertThat(ByteUtils.xor(a, b)).isEqualTo(new byte[]{(byte) 0xF0, (byte) 0xF0, (byte) 0xF0});
   }
 
+  /**
+   * Xor with zeros is identity.
+   */
   @Test
   void xor_withZerosIsIdentity() {
     byte[] a = {1, 2, 3};
@@ -133,17 +189,26 @@ class ByteUtilsTest {
     assertThat(ByteUtils.xor(a, zeros)).isEqualTo(a);
   }
 
+  /**
+   * Xor with self is zero.
+   */
   @Test
   void xor_withSelfIsZero() {
     byte[] a = {(byte) 0xAB, (byte) 0xCD, (byte) 0xEF};
     assertThat(ByteUtils.xor(a, a)).isEqualTo(new byte[]{0, 0, 0});
   }
 
+  /**
+   * Xor empty arrays.
+   */
   @Test
   void xor_emptyArrays() {
     assertThat(ByteUtils.xor(new byte[0], new byte[0])).isEmpty();
   }
 
+  /**
+   * Xor unequal lengths throws.
+   */
   @Test
   void xor_unequalLengthsThrows() {
     assertThatThrownBy(() -> ByteUtils.xor(new byte[]{1, 2}, new byte[]{1}))
@@ -151,6 +216,9 @@ class ByteUtilsTest {
         .hasMessageContaining("equal length");
   }
 
+  /**
+   * Xor does not mutate inputs.
+   */
   @Test
   void xor_doesNotMutateInputs() {
     byte[] a = {1, 2};
@@ -162,6 +230,9 @@ class ByteUtilsTest {
 
   // ─── dhECDH ─────────────────────────────────────────────────────────────────
 
+  /**
+   * Dh ecdh returns compressed point.
+   */
   @Test
   void dhECDH_returnsCompressedPoint() {
     ECNamedCurveParameterSpec spec = ECNamedCurveTable.getParameterSpec("secp256r1");
@@ -175,6 +246,9 @@ class ByteUtilsTest {
     assertThat(result[0]).isIn((byte) 0x02, (byte) 0x03);
   }
 
+  /**
+   * Dh ecdh is consistent with direct multiply.
+   */
   @Test
   void dhECDH_isConsistentWithDirectMultiply() {
     ECNamedCurveParameterSpec spec = ECNamedCurveTable.getParameterSpec("secp256r1");
@@ -187,6 +261,9 @@ class ByteUtilsTest {
     assertThat(result).isEqualTo(expected);
   }
 
+  /**
+   * Dh ecdh different scalars produce different results.
+   */
   @Test
   void dhECDH_differentScalarsProduceDifferentResults() {
     ECNamedCurveParameterSpec spec = ECNamedCurveTable.getParameterSpec("secp256r1");
@@ -198,6 +275,9 @@ class ByteUtilsTest {
     assertThat(result1).isNotEqualTo(result2);
   }
 
+  /**
+   * Dh ecdh commutativity.
+   */
   @Test
   void dhECDH_commutativity() {
     // DH commutativity: (a * G) * b == (b * G) * a

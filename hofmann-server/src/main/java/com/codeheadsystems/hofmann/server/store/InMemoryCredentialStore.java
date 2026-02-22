@@ -18,6 +18,9 @@ public class InMemoryCredentialStore implements CredentialStore {
   private static final Logger log = LoggerFactory.getLogger(InMemoryCredentialStore.class);
   private final ConcurrentHashMap<ByteKey, RegistrationRecord> store = new ConcurrentHashMap<>();
 
+  /**
+   * Instantiates a new In memory credential store.
+   */
   public InMemoryCredentialStore() {
     log.warn("Using InMemoryCredentialStore — registrations will NOT survive restarts. "
         + "Replace with a persistent CredentialStore for production.");

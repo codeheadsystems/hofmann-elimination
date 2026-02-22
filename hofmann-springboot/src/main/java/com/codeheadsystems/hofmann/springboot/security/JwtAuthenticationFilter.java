@@ -11,10 +11,18 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+/**
+ * The type Jwt authentication filter.
+ */
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
   private final JwtManager jwtManager;
 
+  /**
+   * Instantiates a new Jwt authentication filter.
+   *
+   * @param jwtManager the jwt manager
+   */
   public JwtAuthenticationFilter(JwtManager jwtManager) {
     this.jwtManager = jwtManager;
   }

@@ -19,11 +19,17 @@ public class P256HashToCurveTest {
   private static final String DST = "QUUX-V01-CS02-with-P256_XMD:SHA-256_SSWU_RO_";
   private HashToCurve hashToCurve;
 
+  /**
+   * Sets up.
+   */
   @BeforeEach
   void setUp() {
     hashToCurve = HashToCurve.forP256();
   }
 
+  /**
+   * Test hash to curve empty string.
+   */
   @Test
   void testHashToCurveEmptyString() {
     // Test vector from RFC 9380 Appendix J.2.1
@@ -46,6 +52,9 @@ public class P256HashToCurveTest {
     assertThat(point.getYCoord().toBigInteger()).isEqualTo(expectedY);
   }
 
+  /**
+   * Test hash to curve abc.
+   */
   @Test
   void testHashToCurveABC() {
     // Test vector from RFC 9380 Appendix J.2.1
@@ -68,6 +77,9 @@ public class P256HashToCurveTest {
     assertThat(point.getYCoord().toBigInteger()).isEqualTo(expectedY);
   }
 
+  /**
+   * Test hash to curve abcdef.
+   */
   @Test
   void testHashToCurveAbcdef() {
     // Test vector from RFC 9380 Appendix J.2.1
@@ -90,6 +102,9 @@ public class P256HashToCurveTest {
     assertThat(point.getYCoord().toBigInteger()).isEqualTo(expectedY);
   }
 
+  /**
+   * Test hash to curve long message.
+   */
   @Test
   void testHashToCurveLongMessage() {
     // Test vector from RFC 9380 Appendix J.2.1
@@ -116,6 +131,9 @@ public class P256HashToCurveTest {
     assertThat(point.getYCoord().toBigInteger()).isEqualTo(expectedY);
   }
 
+  /**
+   * Test hash to curve a 512 times.
+   */
   @Test
   void testHashToCurveA512Times() {
     // Test vector from RFC 9380 Appendix J.2.1
@@ -142,6 +160,9 @@ public class P256HashToCurveTest {
     assertThat(point.getYCoord().toBigInteger()).isEqualTo(expectedY);
   }
 
+  /**
+   * Test hash to curve result is on curve.
+   */
   @Test
   void testHashToCurveResultIsOnCurve() {
     // Verify that the result is actually on the P-256 curve
@@ -170,6 +191,9 @@ public class P256HashToCurveTest {
     assertThat(lhs).isEqualTo(rhs);
   }
 
+  /**
+   * Test deterministic output.
+   */
   @Test
   void testDeterministicOutput() {
     // Same input should always produce the same output
@@ -184,6 +208,9 @@ public class P256HashToCurveTest {
         .isEqualTo(point2.getYCoord().toBigInteger());
   }
 
+  /**
+   * Test different messages produce different points.
+   */
   @Test
   void testDifferentMessagesProduceDifferentPoints() {
     // Different inputs should produce different outputs
@@ -197,6 +224,9 @@ public class P256HashToCurveTest {
         .isNotEqualTo(point2.getXCoord().toBigInteger());
   }
 
+  /**
+   * Test domain separation works.
+   */
   @Test
   void testDomainSeparationWorks() {
     // Same message with different DST should produce different outputs

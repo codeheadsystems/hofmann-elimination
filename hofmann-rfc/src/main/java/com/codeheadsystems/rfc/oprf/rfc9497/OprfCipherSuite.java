@@ -78,6 +78,11 @@ public class OprfCipherSuite {
     );
   }
 
+  /**
+   * Builder builder.
+   *
+   * @return the builder
+   */
   public static Builder builder() {
     return new Builder();
   }
@@ -105,44 +110,94 @@ public class OprfCipherSuite {
     return new OprfCipherSuite(this, randomProvider);
   }
 
+  /**
+   * Identifier string.
+   *
+   * @return the string
+   */
   public String identifier() {
     return identifier;
   }
 
   // ─── Accessors ──────────────────────────────────────────────────────────────
 
+  /**
+   * Context string byte [ ].
+   *
+   * @return the byte [ ]
+   */
   public byte[] contextString() {
     return contextString;
   }
 
+  /**
+   * Hash to group dst byte [ ].
+   *
+   * @return the byte [ ]
+   */
   public byte[] hashToGroupDst() {
     return hashToGroupDst;
   }
 
+  /**
+   * Hash to scalar dst byte [ ].
+   *
+   * @return the byte [ ]
+   */
   public byte[] hashToScalarDst() {
     return hashToScalarDst;
   }
 
+  /**
+   * Derive key pair dst byte [ ].
+   *
+   * @return the byte [ ]
+   */
   public byte[] deriveKeyPairDst() {
     return deriveKeyPairDst;
   }
 
+  /**
+   * Group spec group spec.
+   *
+   * @return the group spec
+   */
   public GroupSpec groupSpec() {
     return groupSpec;
   }
 
+  /**
+   * Hash algorithm string.
+   *
+   * @return the string
+   */
   public String hashAlgorithm() {
     return hashAlgorithm;
   }
 
+  /**
+   * Hash output length int.
+   *
+   * @return the int
+   */
   public int hashOutputLength() {
     return hashOutputLength;
   }
 
+  /**
+   * Random config random provider.
+   *
+   * @return the random provider
+   */
   public RandomProvider randomConfig() {
     return randomProvider;
   }
 
+  /**
+   * Element size int.
+   *
+   * @return the int
+   */
   public int elementSize() {
     return groupSpec.elementSize();
   }
@@ -264,30 +319,62 @@ public class OprfCipherSuite {
     }
   }
 
+  /**
+   * The type Builder.
+   */
   public static class Builder {
 
     private CurveHashSuite curveHashSuite = CurveHashSuite.P256_SHA256;
     private RandomProvider random = new RandomProvider();
 
+    /**
+     * With suite builder.
+     *
+     * @param curveHashSuite the curve hash suite
+     * @return the builder
+     */
     public Builder withSuite(CurveHashSuite curveHashSuite) {
       this.curveHashSuite = curveHashSuite;
       return this;
     }
 
+    /**
+     * With suite builder.
+     *
+     * @param name the name
+     * @return the builder
+     */
     public Builder withSuite(String name) {
       return withSuite(CurveHashSuite.valueOf(name.toUpperCase()));
     }
 
+    /**
+     * With random builder.
+     *
+     * @param random the random
+     * @return the builder
+     */
     public Builder withRandom(SecureRandom random) {
       this.random = new RandomProvider(random);
       return this;
     }
 
+    /**
+     * With random provider builder.
+     *
+     * @param random the random
+     * @return the builder
+     */
     public Builder withRandomProvider(RandomProvider random) {
       this.random = random;
       return this;
     }
 
+    /**
+     * Build oprf cipher suite.
+     *
+     * @return the oprf cipher suite
+     */
     public OprfCipherSuite build() {
       return switch (curveHashSuite) {
         case P256_SHA256 -> new OprfCipherSuite(

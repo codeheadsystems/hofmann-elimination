@@ -13,6 +13,10 @@ public record KE2(CredentialResponse credentialResponse, byte[] serverNonce,
    * Deserializes KE2 from wire bytes using config-provided size constants.
    * Layout: evaluatedElement(Noe) || maskingNonce(Nn) || maskedResponse(maskedResponseSize) ||
    * serverNonce(Nn) || serverAkePk(Npk) || serverMac(Nm)
+   *
+   * @param config the config
+   * @param bytes  the bytes
+   * @return the ke 2
    */
   public static KE2 deserialize(OpaqueConfig config, byte[] bytes) {
     // Validate input length before deserialization to prevent ArrayIndexOutOfBoundsException
@@ -50,6 +54,8 @@ public record KE2(CredentialResponse credentialResponse, byte[] serverNonce,
   /**
    * Serializes credential response to wire format for preamble construction.
    * credResponse = evaluatedElement || maskingNonce || maskedResponse
+   *
+   * @return the byte [ ]
    */
   public byte[] serializeCredentialResponse() {
     CredentialResponse cr = credentialResponse;

@@ -43,6 +43,13 @@ public class HofmannOpaqueAccessor {
   private final ObjectMapper objectMapper;
   private final Map<ServerIdentifier, ServerConnectionInfo> serverConnections;
 
+  /**
+   * Instantiates a new Hofmann opaque accessor.
+   *
+   * @param httpClient        the http client
+   * @param objectMapper      the object mapper
+   * @param serverConnections the server connections
+   */
   @Inject
   public HofmannOpaqueAccessor(final HttpClient httpClient,
                                final ObjectMapper objectMapper,
@@ -58,6 +65,10 @@ public class HofmannOpaqueAccessor {
   /**
    * Phase 1 of registration: sends the blinded element to the server and returns the
    * OPRF-evaluated element plus the server's public key.
+   *
+   * @param serverId the server id
+   * @param request  the request
+   * @return the registration start response
    */
   public RegistrationStartResponse registrationStart(final ServerIdentifier serverId,
                                                      final RegistrationStartRequest request) {
@@ -68,6 +79,9 @@ public class HofmannOpaqueAccessor {
 
   /**
    * Phase 2 of registration: uploads the completed registration record to the server.
+   *
+   * @param serverId the server id
+   * @param request  the request
    */
   public void registrationFinish(final ServerIdentifier serverId,
                                  final RegistrationFinishRequest request) {
@@ -96,6 +110,10 @@ public class HofmannOpaqueAccessor {
 
   /**
    * AKE phase 1: sends KE1 to the server and returns KE2 (plus the session token).
+   *
+   * @param serverId the server id
+   * @param request  the request
+   * @return the auth start response
    */
   public AuthStartResponse authStart(final ServerIdentifier serverId,
                                      final AuthStartRequest request) {
@@ -107,6 +125,9 @@ public class HofmannOpaqueAccessor {
   /**
    * AKE phase 2: sends KE3 to the server and returns the shared session key.
    *
+   * @param serverId the server id
+   * @param request  the request
+   * @return the auth finish response
    * @throws SecurityException if the server rejects the client MAC (HTTP 401)
    */
   public AuthFinishResponse authFinish(final ServerIdentifier serverId,

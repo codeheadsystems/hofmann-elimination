@@ -13,6 +13,9 @@ import org.bouncycastle.util.encoders.Hex;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * The type Oprf client manager.
+ */
 public class OprfClientManager {
 
   private static final Logger log = LoggerFactory.getLogger(OprfClientManager.class);
@@ -20,6 +23,11 @@ public class OprfClientManager {
   private final OprfCipherSuite suite;
   private final GroupSpec groupSpec;
 
+  /**
+   * Instantiates a new Oprf client manager.
+   *
+   * @param suite the suite
+   */
   public OprfClientManager(OprfCipherSuite suite) {
     log.info("OprfClientManager({})", suite.hashAlgorithm());
     this.suite = suite;

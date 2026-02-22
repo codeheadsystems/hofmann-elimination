@@ -15,8 +15,7 @@ import java.util.Base64;
  * <p>
  * Used by: {@code DELETE /opaque/registration}
  *
- * @param credentialIdentifierBase64 base64-encoded credential identifier whose registration
- *                                   record should be permanently removed from the server store
+ * @param credentialIdentifierBase64 base64-encoded credential identifier whose registration                                   record should be permanently removed from the server store
  */
 public record RegistrationDeleteRequest(
     @JsonProperty("credentialIdentifier") String credentialIdentifierBase64) {
@@ -24,10 +23,20 @@ public record RegistrationDeleteRequest(
   private static final Base64.Encoder B64 = Base64.getEncoder();
   private static final Base64.Decoder B64D = Base64.getDecoder();
 
+  /**
+   * Instantiates a new Registration delete request.
+   *
+   * @param credentialIdentifier the credential identifier
+   */
   public RegistrationDeleteRequest(byte[] credentialIdentifier) {
     this(B64.encodeToString(credentialIdentifier));
   }
 
+  /**
+   * Credential identifier byte [ ].
+   *
+   * @return the byte [ ]
+   */
   public byte[] credentialIdentifier() {
     if (credentialIdentifierBase64 == null || credentialIdentifierBase64.isBlank()) {
       throw new IllegalArgumentException("Missing required field: credentialIdentifier");

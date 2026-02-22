@@ -25,6 +25,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 
+/**
+ * The type Hofmann auto configuration.
+ */
 @AutoConfiguration
 @EnableConfigurationProperties(HofmannProperties.class)
 public class HofmannAutoConfiguration {
@@ -39,7 +42,9 @@ public class HofmannAutoConfiguration {
    *   public SecureRandom secureRandom() {
    *     return SecureRandom.getInstance("NativePRNG");
    *   }
-   * }</pre>
+   * }**</pre>
+   *
+   * @return the secure random
    */
   @Bean
   @ConditionalOnMissingBean
@@ -47,6 +52,11 @@ public class HofmannAutoConfiguration {
     return new SecureRandom();
   }
 
+  /**
+   * Credential store credential store.
+   *
+   * @return the credential store
+   */
   @Bean
   @ConditionalOnMissingBean
   public CredentialStore credentialStore() {
@@ -54,6 +64,11 @@ public class HofmannAutoConfiguration {
     return new InMemoryCredentialStore();
   }
 
+  /**
+   * Session store session store.
+   *
+   * @return the session store
+   */
   @Bean
   @ConditionalOnMissingBean
   public SessionStore sessionStore() {
@@ -61,6 +76,13 @@ public class HofmannAutoConfiguration {
     return new InMemorySessionStore();
   }
 
+  /**
+   * Opaque config opaque config.
+   *
+   * @param props        the props
+   * @param secureRandom the secure random
+   * @return the opaque config
+   */
   @Bean
   @ConditionalOnMissingBean
   public OpaqueConfig opaqueConfig(HofmannProperties props, SecureRandom secureRandom) {
@@ -80,6 +102,13 @@ public class HofmannAutoConfiguration {
         props.getArgon2Parallelism());
   }
 
+  /**
+   * Server server.
+   *
+   * @param props        the props
+   * @param opaqueConfig the opaque config
+   * @return the server
+   */
   @Bean
   @ConditionalOnMissingBean
   public Server server(HofmannProperties props, OpaqueConfig opaqueConfig) {
@@ -122,6 +151,14 @@ public class HofmannAutoConfiguration {
     return new Server(skFixed, pk, oprfSeed, opaqueConfig);
   }
 
+  /**
+   * Jwt manager jwt manager.
+   *
+   * @param props        the props
+   * @param sessionStore the session store
+   * @param secureRandom the secure random
+   * @return the jwt manager
+   */
   @Bean
   @ConditionalOnMissingBean
   public JwtManager jwtManager(HofmannProperties props, SessionStore sessionStore,
@@ -139,6 +176,14 @@ public class HofmannAutoConfiguration {
     return new JwtManager(secret, props.getJwtIssuer(), props.getJwtTtlSeconds(), sessionStore);
   }
 
+  /**
+   * Opaque server manager hofmann opaque server manager.
+   *
+   * @param server          the server
+   * @param credentialStore the credential store
+   * @param jwtManager      the jwt manager
+   * @return the hofmann opaque server manager
+   */
   @Bean(destroyMethod = "shutdown")
   @ConditionalOnMissingBean
   public HofmannOpaqueServerManager opaqueServerManager(Server server, CredentialStore credentialStore,
@@ -157,7 +202,10 @@ public class HofmannAutoConfiguration {
    *   public Supplier<ServerProcessorDetail> serverProcessorDetailSupplier() {
    *     return () -> keyRotationService.currentDetail();
    *   }
-   * }</pre>
+   * }**</pre>
+   *
+   * @param props the props
+   * @return the supplier
    */
   @Bean
   @ConditionalOnMissingBean
@@ -175,6 +223,14 @@ public class HofmannAutoConfiguration {
     return () -> detail;
   }
 
+  /**
+   * Oprf server manager oprf server manager.
+   *
+   * @param props                         the props
+   * @param secureRandom                  the secure random
+   * @param serverProcessorDetailSupplier the server processor detail supplier
+   * @return the oprf server manager
+   */
   @Bean
   @ConditionalOnMissingBean
   public OprfServerManager oprfServerManager(HofmannProperties props, SecureRandom secureRandom,

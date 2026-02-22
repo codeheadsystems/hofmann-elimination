@@ -12,10 +12,20 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 public record OprfRequest(@JsonProperty("ecPoint") String ecPoint,
                           @JsonProperty("requestId") String requestId) {
 
+  /**
+   * Instantiates a new Oprf request.
+   *
+   * @param blindedRequest the blinded request
+   */
   public OprfRequest(BlindedRequest blindedRequest) {
     this(blindedRequest.blindedPoint(), blindedRequest.requestId());
   }
 
+  /**
+   * Blinded request blinded request.
+   *
+   * @return the blinded request
+   */
   public BlindedRequest blindedRequest() {
     return new BlindedRequest(ecPoint(), requestId());
   }

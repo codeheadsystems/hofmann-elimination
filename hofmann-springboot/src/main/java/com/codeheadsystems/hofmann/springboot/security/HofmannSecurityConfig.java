@@ -11,15 +11,32 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+/**
+ * The type Hofmann security config.
+ */
 @Configuration
 @EnableWebSecurity
 public class HofmannSecurityConfig {
 
+  /**
+   * Jwt authentication filter jwt authentication filter.
+   *
+   * @param jwtManager the jwt manager
+   * @return the jwt authentication filter
+   */
   @Bean
   public JwtAuthenticationFilter jwtAuthenticationFilter(JwtManager jwtManager) {
     return new JwtAuthenticationFilter(jwtManager);
   }
 
+  /**
+   * Security filter chain security filter chain.
+   *
+   * @param http      the http
+   * @param jwtFilter the jwt filter
+   * @return the security filter chain
+   * @throws Exception the exception
+   */
   @Bean
   public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                  JwtAuthenticationFilter jwtFilter) throws Exception {

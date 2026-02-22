@@ -16,6 +16,9 @@ class CleartextCredentialsTest {
 
   // ── create() identity defaulting ────────────────────────────────────────
 
+  /**
+   * Create both identities null defaults to public keys.
+   */
   @Test
   void createBothIdentitiesNull_defaultsToPublicKeys() {
     CleartextCredentials cc = CleartextCredentials.create(SERVER_PK, CLIENT_PK, null, null);
@@ -24,6 +27,9 @@ class CleartextCredentialsTest {
     assertThat(cc.serverPublicKey()).isEqualTo(SERVER_PK);
   }
 
+  /**
+   * Create both identities provided uses identities.
+   */
   @Test
   void createBothIdentitiesProvided_usesIdentities() {
     CleartextCredentials cc = CleartextCredentials.create(SERVER_PK, CLIENT_PK, SERVER_ID, CLIENT_ID);
@@ -32,6 +38,9 @@ class CleartextCredentialsTest {
     assertThat(cc.serverPublicKey()).isEqualTo(SERVER_PK);
   }
 
+  /**
+   * Create server identity null defaults server to public key.
+   */
   @Test
   void createServerIdentityNull_defaultsServerToPublicKey() {
     CleartextCredentials cc = CleartextCredentials.create(SERVER_PK, CLIENT_PK, null, CLIENT_ID);
@@ -39,6 +48,9 @@ class CleartextCredentialsTest {
     assertThat(cc.clientIdentity()).isEqualTo(CLIENT_ID);
   }
 
+  /**
+   * Create client identity null defaults client to public key.
+   */
   @Test
   void createClientIdentityNull_defaultsClientToPublicKey() {
     CleartextCredentials cc = CleartextCredentials.create(SERVER_PK, CLIENT_PK, SERVER_ID, null);
@@ -48,6 +60,9 @@ class CleartextCredentialsTest {
 
   // ── serialize() wire format ──────────────────────────────────────────────
 
+  /**
+   * Serialize produces correct wire format.
+   */
   @Test
   void serializeProducesCorrectWireFormat() {
     // Format: serverPublicKey || I2OSP(len(serverIdentity),2) || serverIdentity
@@ -82,6 +97,9 @@ class CleartextCredentialsTest {
     assertThat(wire).hasSize(expectedLength);
   }
 
+  /**
+   * Serialize with empty identities produces two zero length fields.
+   */
   @Test
   void serializeWithEmptyIdentitiesProducesTwoZeroLengthFields() {
     byte[] emptyId = new byte[0];
@@ -97,6 +115,9 @@ class CleartextCredentialsTest {
     assertThat(wire[SERVER_PK.length + 3]).isEqualTo((byte) 0x00);
   }
 
+  /**
+   * Different inputs produce different serializations.
+   */
   @Test
   void differentInputsProduceDifferentSerializations() {
     CleartextCredentials cc1 = new CleartextCredentials(SERVER_PK, SERVER_ID, CLIENT_ID);

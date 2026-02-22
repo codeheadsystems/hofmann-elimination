@@ -25,6 +25,9 @@ public class OprfVectorsTest {
   private static final BigInteger SK_S = new BigInteger(
       "159749d750713afe245d2d39ccfaae8381c53ce92d098a9375ee70739c7ac0bf", 16);
 
+  /**
+   * Test derive key pair.
+   */
   @Test
   void testDeriveKeyPair() {
     byte[] seed = new byte[32];
@@ -37,6 +40,9 @@ public class OprfVectorsTest {
         .isEqualTo("159749d750713afe245d2d39ccfaae8381c53ce92d098a9375ee70739c7ac0bf");
   }
 
+  /**
+   * Test vector 1.
+   */
   @Test
   void testVector1() {
     // RFC 9497 Appendix A.1.1, Test Vector 1
@@ -74,6 +80,9 @@ public class OprfVectorsTest {
         .isEqualTo("a0b34de5fa4c5b6da07e72af73cc507cceeb48981b97b7285fc375345fe495dd");
   }
 
+  /**
+   * Test vector 2.
+   */
   @Test
   void testVector2() {
     // RFC 9497 Appendix A.1.1, Test Vector 2
@@ -102,6 +111,9 @@ public class OprfVectorsTest {
         .isEqualTo("c748ca6dd327f0ce85f4ae3a8cd6d4d5390bbb804c9e12dcf94f853fece3dcce");
   }
 
+  /**
+   * Test p 256 constants.
+   */
   @Test
   void testP256Constants() {
     // contextString = "OPRFV1-" || I2OSP(0, 1) || "-P256-SHA256" per RFC 9497 §4.1
@@ -124,6 +136,9 @@ public class OprfVectorsTest {
 
   // ─── RFC 9497 Appendix A.2.1: P384-SHA384 OPRF (mode 0) ─────────────────────
 
+  /**
+   * The type P 384 sha 384.
+   */
   @Nested
   class P384Sha384 {
 
@@ -134,6 +149,9 @@ public class OprfVectorsTest {
         "dfe7ddc41a4646901184f2b432616c8ba6d452f9bcd0c4f75a5150ef2b2ed02ef40b8b92f60ae591bcabd72a6518f188",
         16);
 
+    /**
+     * Test derive key pair.
+     */
     @Test
     void testDeriveKeyPair() {
       // Seed = a3a3...a3 (32 bytes), Info = "test key"
@@ -147,6 +165,9 @@ public class OprfVectorsTest {
           .isEqualTo("dfe7ddc41a4646901184f2b432616c8ba6d452f9bcd0c4f75a5150ef2b2ed02ef40b8b92f60ae591bcabd72a6518f188");
     }
 
+    /**
+     * Test vector 1.
+     */
     @Test
     void testVector1() {
       // RFC 9497 A.2.1 Test Vector 1: Input = 00 (single byte)
@@ -174,6 +195,9 @@ public class OprfVectorsTest {
           .isEqualTo("ed84ad3f31a552f0456e58935fcc0a3039db42e7f356dcb32aa6d487b6b815a07d5813641fb1398c03ddab5763874357");
     }
 
+    /**
+     * Test vector 2.
+     */
     @Test
     void testVector2() {
       // RFC 9497 A.2.1 Test Vector 2: Input = 5a5a...5a (17 bytes)
@@ -205,6 +229,9 @@ public class OprfVectorsTest {
 
   // ─── RFC 9497 Appendix A.3.1: P521-SHA512 OPRF (mode 0) ─────────────────────
 
+  /**
+   * The type P 521 sha 512.
+   */
   @Nested
   class P521Sha512 {
 
@@ -215,6 +242,9 @@ public class OprfVectorsTest {
         "0153441b8faedb0340439036d6aed06d1217b34c42f17f8db4c5cc610a4a955d698a688831b16d0dc7713a1aa3611ec60703bffc7dc9c84e3ed673b3dbe1d5fccea6",
         16);
 
+    /**
+     * Test derive key pair.
+     */
     @Test
     void testDeriveKeyPair() {
       // Seed = a3a3...a3 (32 bytes), Info = "test key"
@@ -228,6 +258,9 @@ public class OprfVectorsTest {
           .isEqualTo("153441b8faedb0340439036d6aed06d1217b34c42f17f8db4c5cc610a4a955d698a688831b16d0dc7713a1aa3611ec60703bffc7dc9c84e3ed673b3dbe1d5fccea6");
     }
 
+    /**
+     * Test vector 1.
+     */
     @Test
     void testVector1() {
       // RFC 9497 A.3.1 Test Vector 1: Input = 00 (single byte)
@@ -255,6 +288,9 @@ public class OprfVectorsTest {
           .isEqualTo("26232de6fff83f812adadadb6cc05d7bbeee5dca043dbb16b03488abb9981d0a1ef4351fad52dbd7e759649af393348f7b9717566c19a6b8856284d69375c809");
     }
 
+    /**
+     * Test vector 2.
+     */
     @Test
     void testVector2() {
       // RFC 9497 A.3.1 Test Vector 2: Input = 5a5a...5a (17 bytes)

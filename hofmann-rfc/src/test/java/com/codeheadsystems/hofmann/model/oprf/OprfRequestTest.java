@@ -7,6 +7,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+/**
+ * The type Oprf request test.
+ */
 class OprfRequestTest {
 
   // Use deliberately distinct, non-symmetric values so transposition is visible
@@ -15,11 +18,17 @@ class OprfRequestTest {
 
   private ObjectMapper objectMapper;
 
+  /**
+   * Sets up.
+   */
   @BeforeEach
   void setUp() {
     objectMapper = new ObjectMapper();
   }
 
+  /**
+   * Constructor string fields stored correctly.
+   */
   @Test
   void constructor_stringFields_storedCorrectly() {
     OprfRequest request = new OprfRequest(EC_POINT, REQUEST_ID);
@@ -28,6 +37,9 @@ class OprfRequestTest {
     assertThat(request.requestId()).isEqualTo(REQUEST_ID);
   }
 
+  /**
+   * Constructor from blinded request maps fields correctly.
+   */
   @Test
   void constructor_fromBlindedRequest_mapsFieldsCorrectly() {
     BlindedRequest blindedRequest = new BlindedRequest(EC_POINT, REQUEST_ID);
@@ -38,6 +50,9 @@ class OprfRequestTest {
     assertThat(request.requestId()).isEqualTo(REQUEST_ID);
   }
 
+  /**
+   * Blinded request maps fields correctly.
+   */
   @Test
   void blindedRequest_mapsFieldsCorrectly() {
     OprfRequest request = new OprfRequest(EC_POINT, REQUEST_ID);
@@ -48,6 +63,11 @@ class OprfRequestTest {
     assertThat(blindedRequest.requestId()).isEqualTo(REQUEST_ID);
   }
 
+  /**
+   * Json serialization uses correct property names.
+   *
+   * @throws Exception the exception
+   */
   @Test
   void json_serialization_usesCorrectPropertyNames() throws Exception {
     OprfRequest request = new OprfRequest(EC_POINT, REQUEST_ID);
@@ -58,6 +78,11 @@ class OprfRequestTest {
     assertThat(json).contains("\"requestId\":\"" + REQUEST_ID + "\"");
   }
 
+  /**
+   * Json deserialization maps to correct fields.
+   *
+   * @throws Exception the exception
+   */
   @Test
   void json_deserialization_mapsToCorrectFields() throws Exception {
     String json = "{\"ecPoint\":\"" + EC_POINT + "\",\"requestId\":\"" + REQUEST_ID + "\"}";
@@ -68,6 +93,11 @@ class OprfRequestTest {
     assertThat(request.requestId()).isEqualTo(REQUEST_ID);
   }
 
+  /**
+   * Json round trip preserves all fields.
+   *
+   * @throws Exception the exception
+   */
   @Test
   void json_roundTrip_preservesAllFields() throws Exception {
     OprfRequest original = new OprfRequest(EC_POINT, REQUEST_ID);

@@ -19,6 +19,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 
+/**
+ * The type Opaque integration test.
+ */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class OpaqueIntegrationTest {
 
@@ -31,6 +34,9 @@ class OpaqueIntegrationTest {
 
   private HofmannOpaqueClientManager hofmannOpaqueClientManager;
 
+  /**
+   * Sets up.
+   */
   @BeforeEach
   void setUp() {
     OpaqueClientConfig config = OpaqueClientConfig.forTesting("hofmann-test");
@@ -41,12 +47,18 @@ class OpaqueIntegrationTest {
     hofmannOpaqueClientManager = new HofmannOpaqueClientManager(config, accessor);
   }
 
+  /**
+   * Register completes without error.
+   */
   @Test
   void register_completesWithoutError() {
     byte[] credId = "register-only@example.com".getBytes(StandardCharsets.UTF_8);
     hofmannOpaqueClientManager.register(SERVER_ID, credId, PASSWORD);
   }
 
+  /**
+   * Register then authenticate derives matching session key.
+   */
   @Test
   void registerThenAuthenticate_derivesMatchingSessionKey() {
     hofmannOpaqueClientManager.register(SERVER_ID, CREDENTIAL_ID, PASSWORD);
@@ -57,6 +69,9 @@ class OpaqueIntegrationTest {
     assertThat(response.token()).isNotEmpty();
   }
 
+  /**
+   * Authenticate twice produces different session keys.
+   */
   @Test
   void authenticateTwice_producesDifferentSessionKeys() {
     hofmannOpaqueClientManager.register(SERVER_ID, CREDENTIAL_ID, PASSWORD);
@@ -68,6 +83,9 @@ class OpaqueIntegrationTest {
     assertThat(resp1.token()).isNotEqualTo(resp2.token());
   }
 
+  /**
+   * Authenticate wrong password throws security exception.
+   */
   @Test
   void authenticate_wrongPassword_throwsSecurityException() {
     byte[] credId = "wrong-pwd@example.com".getBytes(StandardCharsets.UTF_8);
@@ -79,6 +97,9 @@ class OpaqueIntegrationTest {
         .isInstanceOf(SecurityException.class);
   }
 
+  /**
+   * Delete registration with valid token completes without error.
+   */
   @Test
   void deleteRegistration_withValidToken_completesWithoutError() {
     byte[] credId = "delete-me@example.com".getBytes(StandardCharsets.UTF_8);
@@ -87,6 +108,9 @@ class OpaqueIntegrationTest {
     hofmannOpaqueClientManager.deleteRegistration(SERVER_ID, credId, authResp.token());
   }
 
+  /**
+   * Delete registration without token throws security exception.
+   */
   @Test
   void deleteRegistration_withoutToken_throwsSecurityException() {
     byte[] credId = "delete-noauth@example.com".getBytes(StandardCharsets.UTF_8);

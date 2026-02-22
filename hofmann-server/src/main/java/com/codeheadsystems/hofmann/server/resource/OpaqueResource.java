@@ -42,10 +42,21 @@ public class OpaqueResource {
 
   private final HofmannOpaqueServerManager manager;
 
+  /**
+   * Instantiates a new Opaque resource.
+   *
+   * @param manager the manager
+   */
   public OpaqueResource(HofmannOpaqueServerManager manager) {
     this.manager = manager;
   }
 
+  /**
+   * Registration start registration start response.
+   *
+   * @param req the req
+   * @return the registration start response
+   */
   @POST
   @Path("/registration/start")
   public RegistrationStartResponse registrationStart(RegistrationStartRequest req) {
@@ -58,6 +69,12 @@ public class OpaqueResource {
     }
   }
 
+  /**
+   * Registration finish response.
+   *
+   * @param req the req
+   * @return the response
+   */
   @POST
   @Path("/registration/finish")
   public Response registrationFinish(RegistrationFinishRequest req) {
@@ -71,6 +88,13 @@ public class OpaqueResource {
     }
   }
 
+  /**
+   * Registration delete response.
+   *
+   * @param req        the req
+   * @param authHeader the auth header
+   * @return the response
+   */
   @DELETE
   @Path("/registration")
   public Response registrationDelete(RegistrationDeleteRequest req,
@@ -95,6 +119,12 @@ public class OpaqueResource {
     return null;
   }
 
+  /**
+   * Auth start auth start response.
+   *
+   * @param req the req
+   * @return the auth start response
+   */
   @POST
   @Path("/auth/start")
   public AuthStartResponse authStart(AuthStartRequest req) {
@@ -110,6 +140,12 @@ public class OpaqueResource {
     }
   }
 
+  /**
+   * Auth finish auth finish response.
+   *
+   * @param req the req
+   * @return the auth finish response
+   */
   @POST
   @Path("/auth/finish")
   public AuthFinishResponse authFinish(AuthFinishRequest req) {

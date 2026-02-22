@@ -19,7 +19,10 @@ public record OpaqueConfig(
     RandomProvider randomProvider
 ) {
 
-  // Nonce length — suite-independent (always 32)
+  /**
+   * The constant Nn.
+   */
+// Nonce length — suite-independent (always 32)
   public static final int Nn = 32;
   /**
    * Default configuration for production use with Argon2id, P256-SHA256 suite.
@@ -35,6 +38,8 @@ public record OpaqueConfig(
 
   /**
    * Creates a test configuration with Identity KSF, P256-SHA256 suite, and the CFRG test context.
+   *
+   * @return the opaque config
    */
   public static OpaqueConfig forTesting() {
     return new OpaqueConfig(
@@ -48,6 +53,9 @@ public record OpaqueConfig(
 
   /**
    * Creates a test configuration for a given cipher suite with Identity KSF.
+   *
+   * @param suite the suite
+   * @return the opaque config
    */
   public static OpaqueConfig forTesting(OpaqueCipherSuite suite) {
     return new OpaqueConfig(
@@ -61,6 +69,12 @@ public record OpaqueConfig(
 
   /**
    * Creates a configuration with Argon2id KSF, P256-SHA256 suite, and given context.
+   *
+   * @param context     the context
+   * @param memory      the memory
+   * @param iterations  the iterations
+   * @param parallelism the parallelism
+   * @return the opaque config
    */
   public static OpaqueConfig withArgon2id(byte[] context, int memory, int iterations, int parallelism) {
     return new OpaqueConfig(OpaqueCipherSuite.P256_SHA256, memory, iterations, parallelism, context, new Argon2idKsf(), new RandomProvider());
@@ -68,6 +82,13 @@ public record OpaqueConfig(
 
   /**
    * Creates a configuration with Argon2id KSF, specified suite, and given context.
+   *
+   * @param suite       the suite
+   * @param context     the context
+   * @param memory      the memory
+   * @param iterations  the iterations
+   * @param parallelism the parallelism
+   * @return the opaque config
    */
   public static OpaqueConfig withArgon2id(OpaqueCipherSuite suite, byte[] context,
                                           int memory, int iterations, int parallelism) {
@@ -76,42 +97,82 @@ public record OpaqueConfig(
 
   /**
    * Returns a new config identical to this one but using the given {@link RandomProvider}.
+   *
+   * @param randomProvider the random provider
+   * @return the opaque config
    */
   public OpaqueConfig withRandomConfig(RandomProvider randomProvider) {
     return new OpaqueConfig(cipherSuite, argon2Memory, argon2Iterations, argon2Parallelism, context, ksf, randomProvider);
   }
 
-  // Suite-dependent size accessors delegating to the cipher suite
+  /**
+   * Nm int.
+   *
+   * @return the int
+   */
+// Suite-dependent size accessors delegating to the cipher suite
   public int Nm() {
     return cipherSuite.Nm();
   }
 
+  /**
+   * Nh int.
+   *
+   * @return the int
+   */
   public int Nh() {
     return cipherSuite.Nh();
   }
 
+  /**
+   * Nx int.
+   *
+   * @return the int
+   */
   public int Nx() {
     return cipherSuite.Nx();
   }
 
+  /**
+   * Npk int.
+   *
+   * @return the int
+   */
   public int Npk() {
     return cipherSuite.Npk();
   }
 
+  /**
+   * Nsk int.
+   *
+   * @return the int
+   */
   public int Nsk() {
     return cipherSuite.Nsk();
   }
 
+  /**
+   * Noe int.
+   *
+   * @return the int
+   */
   public int Noe() {
     return cipherSuite.Noe();
   }
 
+  /**
+   * Nok int.
+   *
+   * @return the int
+   */
   public int Nok() {
     return cipherSuite.Nok();
   }
 
   /**
    * Envelope size = Nn + Nm.
+   *
+   * @return the int
    */
   public int envelopeSize() {
     return cipherSuite.envelopeSize();
@@ -119,6 +180,8 @@ public record OpaqueConfig(
 
   /**
    * Masked response size = Npk + envelopeSize.
+   *
+   * @return the int
    */
   public int maskedResponseSize() {
     return cipherSuite.maskedResponseSize();
@@ -128,6 +191,13 @@ public record OpaqueConfig(
    * Key Stretching Function interface.
    */
   public interface KeyStretchingFunction {
+    /**
+     * Stretch byte [ ].
+     *
+     * @param input  the input
+     * @param config the config
+     * @return the byte [ ]
+     */
     byte[] stretch(byte[] input, OpaqueConfig config);
   }
 

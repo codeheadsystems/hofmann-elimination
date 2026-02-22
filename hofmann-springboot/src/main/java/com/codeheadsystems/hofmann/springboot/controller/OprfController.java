@@ -12,16 +12,30 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+/**
+ * The type Oprf controller.
+ */
 @RestController
 @RequestMapping("/oprf")
 public class OprfController {
 
   private final OprfServerManager oprfServerManager;
 
+  /**
+   * Instantiates a new Oprf controller.
+   *
+   * @param oprfServerManager the oprf server manager
+   */
   public OprfController(OprfServerManager oprfServerManager) {
     this.oprfServerManager = oprfServerManager;
   }
 
+  /**
+   * Evaluate oprf response.
+   *
+   * @param request the request
+   * @return the oprf response
+   */
   @PostMapping
   public OprfResponse evaluate(@RequestBody OprfRequest request) {
     if (request.ecPoint() == null || request.ecPoint().isBlank()) {

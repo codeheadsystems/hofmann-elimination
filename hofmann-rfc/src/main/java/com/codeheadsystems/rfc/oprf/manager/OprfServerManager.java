@@ -8,11 +8,20 @@ import com.codeheadsystems.rfc.oprf.rfc9497.OprfCipherSuite;
 import java.util.function.Supplier;
 import org.bouncycastle.util.encoders.Hex;
 
+/**
+ * The type Oprf server manager.
+ */
 public class OprfServerManager {
 
   private final GroupSpec groupSpec;
   private final Supplier<ServerProcessorDetail> supplier;
 
+  /**
+   * Instantiates a new Oprf server manager.
+   *
+   * @param suite                         the suite
+   * @param serverProcessorDetailSupplier the server processor detail supplier
+   */
   public OprfServerManager(OprfCipherSuite suite, Supplier<ServerProcessorDetail> serverProcessorDetailSupplier) {
     this.groupSpec = suite.groupSpec();
     this.supplier = serverProcessorDetailSupplier;

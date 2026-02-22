@@ -122,6 +122,9 @@ class OpaqueVectorsTest {
     );
   }
 
+  /**
+   * Vector 1 registration request.
+   */
   @Test
   void vector1_registrationRequest() {
     Client client = new Client(CONFIG);
@@ -129,6 +132,9 @@ class OpaqueVectorsTest {
     assertThat(state.request().blindedElement()).isEqualTo(EXPECTED_REGISTRATION_REQUEST);
   }
 
+  /**
+   * Vector 1 registration response.
+   */
   @Test
   void vector1_registrationResponse() {
     Server server = new Server(SERVER_PRIVATE_KEY, SERVER_PUBLIC_KEY, OPRF_SEED, CONFIG);
@@ -143,6 +149,9 @@ class OpaqueVectorsTest {
     assertThat(expected).isEqualTo(EXPECTED_REGISTRATION_RESPONSE);
   }
 
+  /**
+   * Vector 1 registration upload.
+   */
   @Test
   void vector1_registrationUpload() {
     Client client = new Client(CONFIG);
@@ -158,6 +167,9 @@ class OpaqueVectorsTest {
     assertThat(actual).isEqualTo(EXPECTED_REGISTRATION_UPLOAD);
   }
 
+  /**
+   * Vector 1 ke 1.
+   */
   @Test
   void vector1_ke1() {
     Client client = new Client(CONFIG);
@@ -166,6 +178,9 @@ class OpaqueVectorsTest {
     assertThat(authState.ke1().serialize()).isEqualTo(EXPECTED_KE1);
   }
 
+  /**
+   * Vector 1 randomized password.
+   */
   @Test
   void vector1_randomizedPassword() {
     // Verifies the critical intermediate value that all envelope and key material flows from.
@@ -180,6 +195,9 @@ class OpaqueVectorsTest {
     assertThat(randomizedPwd).isEqualTo(EXPECTED_RANDOMIZED_PWD);
   }
 
+  /**
+   * Vector 1 ke 2.
+   */
   @Test
   void vector1_ke2() {
     Client client = new Client(CONFIG);
@@ -206,6 +224,9 @@ class OpaqueVectorsTest {
     assertThat(actual).isEqualTo(EXPECTED_KE2);
   }
 
+  /**
+   * Vector 1 ke 3 and session key.
+   */
   @Test
   void vector1_ke3_and_sessionKey() {
     Client client = new Client(CONFIG);
@@ -231,6 +252,9 @@ class OpaqueVectorsTest {
     assertThat(authResult.exportKey()).isEqualTo(EXPECTED_EXPORT_KEY);
   }
 
+  /**
+   * Vector 1 server finish verifies session key.
+   */
   @Test
   void vector1_serverFinishVerifiesSessionKey() {
     Client client = new Client(CONFIG);
@@ -255,6 +279,9 @@ class OpaqueVectorsTest {
     assertThat(authResult.sessionKey()).isEqualTo(EXPECTED_SESSION_KEY);
   }
 
+  /**
+   * Vector 2 registration upload.
+   */
   @Test
   void vector2_registrationUpload() {
     Client client = new Client(CONFIG);
@@ -269,6 +296,9 @@ class OpaqueVectorsTest {
     assertThat(actual).isEqualTo(EXPECTED_REGISTRATION_UPLOAD_V2);
   }
 
+  /**
+   * Vector 2 ke 3 and session key.
+   */
   @Test
   void vector2_ke3_and_sessionKey() {
     Client client = new Client(CONFIG);
@@ -297,6 +327,9 @@ class OpaqueVectorsTest {
     assertThat(authResult.exportKey()).isEqualTo(EXPECTED_EXPORT_KEY_V2);
   }
 
+  /**
+   * Vector 3 fake ke 2.
+   */
   @Test
   void vector3_fakeKE2() {
     Server server = new Server(V3_SERVER_PRIVATE_KEY, V3_SERVER_PUBLIC_KEY, V3_OPRF_SEED, CONFIG);
@@ -311,6 +344,9 @@ class OpaqueVectorsTest {
     assertThat(concatKE2(ke2)).isEqualTo(V3_EXPECTED_KE2);
   }
 
+  /**
+   * Vector 2 server finish verifies session key.
+   */
   @Test
   void vector2_serverFinishVerifiesSessionKey() {
     Client client = new Client(CONFIG);

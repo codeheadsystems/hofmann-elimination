@@ -14,6 +14,10 @@ public class ByteUtils {
   /**
    * Integer to Octet String Primitive (I2OSP) from RFC 8017.
    * Converts a non-negative integer to an octet string of specified length.
+   *
+   * @param value  the value
+   * @param length the length
+   * @return the byte [ ]
    */
   public static byte[] I2OSP(int value, int length) {
     if (value < 0 || (length < 4 && value >= (1 << (8 * length)))) {
@@ -29,6 +33,9 @@ public class ByteUtils {
 
   /**
    * Concatenates multiple byte arrays into a single array.
+   *
+   * @param arrays the arrays
+   * @return the byte [ ]
    */
   public static byte[] concat(byte[]... arrays) {
     int totalLength = 0;
@@ -46,6 +53,10 @@ public class ByteUtils {
 
   /**
    * Computes DH: serializes (privateKey * publicKey) as compressed SEC1.
+   *
+   * @param privateKey the private key
+   * @param publicKey  the public key
+   * @return the byte [ ]
    */
   public static byte[] dhECDH(BigInteger privateKey, ECPoint publicKey) {
     ECPoint result = publicKey.multiply(privateKey).normalize();
@@ -54,6 +65,10 @@ public class ByteUtils {
 
   /**
    * XOR two byte arrays of equal length.
+   *
+   * @param a the a
+   * @param b the b
+   * @return the byte [ ]
    */
   public static byte[] xor(byte[] a, byte[] b) {
     if (a.length != b.length) {

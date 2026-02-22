@@ -12,6 +12,12 @@ public record CleartextCredentials(byte[] serverPublicKey, byte[] serverIdentity
    * Creates cleartext credentials, defaulting identities to public keys when null.
    * When serverIdentity is null, it defaults to serverPublicKey.
    * When clientIdentity is null, it defaults to clientPublicKey.
+   *
+   * @param serverPublicKey the server public key
+   * @param clientPublicKey the client public key
+   * @param serverIdentity  the server identity
+   * @param clientIdentity  the client identity
+   * @return the cleartext credentials
    */
   public static CleartextCredentials create(byte[] serverPublicKey, byte[] clientPublicKey,
                                             byte[] serverIdentity, byte[] clientIdentity) {
@@ -23,6 +29,8 @@ public record CleartextCredentials(byte[] serverPublicKey, byte[] serverIdentity
   /**
    * Serializes to: serverPublicKey || I2OSP(len(serverIdentity),2) || serverIdentity
    * || I2OSP(len(clientIdentity),2) || clientIdentity
+   *
+   * @return the byte [ ]
    */
   public byte[] serialize() {
     byte[] sIdLen = ByteUtils.I2OSP(serverIdentity.length, 2);

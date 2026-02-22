@@ -16,6 +16,12 @@ import java.util.Map;
 @Produces(MediaType.APPLICATION_JSON)
 public class WhoAmIResource {
 
+  /**
+   * Who am i map.
+   *
+   * @param principal the principal
+   * @return the map
+   */
   @GET
   public Map<String, String> whoAmI(@Auth HofmannPrincipal principal) {
     return Map.of("credentialIdentifier", principal.credentialIdentifier());

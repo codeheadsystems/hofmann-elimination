@@ -37,8 +37,7 @@ import java.util.Base64;
  * <p>
  * Used by: {@code POST /opaque/auth/start} response
  *
- * @param sessionToken             server-generated opaque token the client echoes back in
- *                                 {@code /auth/finish} so the server can retrieve its pending AKE state
+ * @param sessionToken             server-generated opaque token the client echoes back in                                 {@code /auth/finish} so the server can retrieve its pending AKE state
  * @param evaluatedElementBase64   base64-encoded OPRF-evaluated element (compressed SEC1 EC point)
  * @param maskingNonceBase64       base64-encoded fresh random nonce used to derive the masking stream
  * @param maskedResponseBase64     base64-encoded masked (XOR-encrypted) envelope + server public key
@@ -58,6 +57,12 @@ public record AuthStartResponse(
   private static final Base64.Encoder B64 = Base64.getEncoder();
   private static final Base64.Decoder B64D = Base64.getDecoder();
 
+  /**
+   * Instantiates a new Auth start response.
+   *
+   * @param sessionToken the session token
+   * @param ke2          the ke 2
+   */
   public AuthStartResponse(String sessionToken, KE2 ke2) {
     this(sessionToken,
         B64.encodeToString(ke2.credentialResponse().evaluatedElement()),
@@ -79,6 +84,11 @@ public record AuthStartResponse(
     }
   }
 
+  /**
+   * Ke 2 ke 2.
+   *
+   * @return the ke 2
+   */
   public KE2 ke2() {
     return new KE2(
         new CredentialResponse(

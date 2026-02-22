@@ -25,6 +25,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+/**
+ * The type Hofmann oprf accessor test.
+ */
 @ExtendWith(MockitoExtension.class)
 class HofmannOprfAccessorTest {
 
@@ -43,6 +46,9 @@ class HofmannOprfAccessorTest {
 
   private HofmannOprfAccessor accessor;
 
+  /**
+   * Sets up.
+   */
   @BeforeEach
   void setUp() {
     Map<ServerIdentifier, ServerConnectionInfo> connections = new HashMap<>();
@@ -50,6 +56,11 @@ class HofmannOprfAccessorTest {
     accessor = new HofmannOprfAccessor(CONFIG, httpClient, objectMapper, connections);
   }
 
+  /**
+   * Handle request success returns deserialized response.
+   *
+   * @throws Exception the exception
+   */
   @Test
   @SuppressWarnings("unchecked")
   void handleRequest_success_returnsDeserializedResponse() throws Exception {
@@ -68,6 +79,9 @@ class HofmannOprfAccessorTest {
     assertThat(result.processIdentifier()).isEqualTo(expectedResponse.processIdentifier());
   }
 
+  /**
+   * Handle request unknown server throws illegal argument.
+   */
   @Test
   void handleRequest_unknownServer_throwsIllegalArgument() {
     OprfRequest request = new OprfRequest(EC_POINT, REQUEST_ID);
@@ -77,6 +91,11 @@ class HofmannOprfAccessorTest {
         .hasMessageContaining("unknown-server");
   }
 
+  /**
+   * Handle request 401 throws security exception.
+   *
+   * @throws Exception the exception
+   */
   @Test
   @SuppressWarnings("unchecked")
   void handleRequest_401_throwsSecurityException() throws Exception {
@@ -91,6 +110,11 @@ class HofmannOprfAccessorTest {
         .hasMessageContaining("test-server");
   }
 
+  /**
+   * Handle request 500 throws oprf accessor exception.
+   *
+   * @throws Exception the exception
+   */
   @Test
   @SuppressWarnings("unchecked")
   void handleRequest_500_throwsOprfAccessorException() throws Exception {
@@ -105,6 +129,11 @@ class HofmannOprfAccessorTest {
         .hasMessageContaining("500");
   }
 
+  /**
+   * Handle request io exception throws oprf accessor exception.
+   *
+   * @throws Exception the exception
+   */
   @Test
   @SuppressWarnings("unchecked")
   void handleRequest_ioException_throwsOprfAccessorException() throws Exception {
@@ -120,6 +149,11 @@ class HofmannOprfAccessorTest {
         .hasCauseInstanceOf(IOException.class);
   }
 
+  /**
+   * Handle request interrupted exception throws oprf accessor exception.
+   *
+   * @throws Exception the exception
+   */
   @Test
   @SuppressWarnings("unchecked")
   void handleRequest_interruptedException_throwsOprfAccessorException() throws Exception {

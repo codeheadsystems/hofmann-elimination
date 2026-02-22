@@ -22,6 +22,11 @@ public class Client {
 
   private final OpaqueConfig config;
 
+  /**
+   * Instantiates a new Client.
+   *
+   * @param config the config
+   */
   public Client(OpaqueConfig config) {
     this.config = config;
   }
@@ -30,6 +35,9 @@ public class Client {
 
   /**
    * Creates a registration request by blinding the password.
+   *
+   * @param password the password
+   * @return the client registration state
    */
   public ClientRegistrationState createRegistrationRequest(byte[] password) {
     return OpaqueCredentials.createRegistrationRequest(password, config);
@@ -37,6 +45,12 @@ public class Client {
 
   /**
    * Finalizes registration given the server's response.
+   *
+   * @param state          the state
+   * @param response       the response
+   * @param serverIdentity the server identity
+   * @param clientIdentity the client identity
+   * @return the registration record
    */
   public RegistrationRecord finalizeRegistration(ClientRegistrationState state,
                                                  RegistrationResponse response,
@@ -49,6 +63,9 @@ public class Client {
 
   /**
    * Generates KE1 (first AKE message) by blinding the password and creating a client ephemeral key pair.
+   *
+   * @param password the password
+   * @return the client auth state
    */
   public ClientAuthState generateKE1(byte[] password) {
     BigInteger blind = config.cipherSuite().oprfSuite().randomScalar();
@@ -59,6 +76,12 @@ public class Client {
 
   /**
    * Generates KE3 (final client authentication message) and produces session/export keys.
+   *
+   * @param state          the state
+   * @param clientIdentity the client identity
+   * @param serverIdentity the server identity
+   * @param ke2            the ke 2
+   * @return the auth result
    */
   public AuthResult generateKE3(ClientAuthState state,
                                 byte[] clientIdentity,
@@ -72,6 +95,10 @@ public class Client {
 
   /**
    * Creates a registration request with a fixed blinding factor (for test vectors).
+   *
+   * @param password the password
+   * @param blind    the blind
+   * @return the client registration state
    */
   public ClientRegistrationState createRegistrationRequestDeterministic(byte[] password,
                                                                         BigInteger blind) {
@@ -80,6 +107,13 @@ public class Client {
 
   /**
    * Finalizes registration with a fixed envelope nonce (for test vectors).
+   *
+   * @param state          the state
+   * @param response       the response
+   * @param serverIdentity the server identity
+   * @param clientIdentity the client identity
+   * @param envelopeNonce  the envelope nonce
+   * @return the registration record
    */
   public RegistrationRecord finalizeRegistrationDeterministic(ClientRegistrationState state,
                                                               RegistrationResponse response,
@@ -92,6 +126,12 @@ public class Client {
 
   /**
    * Generates KE1 with fixed blind, client nonce, and AKE key seed (for test vectors).
+   *
+   * @param password         the password
+   * @param blind            the blind
+   * @param clientNonce      the client nonce
+   * @param clientAkeKeySeed the client ake key seed
+   * @return the client auth state
    */
   public ClientAuthState generateKE1Deterministic(byte[] password,
                                                   BigInteger blind,

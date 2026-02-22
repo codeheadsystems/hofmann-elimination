@@ -16,11 +16,15 @@ public interface GroupSpec {
 
   /**
    * The prime group order n (also used as the scalar modulus).
+   *
+   * @return the big integer
    */
   BigInteger groupOrder();
 
   /**
    * Size of a serialized group element in bytes (Ne).
+   *
+   * @return the int
    */
   int elementSize();
 
@@ -70,6 +74,9 @@ public interface GroupSpec {
 
   /**
    * Deserializes a compressed SEC1 byte array to an EC point, with full validation.
+   *
+   * @param bytes the bytes
+   * @return the ec point
    */
   ECPoint deserializePoint(byte[] bytes);
 }

@@ -26,6 +26,9 @@ public class P256ComponentTest {
   private static final BigInteger EXPECTED_P_X = new BigInteger("2c15230b26dbc6fc9a37051158c95b79656e17a1a920b11394ca91c44247d3e4", 16);
   private static final BigInteger EXPECTED_P_Y = new BigInteger("8a7a74985cc5c776cdfe4b1f19884970453912e9d31528c060be9ab5c43e8415", 16);
 
+  /**
+   * Stage 1 hash to field.
+   */
   @Test
   void stage1_hashToField() {
     HashToField h2f = HashToField.forP256();
@@ -40,6 +43,9 @@ public class P256ComponentTest {
     assertThat(u[1]).as("u[1]").isEqualTo(EXPECTED_U1);
   }
 
+  /**
+   * Stage 2 simplified swu.
+   */
   @Test
   void stage2_simplifiedSWU() {
     SimplifiedSWU swu = SimplifiedSWU.forP256();
@@ -56,6 +62,9 @@ public class P256ComponentTest {
     assertThat(swu1[1]).as("Q1.y").isEqualTo(EXPECTED_Q1_Y);
   }
 
+  /**
+   * Stage 3 point addition.
+   */
   @Test
   void stage3_pointAddition() {
     SimplifiedSWU swu = SimplifiedSWU.forP256();
@@ -71,6 +80,9 @@ public class P256ComponentTest {
     assertThat(P.getYCoord().toBigInteger()).as("P.y").isEqualTo(EXPECTED_P_Y);
   }
 
+  /**
+   * Stage 4 full pipeline.
+   */
   @Test
   void stage4_fullPipeline() {
     HashToCurve h2c = HashToCurve.forP256();

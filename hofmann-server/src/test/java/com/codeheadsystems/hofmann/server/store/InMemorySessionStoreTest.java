@@ -7,15 +7,24 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+/**
+ * The type In memory session store test.
+ */
 class InMemorySessionStoreTest {
 
   private InMemorySessionStore store;
 
+  /**
+   * Sets up.
+   */
   @BeforeEach
   void setUp() {
     store = new InMemorySessionStore();
   }
 
+  /**
+   * Store and load round trip.
+   */
   @Test
   void storeAndLoad_roundTrip() {
     SessionData data = new SessionData("cred", "key", Instant.now(), Instant.now().plusSeconds(3600));
@@ -25,11 +34,17 @@ class InMemorySessionStoreTest {
     assertThat(loaded).isPresent().contains(data);
   }
 
+  /**
+   * Load not found returns empty.
+   */
   @Test
   void load_notFound_returnsEmpty() {
     assertThat(store.load("nonexistent")).isEmpty();
   }
 
+  /**
+   * Load expired returns empty.
+   */
   @Test
   void load_expired_returnsEmpty() {
     SessionData data = new SessionData("cred", "key",
@@ -39,6 +54,9 @@ class InMemorySessionStoreTest {
     assertThat(store.load("jti-expired")).isEmpty();
   }
 
+  /**
+   * Revoke removes session.
+   */
   @Test
   void revoke_removesSession() {
     SessionData data = new SessionData("cred", "key", Instant.now(), Instant.now().plusSeconds(3600));

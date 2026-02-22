@@ -47,6 +47,9 @@ public class Server {
 
   /**
    * Generates a new OpaqueServer with a random key pair and random OPRF seed.
+   *
+   * @param config the config
+   * @return the server
    */
   public static Server generate(OpaqueConfig config) {
     BigInteger sk = config.cipherSuite().oprfSuite().randomScalar();
@@ -66,6 +69,8 @@ public class Server {
 
   /**
    * Returns the server's public key.
+   *
+   * @return the byte [ ]
    */
   public byte[] getServerPublicKey() {
     return serverPublicKey;
@@ -75,6 +80,10 @@ public class Server {
 
   /**
    * Creates a registration response: evaluates the OPRF and returns the server's public key.
+   *
+   * @param request              the request
+   * @param credentialIdentifier the credential identifier
+   * @return the registration response
    */
   public RegistrationResponse createRegistrationResponse(RegistrationRequest request,
                                                          byte[] credentialIdentifier) {
@@ -86,6 +95,13 @@ public class Server {
 
   /**
    * Generates KE2: evaluates OPRF, masks credentials, performs server-side AKE.
+   *
+   * @param serverIdentity       the server identity
+   * @param record               the record
+   * @param credentialIdentifier the credential identifier
+   * @param ke1                  the ke 1
+   * @param clientIdentity       the client identity
+   * @return the server ke 2 result
    */
   public ServerKE2Result generateKE2(byte[] serverIdentity,
                                      RegistrationRecord record,
@@ -99,6 +115,10 @@ public class Server {
 
   /**
    * Finalizes server-side authentication: verifies the client MAC and returns the session key.
+   *
+   * @param state the state
+   * @param ke3   the ke 3
+   * @return the byte [ ]
    */
   public byte[] serverFinish(ServerAuthState state, KE3 ke3) {
     // Security: constant-time comparison prevents timing side-channel attacks on MAC verification
@@ -112,6 +132,12 @@ public class Server {
 
   /**
    * Generates a fake KE2 for an unregistered credential identifier.
+   *
+   * @param ke1                  the ke 1
+   * @param credentialIdentifier the credential identifier
+   * @param serverIdentity       the server identity
+   * @param clientIdentity       the client identity
+   * @return the server ke 2 result
    */
   public ServerKE2Result generateFakeKE2(KE1 ke1,
                                          byte[] credentialIdentifier,
@@ -145,6 +171,16 @@ public class Server {
 
   /**
    * Generates KE2 with deterministic nonces and seeds (for test vectors).
+   *
+   * @param serverIdentity       the server identity
+   * @param record               the record
+   * @param credentialIdentifier the credential identifier
+   * @param ke1                  the ke 1
+   * @param clientIdentity       the client identity
+   * @param maskingNonce         the masking nonce
+   * @param serverAkeKeySeed     the server ake key seed
+   * @param serverNonce          the server nonce
+   * @return the server ke 2 result
    */
   public ServerKE2Result generateKE2Deterministic(byte[] serverIdentity,
                                                   RegistrationRecord record,
@@ -162,6 +198,17 @@ public class Server {
 
   /**
    * Generates a fake KE2 with explicit fake record fields and deterministic nonces.
+   *
+   * @param ke1                  the ke 1
+   * @param credentialIdentifier the credential identifier
+   * @param serverIdentity       the server identity
+   * @param clientIdentity       the client identity
+   * @param fakeClientPublicKey  the fake client public key
+   * @param fakeMaskingKey       the fake masking key
+   * @param maskingNonce         the masking nonce
+   * @param serverAkeKeySeed     the server ake key seed
+   * @param serverNonce          the server nonce
+   * @return the server ke 2 result
    */
   public ServerKE2Result generateFakeKE2Deterministic(KE1 ke1,
                                                       byte[] credentialIdentifier,

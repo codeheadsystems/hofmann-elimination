@@ -18,6 +18,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 
+/**
+ * The type Oprf integration test.
+ */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class OprfIntegrationTest {
 
@@ -28,6 +31,9 @@ class OprfIntegrationTest {
 
   private HofmannOprfClientManager hofmannOprfClientManager;
 
+  /**
+   * Sets up.
+   */
   @BeforeEach
   void setUp() {
     OprfClientConfig oprfClientConfig = new OprfClientConfig();
@@ -38,6 +44,9 @@ class OprfIntegrationTest {
     hofmannOprfClientManager = new HofmannOprfClientManager(accessor, oprfClientManager);
   }
 
+  /**
+   * Perform hash returns non empty hash.
+   */
   @Test
   void performHash_returnsNonEmptyHash() {
     HofmannHashResult result = hofmannOprfClientManager.performHash("my-sensitive-input", SERVER_ID);
@@ -48,6 +57,9 @@ class OprfIntegrationTest {
     assertThat(result.serverIdentifier()).isEqualTo(SERVER_ID);
   }
 
+  /**
+   * Perform hash different inputs produce different hashes.
+   */
   @Test
   void performHash_differentInputsProduceDifferentHashes() {
     HofmannHashResult result1 = hofmannOprfClientManager.performHash("input-one", SERVER_ID);
@@ -56,6 +68,9 @@ class OprfIntegrationTest {
     assertThat(result1.hash()).isNotEqualTo(result2.hash());
   }
 
+  /**
+   * Perform hash same input produces same hash.
+   */
   @Test
   void performHash_sameInputProducesSameHash() {
     HofmannHashResult result1 = hofmannOprfClientManager.performHash("stable-input", SERVER_ID);

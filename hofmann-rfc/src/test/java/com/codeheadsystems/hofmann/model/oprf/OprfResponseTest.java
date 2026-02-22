@@ -7,6 +7,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+/**
+ * The type Oprf response test.
+ */
 class OprfResponseTest {
 
   // Use deliberately distinct, non-symmetric values so transposition is visible
@@ -15,11 +18,17 @@ class OprfResponseTest {
 
   private ObjectMapper objectMapper;
 
+  /**
+   * Sets up.
+   */
   @BeforeEach
   void setUp() {
     objectMapper = new ObjectMapper();
   }
 
+  /**
+   * Constructor string fields stored correctly.
+   */
   @Test
   void constructor_stringFields_storedCorrectly() {
     OprfResponse response = new OprfResponse(EC_POINT, PROCESS_IDENTIFIER);
@@ -28,6 +37,9 @@ class OprfResponseTest {
     assertThat(response.processIdentifier()).isEqualTo(PROCESS_IDENTIFIER);
   }
 
+  /**
+   * Constructor from evaluated response maps fields correctly.
+   */
   @Test
   void constructor_fromEvaluatedResponse_mapsFieldsCorrectly() {
     EvaluatedResponse evaluatedResponse = new EvaluatedResponse(EC_POINT, PROCESS_IDENTIFIER);
@@ -38,6 +50,9 @@ class OprfResponseTest {
     assertThat(response.processIdentifier()).isEqualTo(PROCESS_IDENTIFIER);
   }
 
+  /**
+   * Evaluated response maps fields correctly.
+   */
   @Test
   void evaluatedResponse_mapsFieldsCorrectly() {
     OprfResponse response = new OprfResponse(EC_POINT, PROCESS_IDENTIFIER);
@@ -48,6 +63,11 @@ class OprfResponseTest {
     assertThat(evaluatedResponse.processIdentifier()).isEqualTo(PROCESS_IDENTIFIER);
   }
 
+  /**
+   * Json serialization uses correct property names.
+   *
+   * @throws Exception the exception
+   */
   @Test
   void json_serialization_usesCorrectPropertyNames() throws Exception {
     OprfResponse response = new OprfResponse(EC_POINT, PROCESS_IDENTIFIER);
@@ -58,6 +78,11 @@ class OprfResponseTest {
     assertThat(json).contains("\"processIdentifier\":\"" + PROCESS_IDENTIFIER + "\"");
   }
 
+  /**
+   * Json deserialization maps to correct fields.
+   *
+   * @throws Exception the exception
+   */
   @Test
   void json_deserialization_mapsToCorrectFields() throws Exception {
     String json = "{\"ecPoint\":\"" + EC_POINT + "\",\"processIdentifier\":\"" + PROCESS_IDENTIFIER + "\"}";
@@ -68,6 +93,11 @@ class OprfResponseTest {
     assertThat(response.processIdentifier()).isEqualTo(PROCESS_IDENTIFIER);
   }
 
+  /**
+   * Json round trip preserves all fields.
+   *
+   * @throws Exception the exception
+   */
   @Test
   void json_roundTrip_preservesAllFields() throws Exception {
     OprfResponse original = new OprfResponse(EC_POINT, PROCESS_IDENTIFIER);

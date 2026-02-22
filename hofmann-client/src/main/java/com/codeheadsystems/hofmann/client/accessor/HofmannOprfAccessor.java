@@ -17,6 +17,9 @@ import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * The type Hofmann oprf accessor.
+ */
 @Singleton
 public class HofmannOprfAccessor {
   private static final Logger log = LoggerFactory.getLogger(HofmannOprfAccessor.class);
@@ -25,6 +28,14 @@ public class HofmannOprfAccessor {
   private final ObjectMapper objectMapper;
   private final Map<ServerIdentifier, ServerConnectionInfo> serverConnections;
 
+  /**
+   * Instantiates a new Hofmann oprf accessor.
+   *
+   * @param oprfClientConfig  the oprf client config
+   * @param httpClient        the http client
+   * @param objectMapper      the object mapper
+   * @param serverConnections the server connections
+   */
   @Inject
   public HofmannOprfAccessor(final OprfClientConfig oprfClientConfig,
                              final HttpClient httpClient,
@@ -36,6 +47,13 @@ public class HofmannOprfAccessor {
     this.serverConnections = serverConnections;
   }
 
+  /**
+   * Handle request oprf response.
+   *
+   * @param serverIdentifier the server identifier
+   * @param oprfRequest      the oprf request
+   * @return the oprf response
+   */
   public OprfResponse handleRequest(final ServerIdentifier serverIdentifier,
                                     final OprfRequest oprfRequest) {
     log.trace("handleRequest(requestId={}, serverIdentifier={})", serverIdentifier, oprfRequest.requestId());

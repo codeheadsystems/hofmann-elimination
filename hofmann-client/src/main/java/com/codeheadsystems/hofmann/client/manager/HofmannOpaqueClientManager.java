@@ -50,6 +50,12 @@ public class HofmannOpaqueClientManager {
   private final Client client;
   private final HofmannOpaqueAccessor accessor;
 
+  /**
+   * Instantiates a new Hofmann opaque client manager.
+   *
+   * @param config   the config
+   * @param accessor the accessor
+   */
   @Inject
   public HofmannOpaqueClientManager(final OpaqueClientConfig config, final HofmannOpaqueAccessor accessor) {
     log.info("OpaqueManager()");
@@ -92,8 +98,7 @@ public class HofmannOpaqueClientManager {
    * @param credentialIdentifier raw bytes identifying the credential (e.g. UTF-8 email)
    * @param password             the password to authenticate with
    * @return the server's response containing session key and JWT token
-   * @throws SecurityException if the server MAC in KE2 fails verification (wrong password or
-   *                           server mismatch), or if the server rejects the client MAC in KE3
+   * @throws SecurityException if the server MAC in KE2 fails verification (wrong password or                           server mismatch), or if the server rejects the client MAC in KE3
    */
   public AuthFinishResponse authenticate(final ServerIdentifier serverId,
                                          final byte[] credentialIdentifier,

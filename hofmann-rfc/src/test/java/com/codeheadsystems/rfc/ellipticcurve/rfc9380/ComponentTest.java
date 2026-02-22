@@ -29,6 +29,9 @@ public class ComponentTest {
   private static final BigInteger EXPECTED_P_X = new BigInteger("c1cae290e291aee617ebaef1be6d73861479c48b841eaba9b7b5852ddfeb1346", 16);
   private static final BigInteger EXPECTED_P_Y = new BigInteger("64fa678e07ae116126f08b022a94af6de15985c996c3a91b64c406a960e51067", 16);
 
+  /**
+   * Stage 1 hash to field.
+   */
   @Test
   void stage1_hashToField() {
     HashToField h2f = HashToField.forSecp256k1();
@@ -46,6 +49,9 @@ public class ComponentTest {
     assertThat(u[1]).as("u[1]").isEqualTo(EXPECTED_U1);
   }
 
+  /**
+   * Stage 2 simplified swu.
+   */
   @Test
   void stage2_simplifiedSWU() {
     SimplifiedSWU swu = SimplifiedSWU.forSecp256k1();
@@ -81,6 +87,9 @@ public class ComponentTest {
     assertThat(lhs1).as("SWU(u1) should be on E'").isEqualTo(rhs1);
   }
 
+  /**
+   * Stage 3 isogeny map.
+   */
   @Test
   void stage3_isogenyMap() {
     SimplifiedSWU swu = SimplifiedSWU.forSecp256k1();
@@ -108,6 +117,9 @@ public class ComponentTest {
     assertThat(Q1.getYCoord().toBigInteger()).as("Q1.y").isEqualTo(EXPECTED_Q1_Y);
   }
 
+  /**
+   * Stage 4 full pipeline.
+   */
   @Test
   void stage4_fullPipeline() {
     HashToCurve h2c = HashToCurve.forSecp256k1();

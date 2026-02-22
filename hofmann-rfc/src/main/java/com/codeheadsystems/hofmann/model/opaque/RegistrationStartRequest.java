@@ -16,8 +16,7 @@ import java.util.Base64;
  * <p>
  * Used by: {@code POST /opaque/registration/start}
  *
- * @param credentialIdentifierBase64 base64-encoded credential identifier (e.g. username or email)
- *                                   that the server uses to look up or create the registration record
+ * @param credentialIdentifierBase64 base64-encoded credential identifier (e.g. username or email)                                   that the server uses to look up or create the registration record
  * @param blindedElementBase64       base64-encoded blinded OPRF input element (compressed SEC1 EC point)
  */
 public record RegistrationStartRequest(
@@ -27,6 +26,12 @@ public record RegistrationStartRequest(
   private static final Base64.Encoder B64 = Base64.getEncoder();
   private static final Base64.Decoder B64D = Base64.getDecoder();
 
+  /**
+   * Instantiates a new Registration start request.
+   *
+   * @param credentialIdentifier the credential identifier
+   * @param request              the request
+   */
   public RegistrationStartRequest(byte[] credentialIdentifier, RegistrationRequest request) {
     this(B64.encodeToString(credentialIdentifier),
         B64.encodeToString(request.blindedElement()));
@@ -43,10 +48,20 @@ public record RegistrationStartRequest(
     }
   }
 
+  /**
+   * Credential identifier byte [ ].
+   *
+   * @return the byte [ ]
+   */
   public byte[] credentialIdentifier() {
     return decode(credentialIdentifierBase64, "credentialIdentifier");
   }
 
+  /**
+   * Registration request registration request.
+   *
+   * @return the registration request
+   */
   public RegistrationRequest registrationRequest() {
     return new RegistrationRequest(decode(blindedElementBase64, "blindedElement"));
   }

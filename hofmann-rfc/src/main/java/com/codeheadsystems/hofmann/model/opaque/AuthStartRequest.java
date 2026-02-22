@@ -25,8 +25,7 @@ import java.util.Base64;
  * <p>
  * Used by: {@code POST /opaque/auth/start}
  *
- * @param credentialIdentifierBase64 base64-encoded credential identifier used by the server
- *                                   to look up the stored registration record
+ * @param credentialIdentifierBase64 base64-encoded credential identifier used by the server                                   to look up the stored registration record
  * @param blindedElementBase64       base64-encoded blinded OPRF input element (compressed SEC1 EC point)
  * @param clientNonceBase64          base64-encoded 32-byte random client nonce for this AKE session
  * @param clientAkePublicKeyBase64   base64-encoded ephemeral client AKE public key (compressed SEC1 EC point)
@@ -40,6 +39,12 @@ public record AuthStartRequest(
   private static final Base64.Encoder B64 = Base64.getEncoder();
   private static final Base64.Decoder B64D = Base64.getDecoder();
 
+  /**
+   * Instantiates a new Auth start request.
+   *
+   * @param credentialIdentifier the credential identifier
+   * @param ke1                  the ke 1
+   */
   public AuthStartRequest(byte[] credentialIdentifier, KE1 ke1) {
     this(B64.encodeToString(credentialIdentifier),
         B64.encodeToString(ke1.credentialRequest().blindedElement()),
@@ -58,10 +63,20 @@ public record AuthStartRequest(
     }
   }
 
+  /**
+   * Credential identifier byte [ ].
+   *
+   * @return the byte [ ]
+   */
   public byte[] credentialIdentifier() {
     return decode(credentialIdentifierBase64, "credentialIdentifier");
   }
 
+  /**
+   * Ke 1 ke 1.
+   *
+   * @return the ke 1
+   */
   public KE1 ke1() {
     return new KE1(
         new CredentialRequest(decode(blindedElementBase64, "blindedElement")),

@@ -30,6 +30,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 @ExtendWith(DropwizardExtensionsSupport.class)
 class OprfIntegrationTest {
 
+  /**
+   * The App.
+   */
   static final DropwizardAppExtension<HofmannConfiguration> APP =
       new DropwizardAppExtension<>(
           HofmannApplication.class,
@@ -39,6 +42,9 @@ class OprfIntegrationTest {
 
   private HofmannOprfClientManager hofmannOprfClientManager;
 
+  /**
+   * Sets up.
+   */
   @BeforeEach
   void setUp() {
     OprfClientConfig oprfClientConfig = new OprfClientConfig();
@@ -50,6 +56,9 @@ class OprfIntegrationTest {
     hofmannOprfClientManager = new HofmannOprfClientManager(accessor, oprfClientManager);
   }
 
+  /**
+   * Perform hash returns non empty hash.
+   */
   @Test
   void performHash_returnsNonEmptyHash() {
     HofmannHashResult result = hofmannOprfClientManager.performHash("my-sensitive-input", SERVER_ID);
@@ -60,6 +69,9 @@ class OprfIntegrationTest {
     assertThat(result.serverIdentifier()).isEqualTo(SERVER_ID);
   }
 
+  /**
+   * Perform hash different inputs produce different hashes.
+   */
   @Test
   void performHash_differentInputsProduceDifferentHashes() {
     HofmannHashResult result1 = hofmannOprfClientManager.performHash("input-one", SERVER_ID);
@@ -68,6 +80,9 @@ class OprfIntegrationTest {
     assertThat(result1.hash()).isNotEqualTo(result2.hash());
   }
 
+  /**
+   * Perform hash same input produces same hash.
+   */
   @Test
   void performHash_sameInputProducesSameHash() {
     // Because the OPRF master key is fixed for a server instance within a run, and the
