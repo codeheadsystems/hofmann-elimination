@@ -143,6 +143,7 @@ public record WeierstrassGroupSpecImpl(
    *       cofactor&gt;1 curve be added in the future.</li>
    * </ol>
    */
+  @Override
   public ECPoint deserializePoint(byte[] bytes) {
     ECPoint p = curve.params().getCurve().decodePoint(bytes);
     if (p.isInfinity()) {

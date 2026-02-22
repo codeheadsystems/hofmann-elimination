@@ -1,6 +1,7 @@
 package com.codeheadsystems.ellipticcurve.rfc9380;
 
 import java.math.BigInteger;
+import org.bouncycastle.math.ec.ECPoint;
 
 /**
  * Abstraction over a cryptographic group for use in RFC 9497 OPRF.
@@ -66,4 +67,9 @@ public interface GroupSpec {
    * @return Ns-byte big-endian encoding
    */
   byte[] serializeScalar(BigInteger k);
+
+  /**
+   * Deserializes a compressed SEC1 byte array to an EC point, with full validation.
+   */
+  ECPoint deserializePoint(byte[] bytes);
 }
