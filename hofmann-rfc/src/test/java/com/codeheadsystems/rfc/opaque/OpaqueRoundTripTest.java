@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
-import com.codeheadsystems.rfc.opaque.internal.OpaqueCrypto;
 import com.codeheadsystems.rfc.opaque.model.AuthResult;
 import com.codeheadsystems.rfc.opaque.model.ClientAuthState;
 import com.codeheadsystems.rfc.opaque.model.ClientRegistrationState;
@@ -497,7 +496,7 @@ class OpaqueRoundTripTest {
     // server B: the OPRF evaluation differs → different randomized_pwd → envelope auth_tag mismatch.
     //
     // A deterministic key pair is used so the only variable between the two servers is the seed.
-    OpaqueCrypto.AkeKeyPair kp = OpaqueCrypto.deriveAkeKeyPair(CONFIG.cipherSuite(), new byte[32]);
+    OpaqueCipherSuite.AkeKeyPair kp = CONFIG.cipherSuite().deriveAkeKeyPair(new byte[32]);
     java.math.BigInteger sharedSk = kp.privateKey();
     byte[] sharedPk = kp.publicKeyBytes();
     byte[] rawSk = sharedSk.toByteArray();

@@ -1,7 +1,14 @@
 package com.codeheadsystems.rfc.opaque.config;
 
+import static com.codeheadsystems.rfc.common.ByteUtils.concat;
+
+import com.codeheadsystems.rfc.common.ByteUtils;
+import com.codeheadsystems.rfc.ellipticcurve.rfc9380.GroupSpec;
 import com.codeheadsystems.rfc.oprf.rfc9497.CurveHashSuite;
 import com.codeheadsystems.rfc.oprf.rfc9497.OprfCipherSuite;
+import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
+import org.bouncycastle.math.ec.ECPoint;
 
 /**
  * OPAQUE-specific cipher suite wrapper over an OPRF cipher suite.
@@ -104,5 +111,93 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
    */
   public int maskedResponseSize() {
     return Npk() + envelopeSize();
+  }
+
+  // ─── Cryptographic operations ───────────────────────────────────────────────
+
+  /**
+   * HKDF-Extract(salt, ikm) = HMAC-H(salt, ikm).
+   * Empty salt uses HashLen zeros per RFC 5869.
+   */
+  public byte[] hkdfExtract(byte[] salt, byte[] ikm) {
+    byte[] emptySalt = new byte[Nh()];
+    byte[] actualSalt = (salt == null || salt.length == 0) ? emptySalt : salt;
+    return oprfSuite().hmac(actualSalt, ikm);
+  }
+
+  /**
+   * HKDF-Expand(prk, info, len) per RFC 5869 §2.3.
+   */
+  public byte[] hkdfExpand(byte[] prk, byte[] info, int len) {
+    int hashLen = Nh();
+    byte[] result = new byte[len];
+    byte[] t = new byte[0];
+    int copied = 0;
+    int counter = 1;
+    while (copied < len) {
+      byte[] input = concat(t, info, new byte[]{(byte) counter});
+      t = oprfSuite().hmac(prk, input);
+      int toCopy = Math.min(len - copied, hashLen);
+      System.arraycopy(t, 0, result, copied, toCopy);
+      copied += toCopy;
+      counter++;
+    }
+    return result;
+  }
+
+  /**
+   * HKDF-Expand-Label(secret, label, context, length) in OPAQUE TLS-style format.
+   */
+  public byte[] hkdfExpandLabel(byte[] secret, byte[] label, byte[] context, int length) {
+    byte[] prefix = "OPAQUE-".getBytes(StandardCharsets.US_ASCII);
+    byte[] fullLabel = concat(prefix, label);
+    byte[] info = concat(
+        ByteUtils.I2OSP(length, 2),
+        ByteUtils.I2OSP(fullLabel.length, 1),
+        fullLabel,
+        ByteUtils.I2OSP(context.length, 1),
+        context
+    );
+    return hkdfExpand(secret, info, length);
+  }
+
+  /**
+   * HMAC-H(key, data) using the suite's hash.
+   */
+  public byte[] hmac(byte[] key, byte[] data) {
+    return oprfSuite().hmac(key, data);
+  }
+
+  /**
+   * H(data) using the suite's hash.
+   */
+  public byte[] hash(byte[] data) {
+    return oprfSuite().hash(data);
+  }
+
+  /**
+   * Deserializes a compressed SEC1 byte array to an EC point using the suite's curve.
+   * Validates the point is on the curve and not the identity element to prevent
+   * invalid-curve and small-subgroup attacks on DH computations.
+   */
+  public ECPoint deserializePoint(byte[] bytes) {
+    GroupSpec wgs = oprfSuite().groupSpec();
+    return wgs.deserializePoint(bytes);
+  }
+
+  /**
+   * Derives an AKE key pair from a seed using the suite's deriveKeyPair.
+   */
+  public AkeKeyPair deriveAkeKeyPair(byte[] seed) {
+    BigInteger sk = oprfSuite().deriveKeyPair(seed,
+        "OPAQUE-DeriveDiffieHellmanKeyPair".getBytes(StandardCharsets.US_ASCII));
+    byte[] pkBytes = oprfSuite().groupSpec().scalarMultiplyGenerator(sk);
+    return new AkeKeyPair(sk, pkBytes);
+  }
+
+  /**
+   * A derived AKE key pair.
+   */
+  public record AkeKeyPair(BigInteger privateKey, byte[] publicKeyBytes) {
   }
 }

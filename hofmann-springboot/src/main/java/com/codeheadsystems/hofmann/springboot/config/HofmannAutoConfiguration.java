@@ -9,7 +9,6 @@ import com.codeheadsystems.hofmann.server.store.SessionStore;
 import com.codeheadsystems.rfc.opaque.Server;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
-import com.codeheadsystems.rfc.opaque.internal.OpaqueCrypto;
 import com.codeheadsystems.rfc.common.RandomProvider;
 import com.codeheadsystems.rfc.oprf.manager.OprfServerManager;
 import com.codeheadsystems.rfc.oprf.model.ServerProcessorDetail;
@@ -107,7 +106,7 @@ public class HofmannAutoConfiguration {
     byte[] keySeed = hex.parseHex(keySeedHex);
     byte[] oprfSeed = hex.parseHex(oprfSeedHex);
 
-    OpaqueCrypto.AkeKeyPair keyPair = OpaqueCrypto.deriveAkeKeyPair(suite, keySeed);
+    OpaqueCipherSuite.AkeKeyPair keyPair = suite.deriveAkeKeyPair(keySeed);
     BigInteger sk = keyPair.privateKey();
     byte[] pk = keyPair.publicKeyBytes();
 

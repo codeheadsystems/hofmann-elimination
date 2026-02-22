@@ -4,6 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.lang.reflect.Constructor;
+import java.math.BigInteger;
+import org.bouncycastle.jce.ECNamedCurveTable;
+import org.bouncycastle.jce.spec.ECNamedCurveParameterSpec;
+import org.bouncycastle.math.ec.ECPoint;
 import org.junit.jupiter.api.Test;
 
 class ByteUtilsTest {
@@ -111,5 +115,103 @@ class ByteUtilsTest {
     byte[] result = ByteUtils.concat(a, b);
     result[0] = 99;
     assertThat(a[0]).isEqualTo((byte) 1);
+  }
+
+  // ─── xor ────────────────────────────────────────────────────────────────────
+
+  @Test
+  void xor_basicOperation() {
+    byte[] a = {(byte) 0xFF, 0x00, 0x0F};
+    byte[] b = {(byte) 0x0F, (byte) 0xF0, (byte) 0xFF};
+    assertThat(ByteUtils.xor(a, b)).isEqualTo(new byte[]{(byte) 0xF0, (byte) 0xF0, (byte) 0xF0});
+  }
+
+  @Test
+  void xor_withZerosIsIdentity() {
+    byte[] a = {1, 2, 3};
+    byte[] zeros = {0, 0, 0};
+    assertThat(ByteUtils.xor(a, zeros)).isEqualTo(a);
+  }
+
+  @Test
+  void xor_withSelfIsZero() {
+    byte[] a = {(byte) 0xAB, (byte) 0xCD, (byte) 0xEF};
+    assertThat(ByteUtils.xor(a, a)).isEqualTo(new byte[]{0, 0, 0});
+  }
+
+  @Test
+  void xor_emptyArrays() {
+    assertThat(ByteUtils.xor(new byte[0], new byte[0])).isEmpty();
+  }
+
+  @Test
+  void xor_unequalLengthsThrows() {
+    assertThatThrownBy(() -> ByteUtils.xor(new byte[]{1, 2}, new byte[]{1}))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("equal length");
+  }
+
+  @Test
+  void xor_doesNotMutateInputs() {
+    byte[] a = {1, 2};
+    byte[] b = {3, 4};
+    ByteUtils.xor(a, b);
+    assertThat(a).isEqualTo(new byte[]{1, 2});
+    assertThat(b).isEqualTo(new byte[]{3, 4});
+  }
+
+  // ─── dhECDH ─────────────────────────────────────────────────────────────────
+
+  @Test
+  void dhECDH_returnsCompressedPoint() {
+    ECNamedCurveParameterSpec spec = ECNamedCurveTable.getParameterSpec("secp256r1");
+    ECPoint generator = spec.getG();
+    BigInteger scalar = BigInteger.valueOf(42);
+
+    byte[] result = ByteUtils.dhECDH(scalar, generator);
+
+    // Compressed SEC1 P-256 point is 33 bytes, starting with 0x02 or 0x03
+    assertThat(result).hasSize(33);
+    assertThat(result[0]).isIn((byte) 0x02, (byte) 0x03);
+  }
+
+  @Test
+  void dhECDH_isConsistentWithDirectMultiply() {
+    ECNamedCurveParameterSpec spec = ECNamedCurveTable.getParameterSpec("secp256r1");
+    ECPoint generator = spec.getG();
+    BigInteger scalar = BigInteger.valueOf(12345);
+
+    byte[] result = ByteUtils.dhECDH(scalar, generator);
+    byte[] expected = generator.multiply(scalar).normalize().getEncoded(true);
+
+    assertThat(result).isEqualTo(expected);
+  }
+
+  @Test
+  void dhECDH_differentScalarsProduceDifferentResults() {
+    ECNamedCurveParameterSpec spec = ECNamedCurveTable.getParameterSpec("secp256r1");
+    ECPoint generator = spec.getG();
+
+    byte[] result1 = ByteUtils.dhECDH(BigInteger.valueOf(1), generator);
+    byte[] result2 = ByteUtils.dhECDH(BigInteger.valueOf(2), generator);
+
+    assertThat(result1).isNotEqualTo(result2);
+  }
+
+  @Test
+  void dhECDH_commutativity() {
+    // DH commutativity: (a * G) * b == (b * G) * a
+    ECNamedCurveParameterSpec spec = ECNamedCurveTable.getParameterSpec("secp256r1");
+    ECPoint generator = spec.getG();
+    BigInteger a = BigInteger.valueOf(7);
+    BigInteger b = BigInteger.valueOf(13);
+
+    ECPoint aG = generator.multiply(a).normalize();
+    ECPoint bG = generator.multiply(b).normalize();
+
+    byte[] abG = ByteUtils.dhECDH(b, aG);
+    byte[] baG = ByteUtils.dhECDH(a, bG);
+
+    assertThat(abG).isEqualTo(baG);
   }
 }

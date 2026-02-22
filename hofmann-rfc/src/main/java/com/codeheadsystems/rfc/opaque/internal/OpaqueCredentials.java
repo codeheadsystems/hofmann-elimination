@@ -116,7 +116,7 @@ public class OpaqueCredentials {
         maskingNonce,
         "CredentialResponsePad".getBytes(StandardCharsets.US_ASCII)
     );
-    byte[] pad = OpaqueCrypto.hkdfExpand(suite, record.maskingKey(), padInfo, config.maskedResponseSize());
+    byte[] pad = suite.hkdfExpand(record.maskingKey(), padInfo, config.maskedResponseSize());
 
     // plaintext = server_public_key || envelope_nonce || auth_tag
     byte[] plaintext = ByteUtils.concat(serverPublicKey, record.envelope().serialize());
@@ -137,7 +137,7 @@ public class OpaqueCredentials {
     byte[] randomizedPwd = deriveRandomizedPwd(password, blind, response.evaluatedElement(), config);
 
     // Recover masking_key = Expand(randomized_pwd, "MaskingKey", Nh)
-    byte[] maskingKey = OpaqueCrypto.hkdfExpand(suite, randomizedPwd,
+    byte[] maskingKey = suite.hkdfExpand(randomizedPwd,
         "MaskingKey".getBytes(StandardCharsets.US_ASCII), config.Nh());
 
     // Unmask: pad = HKDF-Expand(masking_key, masking_nonce || "CredentialResponsePad", ...)
@@ -145,7 +145,7 @@ public class OpaqueCredentials {
         response.maskingNonce(),
         "CredentialResponsePad".getBytes(StandardCharsets.US_ASCII)
     );
-    byte[] pad = OpaqueCrypto.hkdfExpand(suite, maskingKey, padInfo, config.maskedResponseSize());
+    byte[] pad = suite.hkdfExpand(maskingKey, padInfo, config.maskedResponseSize());
     byte[] plaintext = ByteUtils.xor(pad, response.maskedResponse());
 
     // Extract server_public_key || envelope
@@ -163,7 +163,7 @@ public class OpaqueCredentials {
                                            byte[] evaluatedElement, OpaqueConfig config) {
     byte[] oprfOutput = OpaqueOprf.finalize(config.cipherSuite(), password, blind, evaluatedElement);
     byte[] stretchedOutput = config.ksf().stretch(oprfOutput, config);
-    return OpaqueCrypto.hkdfExtract(config.cipherSuite(), new byte[0],
+    return config.cipherSuite().hkdfExtract(new byte[0],
         ByteUtils.concat(oprfOutput, stretchedOutput));
   }
 }

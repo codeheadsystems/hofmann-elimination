@@ -4,7 +4,7 @@ import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
 import com.codeheadsystems.rfc.opaque.internal.OpaqueAke;
 import com.codeheadsystems.rfc.opaque.internal.OpaqueCredentials;
-import com.codeheadsystems.rfc.opaque.internal.OpaqueCrypto;
+import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.rfc.opaque.model.Envelope;
 import com.codeheadsystems.rfc.opaque.model.KE1;
 import com.codeheadsystems.rfc.opaque.model.KE3;
@@ -124,14 +124,15 @@ public class Server {
   }
 
   private RegistrationRecord createFakeRecord(byte[] credentialIdentifier) {
-    byte[] fakeClientSkSeed = OpaqueCrypto.hkdfExpand(config.cipherSuite(),
+    OpaqueCipherSuite suite = config.cipherSuite();
+    byte[] fakeClientSkSeed = suite.hkdfExpand(
         oprfSeed,
         ByteUtils.concat(credentialIdentifier, "FakeClientKey".getBytes(StandardCharsets.US_ASCII)),
         config.Nsk());
-    OpaqueCrypto.AkeKeyPair fakeKp = OpaqueCrypto.deriveAkeKeyPair(config.cipherSuite(), fakeClientSkSeed);
+    OpaqueCipherSuite.AkeKeyPair fakeKp = suite.deriveAkeKeyPair(fakeClientSkSeed);
     byte[] fakeClientPk = fakeKp.publicKeyBytes();
 
-    byte[] fakeMaskingKey = OpaqueCrypto.hkdfExpand(config.cipherSuite(),
+    byte[] fakeMaskingKey = suite.hkdfExpand(
         oprfSeed,
         ByteUtils.concat(credentialIdentifier, "FakeMaskingKey".getBytes(StandardCharsets.US_ASCII)),
         config.Nh());

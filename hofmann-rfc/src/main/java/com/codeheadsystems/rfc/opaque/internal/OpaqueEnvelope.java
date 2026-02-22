@@ -42,14 +42,14 @@ public class OpaqueEnvelope {
     byte[] seed = expand(suite, randomizedPwd,
         ByteUtils.concat(envelopeNonce, "PrivateKey".getBytes(StandardCharsets.US_ASCII)), config.Nsk());
 
-    OpaqueCrypto.AkeKeyPair keyPair = OpaqueCrypto.deriveAkeKeyPair(suite, seed);
+    OpaqueCipherSuite.AkeKeyPair keyPair = suite.deriveAkeKeyPair(seed);
     byte[] clientPublicKey = keyPair.publicKeyBytes();
 
     CleartextCredentials cleartext = CleartextCredentials.create(
         serverPublicKey, clientPublicKey, serverIdentity, clientIdentity);
 
     byte[] authInput = ByteUtils.concat(envelopeNonce, cleartext.serialize());
-    byte[] authTag = OpaqueCrypto.hmac(suite, authKey, authInput);
+    byte[] authTag = suite.hmac(authKey, authInput);
 
     Envelope envelope = new Envelope(envelopeNonce, authTag);
     return new StoreResult(envelope, clientPublicKey, maskingKey, exportKey);
@@ -72,7 +72,7 @@ public class OpaqueEnvelope {
     byte[] seed = expand(suite, randomizedPwd,
         ByteUtils.concat(nonce, "PrivateKey".getBytes(StandardCharsets.US_ASCII)), config.Nsk());
 
-    OpaqueCrypto.AkeKeyPair keyPair = OpaqueCrypto.deriveAkeKeyPair(suite, seed);
+    OpaqueCipherSuite.AkeKeyPair keyPair = suite.deriveAkeKeyPair(seed);
     BigInteger clientSk = keyPair.privateKey();
     byte[] clientPublicKey = keyPair.publicKeyBytes();
 
@@ -80,7 +80,7 @@ public class OpaqueEnvelope {
         serverPublicKey, clientPublicKey, serverIdentity, clientIdentity);
 
     byte[] authInput = ByteUtils.concat(nonce, cleartext.serialize());
-    byte[] expectedTag = OpaqueCrypto.hmac(suite, authKey, authInput);
+    byte[] expectedTag = suite.hmac(authKey, authInput);
 
     // Security: constant-time comparison prevents timing side-channel attacks on MAC verification
     if (!MessageDigest.isEqual(expectedTag, envelope.authTag())) {
@@ -100,7 +100,7 @@ public class OpaqueEnvelope {
   }
 
   private static byte[] expand(OpaqueCipherSuite suite, byte[] prk, byte[] info, int len) {
-    return OpaqueCrypto.hkdfExpand(suite, prk, info, len);
+    return suite.hkdfExpand(prk, info, len);
   }
 
   /**

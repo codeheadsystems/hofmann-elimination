@@ -3,7 +3,7 @@ package com.codeheadsystems.rfc.opaque;
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
 import com.codeheadsystems.rfc.opaque.internal.OpaqueAke;
 import com.codeheadsystems.rfc.opaque.internal.OpaqueCredentials;
-import com.codeheadsystems.rfc.opaque.internal.OpaqueCrypto;
+import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.rfc.opaque.internal.OpaqueOprf;
 import com.codeheadsystems.rfc.opaque.model.AuthResult;
 import com.codeheadsystems.rfc.opaque.model.ClientAuthState;
@@ -100,7 +100,7 @@ public class Client {
     byte[] blindedElement = OpaqueOprf.blind(config.cipherSuite(), password, blind);
     CredentialRequest credReq = new CredentialRequest(blindedElement);
 
-    OpaqueCrypto.AkeKeyPair kp = OpaqueCrypto.deriveAkeKeyPair(config.cipherSuite(), clientAkeKeySeed);
+    OpaqueCipherSuite.AkeKeyPair kp = config.cipherSuite().deriveAkeKeyPair(clientAkeKeySeed);
     BigInteger clientAkeSk = kp.privateKey();
     byte[] clientAkePk = kp.publicKeyBytes();
 

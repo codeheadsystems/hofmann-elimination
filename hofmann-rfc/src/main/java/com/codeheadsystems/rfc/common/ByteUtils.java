@@ -1,5 +1,8 @@
 package com.codeheadsystems.rfc.common;
 
+import java.math.BigInteger;
+import org.bouncycastle.math.ec.ECPoint;
+
 /**
  * Utility methods for octet string encoding and EC point serialization.
  */
@@ -39,6 +42,14 @@ public class ByteUtils {
       offset += arr.length;
     }
     return result;
+  }
+
+  /**
+   * Computes DH: serializes (privateKey * publicKey) as compressed SEC1.
+   */
+  public static byte[] dhECDH(BigInteger privateKey, ECPoint publicKey) {
+    ECPoint result = publicKey.multiply(privateKey).normalize();
+    return result.getEncoded(true);
   }
 
   /**

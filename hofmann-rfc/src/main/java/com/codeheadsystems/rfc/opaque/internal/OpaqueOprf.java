@@ -65,7 +65,7 @@ public class OpaqueOprf {
         credentialIdentifier,
         "OprfKey".getBytes(StandardCharsets.US_ASCII)
     );
-    byte[] seed = OpaqueCrypto.hkdfExpand(suite, oprfSeed, info, suite.Nok());
+    byte[] seed = suite.hkdfExpand(oprfSeed, info, suite.Nok());
     return suite.oprfSuite().deriveKeyPair(seed, "OPAQUE-DeriveKeyPair".getBytes(StandardCharsets.US_ASCII));
   }
 }

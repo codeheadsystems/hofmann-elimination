@@ -54,17 +54,17 @@ public class OpaqueAke {
    */
   private static DerivedKeys deriveKeys(OpaqueConfig config, byte[] ikm, byte[] preamble) {
     OpaqueCipherSuite suite = config.cipherSuite();
-    byte[] prk = OpaqueCrypto.hkdfExtract(suite, new byte[0], ikm);
-    byte[] preambleHash = OpaqueCrypto.hash(suite, preamble);
+    byte[] prk = suite.hkdfExtract(new byte[0], ikm);
+    byte[] preambleHash = suite.hash(preamble);
 
-    byte[] handshakeSecret = OpaqueCrypto.hkdfExpandLabel(suite, prk,
+    byte[] handshakeSecret = suite.hkdfExpandLabel(prk,
         "HandshakeSecret".getBytes(StandardCharsets.US_ASCII), preambleHash, config.Nx());
-    byte[] sessionKey = OpaqueCrypto.hkdfExpandLabel(suite, prk,
+    byte[] sessionKey = suite.hkdfExpandLabel(prk,
         "SessionKey".getBytes(StandardCharsets.US_ASCII), preambleHash, config.Nx());
 
-    byte[] km2 = OpaqueCrypto.hkdfExpandLabel(suite, handshakeSecret,
+    byte[] km2 = suite.hkdfExpandLabel(handshakeSecret,
         "ServerMAC".getBytes(StandardCharsets.US_ASCII), new byte[0], config.Nm());
-    byte[] km3 = OpaqueCrypto.hkdfExpandLabel(suite, handshakeSecret,
+    byte[] km3 = suite.hkdfExpandLabel(handshakeSecret,
         "ClientMAC".getBytes(StandardCharsets.US_ASCII), new byte[0], config.Nm());
 
     return new DerivedKeys(km2, km3, sessionKey);
@@ -117,24 +117,24 @@ public class OpaqueAke {
     CredentialResponse credResponse = OpaqueCredentials.createCredentialResponseWithNonce(
         config, credReq, serverPublicKey, record, credentialIdentifier, oprfSeed, mn);
 
-    OpaqueCrypto.AkeKeyPair serverAkeKp = OpaqueCrypto.deriveAkeKeyPair(suite, serverAkeKeySeed);
+    OpaqueCipherSuite.AkeKeyPair serverAkeKp = suite.deriveAkeKeyPair(serverAkeKeySeed);
     BigInteger serverAkeSk = serverAkeKp.privateKey();
     byte[] serverAkePk = serverAkeKp.publicKeyBytes();
 
     byte[] preamble = buildPreamble(config.context(), cId, ke1, sId, credResponse, serverNonce, serverAkePk);
-    byte[] preambleHash = OpaqueCrypto.hash(suite, preamble);
+    byte[] preambleHash = suite.hash(preamble);
 
-    ECPoint clientAkePk = OpaqueCrypto.deserializePoint(suite, ke1.clientAkePublicKey());
-    ECPoint clientLongTermPk = OpaqueCrypto.deserializePoint(suite, record.clientPublicKey());
-    byte[] dh1 = OpaqueCrypto.dhECDH(suite, serverAkeSk, clientAkePk);
-    byte[] dh2 = OpaqueCrypto.dhECDH(suite, serverPrivateKey, clientAkePk);
-    byte[] dh3 = OpaqueCrypto.dhECDH(suite, serverAkeSk, clientLongTermPk);
+    ECPoint clientAkePk = suite.deserializePoint(ke1.clientAkePublicKey());
+    ECPoint clientLongTermPk = suite.deserializePoint(record.clientPublicKey());
+    byte[] dh1 = ByteUtils.dhECDH(serverAkeSk, clientAkePk);
+    byte[] dh2 = ByteUtils.dhECDH(serverPrivateKey, clientAkePk);
+    byte[] dh3 = ByteUtils.dhECDH(serverAkeSk, clientLongTermPk);
     byte[] ikm = ByteUtils.concat(dh1, dh2, dh3);
 
     DerivedKeys keys = deriveKeys(config, ikm, preamble);
-    byte[] serverMac = OpaqueCrypto.hmac(suite, keys.km2(), preambleHash);
-    byte[] expectedClientMac = OpaqueCrypto.hmac(suite, keys.km3(),
-        OpaqueCrypto.hash(suite, ByteUtils.concat(preamble, serverMac)));
+    byte[] serverMac = suite.hmac(keys.km2(), preambleHash);
+    byte[] expectedClientMac = suite.hmac(keys.km3(),
+        suite.hash(ByteUtils.concat(preamble, serverMac)));
 
     ServerAuthState authState = new ServerAuthState(expectedClientMac, keys.sessionKey());
     KE2 ke2 = new KE2(credResponse, serverNonce, serverAkePk, serverMac);
@@ -167,29 +167,29 @@ public class OpaqueAke {
 
     byte[] preamble = buildPreamble(context, cId, state.ke1(), sId,
         ke2.credentialResponse(), ke2.serverNonce(), ke2.serverAkePublicKey());
-    byte[] preambleHash = OpaqueCrypto.hash(suite, preamble);
+    byte[] preambleHash = suite.hash(preamble);
 
-    ECPoint serverLongTermPk = OpaqueCrypto.deserializePoint(suite,
+    ECPoint serverLongTermPk = suite.deserializePoint(
         recovered.cleartextCredentials().serverPublicKey());
-    ECPoint serverAkePk = OpaqueCrypto.deserializePoint(suite, ke2.serverAkePublicKey());
+    ECPoint serverAkePk = suite.deserializePoint(ke2.serverAkePublicKey());
 
     BigInteger clientSk = new BigInteger(1, recovered.clientPrivateKeyBytes());
 
-    byte[] dh1 = OpaqueCrypto.dhECDH(suite, state.clientAkePrivateKey(), serverAkePk);
-    byte[] dh2 = OpaqueCrypto.dhECDH(suite, state.clientAkePrivateKey(), serverLongTermPk);
-    byte[] dh3 = OpaqueCrypto.dhECDH(suite, clientSk, serverAkePk);
+    byte[] dh1 = ByteUtils.dhECDH(state.clientAkePrivateKey(), serverAkePk);
+    byte[] dh2 = ByteUtils.dhECDH(state.clientAkePrivateKey(), serverLongTermPk);
+    byte[] dh3 = ByteUtils.dhECDH(clientSk, serverAkePk);
     byte[] ikm = ByteUtils.concat(dh1, dh2, dh3);
 
     DerivedKeys keys = deriveKeys(config, ikm, preamble);
 
-    byte[] expectedServerMac = OpaqueCrypto.hmac(suite, keys.km2(), preambleHash);
+    byte[] expectedServerMac = suite.hmac(keys.km2(), preambleHash);
     // Security: constant-time comparison prevents timing side-channel attacks on MAC verification
     if (!MessageDigest.isEqual(expectedServerMac, ke2.serverMac())) {
       throw new SecurityException("Authentication failed");
     }
 
-    byte[] clientMac = OpaqueCrypto.hmac(suite, keys.km3(),
-        OpaqueCrypto.hash(suite, ByteUtils.concat(preamble, ke2.serverMac())));
+    byte[] clientMac = suite.hmac(keys.km3(),
+        suite.hash(ByteUtils.concat(preamble, ke2.serverMac())));
 
     return new AuthResult(new KE3(clientMac), keys.sessionKey(), recovered.exportKey());
   }
