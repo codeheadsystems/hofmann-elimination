@@ -1,10 +1,9 @@
+
 plugins {
-    `java-library`
+    id("buildlogic.java-library-conventions")
 }
 
-repositories {
-    mavenCentral()
-}
+description = "Hofmann server implementation"
 
 dependencies {
     api(project(":hofmann-rfc"))
@@ -18,14 +17,4 @@ dependencies {
     testImplementation(libs.jakarta.rs.api)
     testImplementation(libs.bundles.test)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-}
-
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
-
-tasks.named<Test>("test") {
-    useJUnitPlatform()
 }

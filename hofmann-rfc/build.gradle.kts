@@ -1,10 +1,9 @@
+
 plugins {
-    `java-library`
+    id("buildlogic.java-library-conventions")
 }
 
-repositories {
-    mavenCentral()
-}
+description = "Hofmann's RFC implementation for OPRF and OPAQUE"
 
 dependencies {
     implementation(libs.javax.inject)
@@ -13,14 +12,4 @@ dependencies {
 
     testImplementation(libs.bundles.test)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-}
-
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
-
-tasks.named<Test>("test") {
-    useJUnitPlatform()
 }

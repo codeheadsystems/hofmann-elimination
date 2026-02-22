@@ -1,10 +1,9 @@
+
 plugins {
-    `java-library`
+    id("buildlogic.java-library-conventions")
 }
 
-repositories {
-    mavenCentral()
-}
+description = "Hofmann dropwizard bundle for easy integration of Hofmann server into dropwizard applications"
 
 dependencies {
     api(project(":hofmann-server"))
@@ -16,14 +15,4 @@ dependencies {
     testImplementation(libs.dropwizard.testing)
     testImplementation(libs.bundles.test)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-}
-
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
-
-tasks.named<Test>("test") {
-    useJUnitPlatform()
 }

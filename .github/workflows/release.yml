@@ -1,0 +1,151 @@
+name: Tag Release to Maven Central
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for git describe
+
+      - name: Validate tag format
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          echo "Tag: $TAG"
+          if ! [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "ERROR: Tag must match semantic versioning (vX.Y.Z or vX.Y.Z-suffix)"
+            exit 1
+          fi
+          echo "VERSION=${TAG#v}" >> $GITHUB_ENV
+          echo "TAG=$TAG" >> $GITHUB_ENV
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Verify version matches tag
+        run: |
+          GRADLE_VERSION=$(./gradlew properties -q | grep "^version:" | awk '{print $2}')
+          echo "Gradle version: $GRADLE_VERSION"
+          echo "Expected version: $VERSION"
+          if [ "$GRADLE_VERSION" != "$VERSION" ]; then
+            echo "ERROR: Gradle version ($GRADLE_VERSION) does not match tag version ($VERSION)"
+            exit 1
+          fi
+
+      - name: Build and test
+        run: ./gradlew clean build test
+
+      - name: Import GPG key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          echo "$GPG_PRIVATE_KEY" | base64 -d | gpg --batch --import
+          # Test signing capability
+          echo "test" | gpg --clearsign --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" > /dev/null
+          echo "GPG key imported and tested successfully"
+
+      - name: Configure GPG for signing
+        run: |
+          # Configure gpg for non-interactive signing
+          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          gpg-connect-agent reloadagent /bye
+
+      - name: Publish to Maven Central
+        env:
+          CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
+          CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+        run: |
+          # Export GPG_TTY for passphrase
+          export GPG_TTY=$(tty)
+
+          # Create gradle.properties with GPG credentials
+          cat > ~/.gradle/gradle.properties << EOF
+          signing.gnupg.keyName=$GPG_KEY_ID
+          signing.gnupg.passphrase=$GPG_PASSPHRASE
+          EOF
+
+          chmod 600 ~/.gradle/gradle.properties
+
+          # Publish to Maven Central via Central Portal
+          ./gradlew publishAggregationToCentralPortal \
+            --no-daemon \
+            --stacktrace
+
+      - name: Build distribution archives
+        run: |
+          ./gradlew :hofmann-rfc:jar :hofmann-rfc:javadocJar :hofmann-rfc:sourcesJar
+          ./gradlew :hofmann-server:jar :hofmann-server:javadocJar :hofmann-server:sourcesJar
+          ./gradlew :hofmann-client:jar :hofmann-client:javadocJar :hofmann-client:sourcesJar
+          ./gradlew :hofmann-dropwizard:jar :hofmann-dropwizard:javadocJar :hofmann-dropwizard:sourcesJar
+          ./gradlew :hofmann-springboot:jar :hofmann-springboot:javadocJar :hofmann-springboot:sourcesJar
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ env.VERSION }}
+          body: |
+            ## Hofmann Elimination ${{ env.VERSION }}
+
+            ### Maven Central
+
+            ```xml
+            <dependency>
+              <groupId>com.codeheadsystems</groupId>
+              <artifactId>hofmann-rfc</artifactId>
+              <version>${{ env.VERSION }}</version>
+            </dependency>
+            ```
+
+            ```gradle
+            implementation("com.codeheadsystems:hofmann-rfc:${{ env.VERSION }}")
+            ```
+
+            ### Modules Published
+            - `com.codeheadsystems:hofmann-rfc:${{ env.VERSION }}`
+            - `com.codeheadsystems:hofmann-server:${{ env.VERSION }}`
+            - `com.codeheadsystems:hofmann-client:${{ env.VERSION }}`
+            - `com.codeheadsystems:hofmann-dropwizard:${{ env.VERSION }}`
+            - `com.codeheadsystems:hofmann-springboot:${{ env.VERSION }}`
+
+            ### What's Changed
+            See commits since last release for details.
+
+            **Note:** Artifacts may take up to 2 hours to appear in Maven Central after release.
+          files: |
+            hofmann-rfc/build/libs/*.jar
+            hofmann-server/build/libs/*.jar
+            hofmann-client/build/libs/*.jar
+            hofmann-dropwizard/build/libs/*.jar
+            hofmann-springboot/build/libs/*.jar
+          draft: false
+          prerelease: ${{ contains(env.VERSION, '-') }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Release failed! Check logs for details."

@@ -5,9 +5,18 @@
  * For more detailed information on multi-project builds, please refer to https://docs.gradle.org/9.3.0/userguide/multi_project_builds.html in the Gradle documentation.
  */
 
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
 plugins {
     // Apply the foojay-resolver plugin to allow automatic download of JDKs
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+    // Nmcp plugin for publishing to Maven Central via Central Portal
+    id("com.gradleup.nmcp.settings") version "1.4.4"
 }
 
 rootProject.name = "hofmann-elimination"
@@ -17,3 +26,32 @@ include("hofmann-server")
 include("hofmann-dropwizard")
 include("hofmann-springboot")
 
+
+// Configure Central Portal publishing credentials
+nmcpSettings {
+    centralPortal {
+        username = System.getenv("CENTRAL_PORTAL_USERNAME") ?: providers.gradleProperty("centralPortalUsername").orNull
+        password = System.getenv("CENTRAL_PORTAL_PASSWORD") ?: providers.gradleProperty("centralPortalPassword").orNull
+    }
+}
+
+// Extract version from Git tag or use gradle.properties default
+gradle.beforeProject {
+    val gitVersion = providers.exec {
+        commandLine("git", "describe", "--tags", "--exact-match", "HEAD")
+        isIgnoreExitValue = true
+    }.standardOutput.asText.get().trim()
+
+    if (gitVersion.isNotEmpty() && gitVersion.startsWith("v")) {
+        // Remove 'v' prefix from tag (v1.0.0 -> 1.0.0)
+        // Validate semantic versioning format
+        val versionPattern = Regex("^v(\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.]+)?)$")
+        val matchResult = versionPattern.matchEntire(gitVersion)
+        if (matchResult != null) {
+            version = matchResult.groupValues[1]
+            logger.lifecycle("Using version from Git tag: $version")
+        } else {
+            logger.warn("Git tag '$gitVersion' does not match semantic versioning format (vX.Y.Z)")
+        }
+    }
+}

@@ -1,10 +1,9 @@
+
 plugins {
-    `java-library`
+    id("buildlogic.java-library-conventions")
 }
 
-repositories {
-    mavenCentral()
-}
+description = "Hofmann spring boot starter for easy integration of Hofmann server into spring boot applications"
 
 dependencies {
     api(project(":hofmann-server"))
@@ -19,14 +18,4 @@ dependencies {
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.bundles.test)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-}
-
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
-
-tasks.named<Test>("test") {
-    useJUnitPlatform()
 }
