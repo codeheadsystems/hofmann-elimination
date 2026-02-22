@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
  */
 public class OprfVectorsTest {
 
-  private static final OprfCipherSuite SUITE = OprfCipherSuite.P256_SHA256;
+  private static final OprfCipherSuite SUITE = OprfCipherSuite.builder().withSuite(OprfCipherSuite.Builder.SUITE.P256_SHA256).build();
 
   // Derived key from RFC 9497 Appendix A.1.1
   private static final BigInteger SK_S = new BigInteger(
@@ -127,7 +127,7 @@ public class OprfVectorsTest {
   @Nested
   class P384Sha384 {
 
-    private static final OprfCipherSuite SUITE = OprfCipherSuite.P384_SHA384;
+    private static final OprfCipherSuite SUITE = OprfCipherSuite.builder().withSuite(OprfCipherSuite.Builder.SUITE.P384_SHA384).build();
 
     // skSm from RFC 9497 Appendix A.2.1 (CFRG reference vectors)
     private static final BigInteger SK_S = new BigInteger(
@@ -208,7 +208,7 @@ public class OprfVectorsTest {
   @Nested
   class P521Sha512 {
 
-    private static final OprfCipherSuite SUITE = OprfCipherSuite.P521_SHA512;
+    private static final OprfCipherSuite SUITE = OprfCipherSuite.builder().withSuite(OprfCipherSuite.Builder.SUITE.P521_SHA512).build();
 
     // skSm from RFC 9497 Appendix A.3.1 (CFRG reference vectors)
     private static final BigInteger SK_S = new BigInteger(

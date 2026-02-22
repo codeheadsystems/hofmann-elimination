@@ -92,8 +92,8 @@ public class OpaqueAke {
                                             byte[] oprfSeed, KE1 ke1, byte[] clientIdentity,
                                             byte[] maskingNonce, byte[] serverAkeKeySeed) {
     byte[] resolvedSeed = (serverAkeKeySeed != null) ? serverAkeKeySeed
-        : config.randomConfig().randomBytes(config.Nsk());
-    byte[] serverNonce = config.randomConfig().randomBytes(OpaqueConfig.Nn);
+        : config.randomProvider().randomBytes(config.Nsk());
+    byte[] serverNonce = config.randomProvider().randomBytes(OpaqueConfig.Nn);
     return generateKE2Deterministic(config, serverIdentity, serverPrivateKey, serverPublicKey,
         record, credentialIdentifier, oprfSeed, ke1, clientIdentity, maskingNonce, resolvedSeed, serverNonce);
   }
@@ -112,7 +112,7 @@ public class OpaqueAke {
     byte[] sId = (serverIdentity != null) ? serverIdentity : serverPublicKey;
     byte[] cId = (clientIdentity != null) ? clientIdentity : record.clientPublicKey();
 
-    byte[] mn = (maskingNonce != null) ? maskingNonce : config.randomConfig().randomBytes(OpaqueConfig.Nn);
+    byte[] mn = (maskingNonce != null) ? maskingNonce : config.randomProvider().randomBytes(OpaqueConfig.Nn);
     CredentialRequest credReq = new CredentialRequest(ke1.credentialRequest().blindedElement());
     CredentialResponse credResponse = OpaqueCredentials.createCredentialResponseWithNonce(
         config, credReq, serverPublicKey, record, credentialIdentifier, oprfSeed, mn);

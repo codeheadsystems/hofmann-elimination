@@ -3,7 +3,7 @@ package com.codeheadsystems.oprf.rfc9497;
 import com.codeheadsystems.ellipticcurve.curve.OctetStringUtils;
 import com.codeheadsystems.ellipticcurve.rfc9380.GroupSpec;
 import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpecImpl;
-import com.codeheadsystems.oprf.RandomConfig;
+import com.codeheadsystems.oprf.RandomProvider;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -24,9 +24,6 @@ import javax.crypto.spec.SecretKeySpec;
  */
 public class OprfCipherSuite {
 
-  public static final OprfCipherSuite P256_SHA256 = buildP256Sha256();
-  public static final OprfCipherSuite P384_SHA384 = buildP384Sha384();
-  public static final OprfCipherSuite P521_SHA512 = buildP521Sha512();
   private final String identifier;
   private final byte[] contextString;
   private final byte[] hashToGroupDst;
@@ -35,12 +32,29 @@ public class OprfCipherSuite {
   private final GroupSpec groupSpec;
   private final String hashAlgorithm;
   private final int hashOutputLength; // Nh
-  private final RandomConfig randomConfig;
-  OprfCipherSuite(String identifier,
-                  String contextSuffix,
-                  GroupSpec groupSpec,
-                  String hashAlgorithm,
-                  int hashOutputLength) {
+  private final RandomProvider randomProvider;
+
+  /**
+   * Copy constructor used by {@link #withRandom(SecureRandom)} and {@link #withRandomConfig(RandomProvider)}.
+   */
+  private OprfCipherSuite(OprfCipherSuite source, RandomProvider randomProvider) {
+    this.identifier = source.identifier;
+    this.contextString = source.contextString;
+    this.hashToGroupDst = source.hashToGroupDst;
+    this.hashToScalarDst = source.hashToScalarDst;
+    this.deriveKeyPairDst = source.deriveKeyPairDst;
+    this.groupSpec = source.groupSpec;
+    this.hashAlgorithm = source.hashAlgorithm;
+    this.hashOutputLength = source.hashOutputLength;
+    this.randomProvider = randomProvider;
+  }
+
+  private OprfCipherSuite(String identifier,
+                          String contextSuffix,
+                          GroupSpec groupSpec,
+                          String hashAlgorithm,
+                          int hashOutputLength,
+                          RandomProvider randomProvider) {
     this.identifier = identifier;
     this.contextString = buildContextString(contextSuffix);
     this.hashToGroupDst = OctetStringUtils.concat(
@@ -52,22 +66,7 @@ public class OprfCipherSuite {
     this.groupSpec = groupSpec;
     this.hashAlgorithm = hashAlgorithm;
     this.hashOutputLength = hashOutputLength;
-    this.randomConfig = new RandomConfig();
-  }
-
-  /**
-   * Copy constructor used by {@link #withRandom(SecureRandom)} and {@link #withRandomConfig(RandomConfig)}.
-   */
-  private OprfCipherSuite(OprfCipherSuite source, RandomConfig randomConfig) {
-    this.identifier = source.identifier;
-    this.contextString = source.contextString;
-    this.hashToGroupDst = source.hashToGroupDst;
-    this.hashToScalarDst = source.hashToScalarDst;
-    this.deriveKeyPairDst = source.deriveKeyPairDst;
-    this.groupSpec = source.groupSpec;
-    this.hashAlgorithm = source.hashAlgorithm;
-    this.hashOutputLength = source.hashOutputLength;
-    this.randomConfig = randomConfig;
+    this.randomProvider = randomProvider;
   }
 
   /**
@@ -78,9 +77,9 @@ public class OprfCipherSuite {
    */
   public static OprfCipherSuite fromName(String name) {
     return switch (name) {
-      case "P256_SHA256" -> P256_SHA256;
-      case "P384_SHA384" -> P384_SHA384;
-      case "P521_SHA512" -> P521_SHA512;
+      case "P256_SHA256" -> builder().withSuite(Builder.SUITE.P256_SHA256).build();
+      case "P384_SHA384" -> builder().withSuite(Builder.SUITE.P384_SHA384).build();
+      case "P521_SHA512" -> builder().withSuite(Builder.SUITE.P521_SHA512).build();
       default -> throw new IllegalArgumentException("Unknown OPRF cipher suite: " + name
           + ". Valid values: P256_SHA256, P384_SHA384, P521_SHA512");
     };
@@ -95,31 +94,8 @@ public class OprfCipherSuite {
     );
   }
 
-  private static OprfCipherSuite buildP256Sha256() {
-    return new OprfCipherSuite(
-        "P256-SHA256",
-        "P256-SHA256",
-        WeierstrassGroupSpecImpl.P256_SHA256,
-        "SHA-256", 32
-    );
-  }
-
-  private static OprfCipherSuite buildP384Sha384() {
-    return new OprfCipherSuite(
-        "P384-SHA384",
-        "P384-SHA384",
-        WeierstrassGroupSpecImpl.P384_SHA384,
-        "SHA-384", 48
-    );
-  }
-
-  private static OprfCipherSuite buildP521Sha512() {
-    return new OprfCipherSuite(
-        "P521-SHA512",
-        "P521-SHA512",
-        WeierstrassGroupSpecImpl.P521_SHA512,
-        "SHA-512", 64
-    );
+  public static Builder builder() {
+    return new Builder();
   }
 
   /**
@@ -131,25 +107,25 @@ public class OprfCipherSuite {
    * @return a new suite with the provided random source
    */
   public OprfCipherSuite withRandom(SecureRandom random) {
-    return new OprfCipherSuite(this, new RandomConfig(random));
+    return new OprfCipherSuite(this, new RandomProvider(random));
   }
 
   /**
    * Returns a new {@code OprfCipherSuite} identical to this one but using the given
-   * {@link RandomConfig} for all random generation.
+   * {@link RandomProvider} for all random generation.
    *
-   * @param randomConfig the {@link RandomConfig} to use
+   * @param randomProvider the {@link RandomProvider} to use
    * @return a new suite with the provided random config
    */
-  public OprfCipherSuite withRandomConfig(RandomConfig randomConfig) {
-    return new OprfCipherSuite(this, randomConfig);
+  public OprfCipherSuite withRandomConfig(RandomProvider randomProvider) {
+    return new OprfCipherSuite(this, randomProvider);
   }
-
-  // ─── Accessors ──────────────────────────────────────────────────────────────
 
   public String identifier() {
     return identifier;
   }
+
+  // ─── Accessors ──────────────────────────────────────────────────────────────
 
   public byte[] contextString() {
     return contextString;
@@ -179,15 +155,13 @@ public class OprfCipherSuite {
     return hashOutputLength;
   }
 
-  public RandomConfig randomConfig() {
-    return randomConfig;
+  public RandomProvider randomConfig() {
+    return randomProvider;
   }
 
   public int elementSize() {
     return groupSpec.elementSize();
   }
-
-  // ─── Crypto operations ───────────────────────────────────────────────────────
 
   /**
    * Returns a random scalar uniformly sampled from [1, n-1] using this suite's
@@ -200,10 +174,12 @@ public class OprfCipherSuite {
     BigInteger n = groupSpec.groupOrder();
     BigInteger k;
     do {
-      k = new BigInteger(n.bitLength(), randomConfig.random());
+      k = new BigInteger(n.bitLength(), randomProvider.random());
     } while (k.compareTo(BigInteger.ONE) < 0 || k.compareTo(n) >= 0);
     return k;
   }
+
+  // ─── Crypto operations ───────────────────────────────────────────────────────
 
   /**
    * Hashes input to a scalar modulo the group order.
@@ -301,6 +277,55 @@ public class OprfCipherSuite {
       return mac.doFinal(data);
     } catch (Exception e) {
       throw new RuntimeException("HMAC with " + hashAlgorithm + " not available", e);
+    }
+  }
+
+  public static class Builder {
+
+    private SUITE suite = SUITE.P256_SHA256;
+    private SecureRandom random = new SecureRandom();
+
+    public Builder withSuite(SUITE suite) {
+      this.suite = suite;
+      return this;
+    }
+
+    public Builder withRandom(SecureRandom random) {
+      this.random = random;
+      return this;
+    }
+
+    public OprfCipherSuite build() {
+      return switch (suite) {
+        case P256_SHA256 -> new OprfCipherSuite(
+            "P256-SHA256",
+            "P256-SHA256",
+            WeierstrassGroupSpecImpl.P256_SHA256,
+            "SHA-256",
+            32,
+            new RandomProvider(random)
+        );
+        case P384_SHA384 -> new OprfCipherSuite(
+            "P384-SHA384",
+            "P384-SHA384",
+            WeierstrassGroupSpecImpl.P384_SHA384,
+            "SHA-384",
+            48,
+            new RandomProvider(random)
+        );
+        case P521_SHA512 -> new OprfCipherSuite(
+            "P521-SHA512",
+            "P521-SHA512",
+            WeierstrassGroupSpecImpl.P521_SHA512,
+            "SHA-512",
+            64,
+            new RandomProvider(random)
+        );
+      };
+    }
+
+    public enum SUITE {
+      P256_SHA256, P384_SHA384, P521_SHA512
     }
   }
 }

@@ -15,9 +15,9 @@ import com.codeheadsystems.oprf.rfc9497.OprfCipherSuite;
  */
 public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
 
-  public static final OpaqueCipherSuite P256_SHA256 = new OpaqueCipherSuite(OprfCipherSuite.P256_SHA256);
-  public static final OpaqueCipherSuite P384_SHA384 = new OpaqueCipherSuite(OprfCipherSuite.P384_SHA384);
-  public static final OpaqueCipherSuite P521_SHA512 = new OpaqueCipherSuite(OprfCipherSuite.P521_SHA512);
+  public static final OpaqueCipherSuite P256_SHA256 = new OpaqueCipherSuite(OprfCipherSuite.builder().withSuite(OprfCipherSuite.Builder.SUITE.P256_SHA256).build());
+  public static final OpaqueCipherSuite P384_SHA384 = new OpaqueCipherSuite(OprfCipherSuite.builder().withSuite(OprfCipherSuite.Builder.SUITE.P384_SHA384).build());
+  public static final OpaqueCipherSuite P521_SHA512 = new OpaqueCipherSuite(OprfCipherSuite.builder().withSuite(OprfCipherSuite.Builder.SUITE.P256_SHA256).build());
 
   /**
    * Returns the OPAQUE cipher suite for the given name.  Accepted names: {@code "P256_SHA256"},

@@ -19,15 +19,15 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 public class RoundTripTest {
 
-  private static final OprfCipherSuite DEFAULT_SUITE = OprfCipherSuite.P256_SHA256;
+  private static final OprfCipherSuite DEFAULT_SUITE = OprfCipherSuite.builder().build();
   private static final String TEST_DATA = "test data for round trip";
   private static final String TEST_DATA2 = "Different Data";
 
   static Stream<OprfCipherSuite> allSuites() {
     return Stream.of(
-        OprfCipherSuite.P256_SHA256,
-        OprfCipherSuite.P384_SHA384,
-        OprfCipherSuite.P521_SHA512
+        OprfCipherSuite.builder().withSuite(OprfCipherSuite.Builder.SUITE.P256_SHA256).build(),
+        OprfCipherSuite.builder().withSuite(OprfCipherSuite.Builder.SUITE.P384_SHA384).build(),
+        OprfCipherSuite.builder().withSuite(OprfCipherSuite.Builder.SUITE.P521_SHA512).build()
     );
   }
 

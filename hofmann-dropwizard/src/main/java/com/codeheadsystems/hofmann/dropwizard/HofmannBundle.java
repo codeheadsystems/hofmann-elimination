@@ -15,7 +15,7 @@ import com.codeheadsystems.opaque.Server;
 import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.internal.OpaqueCrypto;
-import com.codeheadsystems.oprf.RandomConfig;
+import com.codeheadsystems.oprf.RandomProvider;
 import com.codeheadsystems.oprf.manager.OprfServerManager;
 import com.codeheadsystems.oprf.model.ServerProcessorDetail;
 import com.codeheadsystems.oprf.rfc9497.OprfCipherSuite;
@@ -216,7 +216,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     byte[] context = configuration.getContext().getBytes(StandardCharsets.UTF_8);
     if (configuration.getArgon2MemoryKib() == 0) {
       log.warn("Argon2 disabled — using identity KSF. Do not use in production.");
-      return new OpaqueConfig(suite, 0, 0, 0, context, new OpaqueConfig.IdentityKsf(), new RandomConfig(secureRandom));
+      return new OpaqueConfig(suite, 0, 0, 0, context, new OpaqueConfig.IdentityKsf(), new RandomProvider(secureRandom));
     }
     return OpaqueConfig.withArgon2id(
         suite,
@@ -268,7 +268,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
 
   private Supplier<ServerProcessorDetail> buildEphemeralProcessorSupplier(String processorId) {
     // randomScalar() via the configured SecureRandom is intentional — ephemeral mode is dev/test only.
-    BigInteger masterKey = OprfCipherSuite.P256_SHA256.withRandom(secureRandom).randomScalar();
+    BigInteger masterKey = OprfCipherSuite.builder().withRandom(secureRandom).withSuite(OprfCipherSuite.Builder.SUITE.P256_SHA256).build().randomScalar();
     ServerProcessorDetail detail = new ServerProcessorDetail(masterKey, processorId);
     return () -> detail;
   }

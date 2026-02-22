@@ -2,7 +2,7 @@ package com.codeheadsystems.hofmann.client.config;
 
 import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.opaque.config.OpaqueConfig;
-import com.codeheadsystems.oprf.RandomConfig;
+import com.codeheadsystems.oprf.RandomProvider;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -50,7 +50,7 @@ public record OpaqueClientConfig(OpaqueConfig opaqueConfig) {
   public static OpaqueClientConfig forTesting(byte[] context) {
     return new OpaqueClientConfig(
         new OpaqueConfig(OpaqueCipherSuite.P256_SHA256, 0, 0, 0, context,
-            new OpaqueConfig.IdentityKsf(), new RandomConfig()));
+            new OpaqueConfig.IdentityKsf(), new RandomProvider()));
   }
 
   /**
