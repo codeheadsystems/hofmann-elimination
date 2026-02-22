@@ -15,6 +15,7 @@ import com.codeheadsystems.opaque.Server;
 import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.internal.OpaqueCrypto;
+import com.codeheadsystems.oprf.RandomConfig;
 import com.codeheadsystems.oprf.manager.OprfServerManager;
 import com.codeheadsystems.oprf.model.ServerProcessorDetail;
 import com.codeheadsystems.oprf.rfc9497.OprfCipherSuite;
@@ -215,7 +216,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     byte[] context = configuration.getContext().getBytes(StandardCharsets.UTF_8);
     if (configuration.getArgon2MemoryKib() == 0) {
       log.warn("Argon2 disabled — using identity KSF. Do not use in production.");
-      return new OpaqueConfig(suite, 0, 0, 0, context, new OpaqueConfig.IdentityKsf());
+      return new OpaqueConfig(suite, 0, 0, 0, context, new OpaqueConfig.IdentityKsf(), new RandomConfig(secureRandom));
     }
     return OpaqueConfig.withArgon2id(
         suite,

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.opaque.config.OpaqueConfig;
 import com.codeheadsystems.opaque.internal.OpaqueCrypto;
+import com.codeheadsystems.oprf.RandomConfig;
 import com.codeheadsystems.opaque.model.AuthResult;
 import com.codeheadsystems.opaque.model.ClientAuthState;
 import com.codeheadsystems.opaque.model.ClientRegistrationState;
@@ -228,8 +229,8 @@ class OpaqueRoundTripTest {
 
     // Impersonator presents the real server's public key (so envelope recovery succeeds)
     // but uses a different private key (so the 3DH outputs differ).
-    byte[] fakePrivateKey = OpaqueCrypto.randomBytes(32);
-    byte[] fakeOprfSeed = OpaqueCrypto.randomBytes(32);
+    byte[] fakePrivateKey = new RandomConfig().randomBytes(32);
+    byte[] fakeOprfSeed = new RandomConfig().randomBytes(32);
     Server impersonator = new Server(fakePrivateKey, realServerPublicKey, fakeOprfSeed, CONFIG);
 
     assertThatThrownBy(() -> {
@@ -404,9 +405,9 @@ class OpaqueRoundTripTest {
     // server that used a different context — the preamble diverges → different km2 → server
     // MAC mismatch.  The envelope auth_tag is unaffected (context is not in the envelope).
     OpaqueConfig configA = new OpaqueConfig(OpaqueCipherSuite.P256_SHA256, 0, 0, 0,
-        "CONTEXT-A".getBytes(StandardCharsets.UTF_8), new OpaqueConfig.IdentityKsf());
+        "CONTEXT-A".getBytes(StandardCharsets.UTF_8), new OpaqueConfig.IdentityKsf(), new RandomConfig());
     OpaqueConfig configB = new OpaqueConfig(OpaqueCipherSuite.P256_SHA256, 0, 0, 0,
-        "CONTEXT-B".getBytes(StandardCharsets.UTF_8), new OpaqueConfig.IdentityKsf());
+        "CONTEXT-B".getBytes(StandardCharsets.UTF_8), new OpaqueConfig.IdentityKsf(), new RandomConfig());
 
     Server serverA = Server.generate(configA);
     Client clientA = new Client(configA);
@@ -507,8 +508,8 @@ class OpaqueRoundTripTest {
       System.arraycopy(rawSk, 0, skFixed, 32 - rawSk.length, rawSk.length);
     }
 
-    byte[] seedA = OpaqueCrypto.randomBytes(32);
-    byte[] seedB = OpaqueCrypto.randomBytes(32);
+    byte[] seedA = new RandomConfig().randomBytes(32);
+    byte[] seedB = new RandomConfig().randomBytes(32);
     Server serverA = new Server(skFixed, sharedPk, seedA, CONFIG);
     Server serverB = new Server(skFixed, sharedPk, seedB, CONFIG);
 

@@ -3,6 +3,7 @@ package com.codeheadsystems.oprf.rfc9497;
 import com.codeheadsystems.ellipticcurve.curve.OctetStringUtils;
 import com.codeheadsystems.ellipticcurve.rfc9380.GroupSpec;
 import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpecImpl;
+import com.codeheadsystems.oprf.RandomConfig;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -34,7 +35,7 @@ public class OprfCipherSuite {
   private final GroupSpec groupSpec;
   private final String hashAlgorithm;
   private final int hashOutputLength; // Nh
-  private final SecureRandom random;
+  private final RandomConfig randomConfig;
   OprfCipherSuite(String identifier,
                   String contextSuffix,
                   GroupSpec groupSpec,
@@ -51,13 +52,13 @@ public class OprfCipherSuite {
     this.groupSpec = groupSpec;
     this.hashAlgorithm = hashAlgorithm;
     this.hashOutputLength = hashOutputLength;
-    this.random = new SecureRandom();
+    this.randomConfig = new RandomConfig();
   }
 
   /**
-   * Copy constructor used by {@link #withRandom(SecureRandom)}.
+   * Copy constructor used by {@link #withRandom(SecureRandom)} and {@link #withRandomConfig(RandomConfig)}.
    */
-  private OprfCipherSuite(OprfCipherSuite source, SecureRandom random) {
+  private OprfCipherSuite(OprfCipherSuite source, RandomConfig randomConfig) {
     this.identifier = source.identifier;
     this.contextString = source.contextString;
     this.hashToGroupDst = source.hashToGroupDst;
@@ -66,7 +67,7 @@ public class OprfCipherSuite {
     this.groupSpec = source.groupSpec;
     this.hashAlgorithm = source.hashAlgorithm;
     this.hashOutputLength = source.hashOutputLength;
-    this.random = random;
+    this.randomConfig = randomConfig;
   }
 
   /**
@@ -123,14 +124,25 @@ public class OprfCipherSuite {
 
   /**
    * Returns a new {@code OprfCipherSuite} identical to this one but using the given
-   * {@link SecureRandom} for all scalar generation. Use this to inject a custom or
-   * deterministic random source (e.g. in tests or DI frameworks).
+   * {@link SecureRandom} for all scalar and random byte generation. Use this to inject
+   * a custom or deterministic random source (e.g. in tests or DI frameworks).
    *
    * @param random the {@link SecureRandom} to use
    * @return a new suite with the provided random source
    */
   public OprfCipherSuite withRandom(SecureRandom random) {
-    return new OprfCipherSuite(this, random);
+    return new OprfCipherSuite(this, new RandomConfig(random));
+  }
+
+  /**
+   * Returns a new {@code OprfCipherSuite} identical to this one but using the given
+   * {@link RandomConfig} for all random generation.
+   *
+   * @param randomConfig the {@link RandomConfig} to use
+   * @return a new suite with the provided random config
+   */
+  public OprfCipherSuite withRandomConfig(RandomConfig randomConfig) {
+    return new OprfCipherSuite(this, randomConfig);
   }
 
   // ─── Accessors ──────────────────────────────────────────────────────────────
@@ -167,6 +179,10 @@ public class OprfCipherSuite {
     return hashOutputLength;
   }
 
+  public RandomConfig randomConfig() {
+    return randomConfig;
+  }
+
   public int elementSize() {
     return groupSpec.elementSize();
   }
@@ -184,7 +200,7 @@ public class OprfCipherSuite {
     BigInteger n = groupSpec.groupOrder();
     BigInteger k;
     do {
-      k = new BigInteger(n.bitLength(), random);
+      k = new BigInteger(n.bitLength(), randomConfig.random());
     } while (k.compareTo(BigInteger.ONE) < 0 || k.compareTo(n) >= 0);
     return k;
   }

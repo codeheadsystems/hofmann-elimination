@@ -73,12 +73,22 @@ addressed; the rest are listed by priority.
       plugin (v12.1.1) to the root `build.gradle.kts`. Configured to scan all subprojects
       and fail the build on CVSS >= 7 (high severity). Run with `./gradlew dependencyCheckAnalyze`.
       Files: `build.gradle.kts`
+- [X] P2: **Make `OpaqueCrypto.randomBytes()` injectable** — `OpaqueCrypto.java:19`
+      uses a static `SecureRandom` instance. Unlike `OprfCipherSuite.randomScalar()`
+      which supports `withRandom()`, the nonce/key generation in `OpaqueCrypto`
+      cannot be replaced with an HSM-backed or test-deterministic source.
 
-## P1: Implement ristretto255-SHA512 OPRF Suite
+## P1: Critical
 
+- [ ] **Builder pattern for cipher suites** — `OprfCipherSuite` currently has a single constructor
+      with many parameters, which is error-prone and difficult to read. Refactor to
+      a builder pattern that allows named parameters and validation. 
+      This would improve readability and reduce the risk of parameter ordering mistakes when constructing cipher suites.
+
+## P2: Important
 - [ ] **Add ristretto255-SHA512 cipher suite** — RFC 9497 §4.4 defines a ristretto255-SHA512
-      OPRF suite that was partially implemented but not completed. See `ristretto255.md` for
-      full details, test vectors, known bugs, and a recommended debug approach.
+  OPRF suite that was partially implemented but not completed. See `ristretto255.md` for
+  full details, test vectors, known bugs, and a recommended debug approach.
 
       What is needed:
       - `ElligatorMap.java` in `rfc9380/`: field arithmetic, Elligator map, ristretto255
@@ -96,8 +106,6 @@ addressed; the rest are listed by priority.
 
       The `GroupSpec` interface is already the right extension point; `OprfCipherSuite` needs
       no structural changes beyond adding the constant and builder.
-
-## P2: Important
 
 - [ ] **Add TLS enforcement** — No HTTPS configuration exists. Add TLS config
       fields to `HofmannConfiguration` and document that production deployments
@@ -121,14 +129,6 @@ addressed; the rest are listed by priority.
       defaults to blocking cross-origin requests, but this is implicit and fragile.
       Add an explicit CORS configuration that restricts allowed origins, methods,
       and headers. In Dropwizard, add a `CrossOriginFilter` via the `FilterRegistration`.
-
-- [ ] **Make `OpaqueCrypto.randomBytes()` injectable** — `OpaqueCrypto.java:19`
-      uses a static `SecureRandom` instance. Unlike `OprfCipherSuite.randomScalar()`
-      which supports `withRandom()`, the nonce/key generation in `OpaqueCrypto`
-      cannot be replaced with an HSM-backed or test-deterministic source.
-
-      Fix: thread the `SecureRandom` from `OpaqueConfig` (or a new config field)
-      through to `OpaqueCrypto.randomBytes()`, `OpaqueCredentials`, and `OpaqueAke`.
 
 - [ ] **Constant-time scalar serialization** — `BigInteger.toByteArray()` returns
       variable-length output (adds a leading zero byte when the high bit is set).

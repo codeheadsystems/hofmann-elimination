@@ -64,7 +64,7 @@ public class OpaqueCredentials {
                                                         byte[] clientIdentity,
                                                         OpaqueConfig config) {
     return finalizeRegistrationWithNonce(state, response, serverIdentity, clientIdentity,
-        config, OpaqueCrypto.randomBytes(OpaqueConfig.Nn));
+        config, config.randomConfig().randomBytes(OpaqueConfig.Nn));
   }
 
   /**
@@ -94,7 +94,7 @@ public class OpaqueCredentials {
                                                             byte[] credentialIdentifier,
                                                             byte[] oprfSeed) {
     return createCredentialResponseWithNonce(config, request, serverPublicKey, record,
-        credentialIdentifier, oprfSeed, OpaqueCrypto.randomBytes(OpaqueConfig.Nn));
+        credentialIdentifier, oprfSeed, config.randomConfig().randomBytes(OpaqueConfig.Nn));
   }
 
   /**

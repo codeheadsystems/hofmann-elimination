@@ -7,7 +7,6 @@ import com.codeheadsystems.ellipticcurve.rfc9380.WeierstrassGroupSpecImpl;
 import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
 import org.bouncycastle.math.ec.ECPoint;
 
 /**
@@ -15,8 +14,6 @@ import org.bouncycastle.math.ec.ECPoint;
  * All suite-dependent operations accept an {@link OpaqueCipherSuite} as the first parameter.
  */
 public class OpaqueCrypto {
-
-  private static final SecureRandom RANDOM = new SecureRandom();
 
   private OpaqueCrypto() {
   }
@@ -110,15 +107,6 @@ public class OpaqueCrypto {
         "OPAQUE-DeriveDiffieHellmanKeyPair".getBytes(StandardCharsets.US_ASCII));
     byte[] pkBytes = suite.oprfSuite().groupSpec().scalarMultiplyGenerator(sk);
     return new AkeKeyPair(sk, pkBytes);
-  }
-
-  /**
-   * Generates a random byte array of the given length.
-   */
-  public static byte[] randomBytes(int len) {
-    byte[] out = new byte[len];
-    RANDOM.nextBytes(out);
-    return out;
   }
 
   // ─── Suite-independent utilities ─────────────────────────────────────────────
