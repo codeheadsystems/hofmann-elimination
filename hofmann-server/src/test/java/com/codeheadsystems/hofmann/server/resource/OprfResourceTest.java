@@ -9,8 +9,8 @@ import static org.mockito.Mockito.when;
 
 import com.codeheadsystems.hofmann.model.oprf.OprfRequest;
 import com.codeheadsystems.hofmann.model.oprf.OprfResponse;
-import com.codeheadsystems.oprf.manager.OprfServerManager;
-import com.codeheadsystems.oprf.model.EvaluatedResponse;
+import com.codeheadsystems.rfc.oprf.manager.OprfServerManager;
+import com.codeheadsystems.rfc.oprf.model.EvaluatedResponse;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.RuntimeDelegate;

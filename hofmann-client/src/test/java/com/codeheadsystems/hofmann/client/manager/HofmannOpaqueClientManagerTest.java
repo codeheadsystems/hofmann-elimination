@@ -13,6 +13,13 @@ import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
 import com.codeheadsystems.hofmann.model.opaque.AuthFinishResponse;
 import com.codeheadsystems.hofmann.model.opaque.AuthStartResponse;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartResponse;
+import com.codeheadsystems.rfc.opaque.Client;
+import com.codeheadsystems.rfc.opaque.Server;
+import com.codeheadsystems.rfc.opaque.model.ClientRegistrationState;
+import com.codeheadsystems.rfc.opaque.model.RegistrationRecord;
+import com.codeheadsystems.rfc.opaque.model.RegistrationRequest;
+import com.codeheadsystems.rfc.opaque.model.RegistrationResponse;
+import com.codeheadsystems.rfc.opaque.model.ServerKE2Result;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,7 +31,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 /**
  * Unit tests for {@link HofmannOpaqueClientManager}.
  * <p>
- * Uses the real opaque {@link com.codeheadsystems.opaque.Client} with a P-256 / identity-KSF
+ * Uses the real opaque {@link Client} with a P-256 / identity-KSF
  * test config so that all cryptographic operations execute correctly, while the
  * {@link HofmannOpaqueAccessor} HTTP layer is mocked out.
  */
@@ -48,17 +55,17 @@ class HofmannOpaqueClientManagerTest {
 
   @Test
   void register_callsAllThreeEndpoints() {
-    com.codeheadsystems.opaque.Server server =
-        com.codeheadsystems.opaque.Server.generate(CONFIG.opaqueConfig());
+    Server server =
+        Server.generate(CONFIG.opaqueConfig());
 
     // Do the full registration via manager by having the accessor mock return real server outputs
-    com.codeheadsystems.opaque.Client realClient = new com.codeheadsystems.opaque.Client(CONFIG.opaqueConfig());
-    com.codeheadsystems.opaque.model.ClientRegistrationState regState =
+    Client realClient = new Client(CONFIG.opaqueConfig());
+    ClientRegistrationState regState =
         realClient.createRegistrationRequest(PASSWORD);
 
-    com.codeheadsystems.opaque.model.RegistrationResponse regResp =
+    RegistrationResponse regResp =
         server.createRegistrationResponse(
-            new com.codeheadsystems.opaque.model.RegistrationRequest(
+            new RegistrationRequest(
                 regState.request().blindedElement()),
             CREDENTIAL_ID);
 
@@ -73,26 +80,26 @@ class HofmannOpaqueClientManagerTest {
 
   @Test
   void authenticate_successfulHandshake_returnsSessionKey() {
-    com.codeheadsystems.opaque.Server server =
-        com.codeheadsystems.opaque.Server.generate(CONFIG.opaqueConfig());
+    Server server =
+        Server.generate(CONFIG.opaqueConfig());
 
     // First do a real registration so the server has the record
-    com.codeheadsystems.opaque.Client realClient = new com.codeheadsystems.opaque.Client(CONFIG.opaqueConfig());
-    com.codeheadsystems.opaque.model.ClientRegistrationState regState =
+    Client realClient = new Client(CONFIG.opaqueConfig());
+    ClientRegistrationState regState =
         realClient.createRegistrationRequest(PASSWORD);
-    com.codeheadsystems.opaque.model.RegistrationResponse regResp =
+    RegistrationResponse regResp =
         server.createRegistrationResponse(
-            new com.codeheadsystems.opaque.model.RegistrationRequest(
+            new RegistrationRequest(
                 regState.request().blindedElement()),
             CREDENTIAL_ID);
-    com.codeheadsystems.opaque.model.RegistrationRecord record =
+    RegistrationRecord record =
         realClient.finalizeRegistration(regState, regResp, null, null);
 
     // Now set up auth: have accessor return a real KE2 from the server
     when(accessor.authStart(eq(SERVER_ID), any())).thenAnswer(inv -> {
       com.codeheadsystems.hofmann.model.opaque.AuthStartRequest req = inv.getArgument(1);
 
-      com.codeheadsystems.opaque.model.ServerKE2Result ke2Result =
+      ServerKE2Result ke2Result =
           server.generateKE2(null, record, CREDENTIAL_ID, req.ke1(), null);
 
       // Stash server auth state so we can use it in authFinish
@@ -115,19 +122,19 @@ class HofmannOpaqueClientManagerTest {
 
   @Test
   void authenticate_wrongPassword_throwsSecurityException() {
-    com.codeheadsystems.opaque.Server server =
-        com.codeheadsystems.opaque.Server.generate(CONFIG.opaqueConfig());
+    Server server =
+        Server.generate(CONFIG.opaqueConfig());
 
     // Register with the correct password
-    com.codeheadsystems.opaque.Client realClient = new com.codeheadsystems.opaque.Client(CONFIG.opaqueConfig());
-    com.codeheadsystems.opaque.model.ClientRegistrationState regState =
+    Client realClient = new Client(CONFIG.opaqueConfig());
+    ClientRegistrationState regState =
         realClient.createRegistrationRequest(PASSWORD);
-    com.codeheadsystems.opaque.model.RegistrationResponse regResp =
+    RegistrationResponse regResp =
         server.createRegistrationResponse(
-            new com.codeheadsystems.opaque.model.RegistrationRequest(
+            new RegistrationRequest(
                 regState.request().blindedElement()),
             CREDENTIAL_ID);
-    com.codeheadsystems.opaque.model.RegistrationRecord record =
+    RegistrationRecord record =
         realClient.finalizeRegistration(regState, regResp, null, null);
 
     byte[] wrongPassword = "wrong-password".getBytes(StandardCharsets.UTF_8);
@@ -135,7 +142,7 @@ class HofmannOpaqueClientManagerTest {
     // Auth start: server generates KE2 with the real record
     when(accessor.authStart(eq(SERVER_ID), any())).thenAnswer(inv -> {
       com.codeheadsystems.hofmann.model.opaque.AuthStartRequest req = inv.getArgument(1);
-      com.codeheadsystems.opaque.model.ServerKE2Result ke2Result =
+      ServerKE2Result ke2Result =
           server.generateKE2(null, record, CREDENTIAL_ID, req.ke1(), null);
       return new AuthStartResponse("session-token", ke2Result.ke2());
     });

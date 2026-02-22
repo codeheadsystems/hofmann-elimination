@@ -1,7 +1,7 @@
 package com.codeheadsystems.hofmann.client.config;
 
-import com.codeheadsystems.oprf.rfc9497.CurveHashSuite;
-import com.codeheadsystems.oprf.rfc9497.OprfCipherSuite;
+import com.codeheadsystems.rfc.oprf.rfc9497.CurveHashSuite;
+import com.codeheadsystems.rfc.oprf.rfc9497.OprfCipherSuite;
 
 public record OprfClientConfig(OprfCipherSuite suite) {
 

@@ -1,6 +1,6 @@
 package com.codeheadsystems.hofmann.model.opaque;
 
-import com.codeheadsystems.opaque.model.KE3;
+import com.codeheadsystems.rfc.opaque.model.KE3;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Base64;
 

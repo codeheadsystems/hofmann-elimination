@@ -2,9 +2,9 @@ package com.codeheadsystems.hofmann.springboot.controller;
 
 import com.codeheadsystems.hofmann.model.oprf.OprfRequest;
 import com.codeheadsystems.hofmann.model.oprf.OprfResponse;
-import com.codeheadsystems.oprf.manager.OprfServerManager;
-import com.codeheadsystems.oprf.model.BlindedRequest;
-import com.codeheadsystems.oprf.model.EvaluatedResponse;
+import com.codeheadsystems.rfc.oprf.manager.OprfServerManager;
+import com.codeheadsystems.rfc.oprf.model.BlindedRequest;
+import com.codeheadsystems.rfc.oprf.model.EvaluatedResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;

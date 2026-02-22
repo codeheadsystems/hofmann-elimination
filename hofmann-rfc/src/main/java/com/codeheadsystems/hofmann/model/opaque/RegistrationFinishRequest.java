@@ -1,7 +1,7 @@
 package com.codeheadsystems.hofmann.model.opaque;
 
-import com.codeheadsystems.opaque.model.Envelope;
-import com.codeheadsystems.opaque.model.RegistrationRecord;
+import com.codeheadsystems.rfc.opaque.model.Envelope;
+import com.codeheadsystems.rfc.opaque.model.RegistrationRecord;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Base64;
 
@@ -18,7 +18,7 @@ import java.util.Base64;
  *       {@code randomized_pwd}.  The server can store the envelope but can never
  *       decrypt it without knowing the password.</li>
  * </ol>
- * The resulting {@link com.codeheadsystems.opaque.model.RegistrationRecord} — composed of
+ * The resulting {@link RegistrationRecord} — composed of
  * the client public key, the masking key, and the envelope — is uploaded here so the server
  * can store it for future authentication attempts.
  * <p>

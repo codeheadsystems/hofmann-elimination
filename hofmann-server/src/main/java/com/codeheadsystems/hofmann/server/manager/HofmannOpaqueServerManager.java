@@ -10,10 +10,11 @@ import com.codeheadsystems.hofmann.model.opaque.RegistrationStartRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartResponse;
 import com.codeheadsystems.hofmann.server.auth.JwtManager;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
-import com.codeheadsystems.opaque.Server;
-import com.codeheadsystems.opaque.model.KE1;
-import com.codeheadsystems.opaque.model.RegistrationRecord;
-import com.codeheadsystems.opaque.model.ServerKE2Result;
+import com.codeheadsystems.rfc.opaque.Server;
+import com.codeheadsystems.rfc.opaque.model.KE1;
+import com.codeheadsystems.rfc.opaque.model.RegistrationRecord;
+import com.codeheadsystems.rfc.opaque.model.ServerAuthState;
+import com.codeheadsystems.rfc.opaque.model.ServerKE2Result;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Optional;
@@ -193,7 +194,7 @@ public class HofmannOpaqueServerManager {
   }
 
   private record TimestampedAuthState(
-      com.codeheadsystems.opaque.model.ServerAuthState state,
+      ServerAuthState state,
       Instant createdAt,
       String credentialIdentifierBase64) {
   }

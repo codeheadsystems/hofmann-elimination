@@ -8,7 +8,7 @@ import com.codeheadsystems.hofmann.client.manager.HofmannOprfClientManager;
 import com.codeheadsystems.hofmann.client.model.HofmannHashResult;
 import com.codeheadsystems.hofmann.client.model.ServerConnectionInfo;
 import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
-import com.codeheadsystems.oprf.manager.OprfClientManager;
+import com.codeheadsystems.rfc.oprf.manager.OprfClientManager;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dropwizard.testing.ResourceHelpers;
 import io.dropwizard.testing.junit5.DropwizardAppExtension;

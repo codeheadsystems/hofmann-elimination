@@ -2,7 +2,7 @@ package com.codeheadsystems.hofmann.model.oprf;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.codeheadsystems.oprf.model.EvaluatedResponse;
+import com.codeheadsystems.rfc.oprf.model.EvaluatedResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

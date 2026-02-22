@@ -2,7 +2,7 @@ package com.codeheadsystems.hofmann.model.oprf;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.codeheadsystems.oprf.model.BlindedRequest;
+import com.codeheadsystems.rfc.oprf.model.BlindedRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

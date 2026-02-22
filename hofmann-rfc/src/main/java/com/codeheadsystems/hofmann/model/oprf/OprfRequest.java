@@ -1,6 +1,6 @@
 package com.codeheadsystems.hofmann.model.oprf;
 
-import com.codeheadsystems.oprf.model.BlindedRequest;
+import com.codeheadsystems.rfc.oprf.model.BlindedRequest;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**

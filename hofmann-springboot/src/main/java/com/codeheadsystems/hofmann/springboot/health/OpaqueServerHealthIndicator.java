@@ -1,6 +1,6 @@
 package com.codeheadsystems.hofmann.springboot.health;
 
-import com.codeheadsystems.opaque.Server;
+import com.codeheadsystems.rfc.opaque.Server;
 import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.stereotype.Component;

@@ -1,7 +1,7 @@
 package com.codeheadsystems.hofmann.model.opaque;
 
-import com.codeheadsystems.opaque.model.CredentialResponse;
-import com.codeheadsystems.opaque.model.KE2;
+import com.codeheadsystems.rfc.opaque.model.CredentialResponse;
+import com.codeheadsystems.rfc.opaque.model.KE2;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Base64;
 

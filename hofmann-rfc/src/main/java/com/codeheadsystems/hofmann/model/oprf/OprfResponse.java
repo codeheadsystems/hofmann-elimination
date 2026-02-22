@@ -1,6 +1,6 @@
 package com.codeheadsystems.hofmann.model.oprf;
 
-import com.codeheadsystems.oprf.model.EvaluatedResponse;
+import com.codeheadsystems.rfc.oprf.model.EvaluatedResponse;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**

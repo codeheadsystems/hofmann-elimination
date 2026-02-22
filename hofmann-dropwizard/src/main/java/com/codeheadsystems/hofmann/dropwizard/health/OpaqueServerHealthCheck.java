@@ -1,7 +1,7 @@
 package com.codeheadsystems.hofmann.dropwizard.health;
 
 import com.codahale.metrics.health.HealthCheck;
-import com.codeheadsystems.opaque.Server;
+import com.codeheadsystems.rfc.opaque.Server;
 
 /**
  * Health check that verifies the OPAQUE server is initialized with a valid public key.

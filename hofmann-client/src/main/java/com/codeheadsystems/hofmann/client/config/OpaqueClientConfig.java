@@ -1,8 +1,8 @@
 package com.codeheadsystems.hofmann.client.config;
 
-import com.codeheadsystems.opaque.config.OpaqueCipherSuite;
-import com.codeheadsystems.opaque.config.OpaqueConfig;
-import com.codeheadsystems.oprf.RandomProvider;
+import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
+import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
+import com.codeheadsystems.rfc.oprf.RandomProvider;
 import java.nio.charset.StandardCharsets;
 
 /**

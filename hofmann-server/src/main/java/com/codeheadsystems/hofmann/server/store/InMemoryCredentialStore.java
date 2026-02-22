@@ -1,6 +1,6 @@
 package com.codeheadsystems.hofmann.server.store;
 
-import com.codeheadsystems.opaque.model.RegistrationRecord;
+import com.codeheadsystems.rfc.opaque.model.RegistrationRecord;
 import java.util.Arrays;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
