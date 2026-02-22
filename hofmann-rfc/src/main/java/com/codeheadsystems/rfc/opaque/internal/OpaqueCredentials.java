@@ -1,6 +1,6 @@
 package com.codeheadsystems.rfc.opaque.internal;
 
-import com.codeheadsystems.rfc.ellipticcurve.curve.OctetStringUtils;
+import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
 import com.codeheadsystems.rfc.opaque.internal.OpaqueEnvelope.RecoverResult;
@@ -112,15 +112,15 @@ public class OpaqueCredentials {
     byte[] evaluatedElement = OpaqueOprf.blindEvaluate(suite, oprfKey, request.blindedElement());
 
     // pad = HKDF-Expand(masking_key, masking_nonce || "CredentialResponsePad", Npk + Nn + Nm)
-    byte[] padInfo = OctetStringUtils.concat(
+    byte[] padInfo = ByteUtils.concat(
         maskingNonce,
         "CredentialResponsePad".getBytes(StandardCharsets.US_ASCII)
     );
     byte[] pad = OpaqueCrypto.hkdfExpand(suite, record.maskingKey(), padInfo, config.maskedResponseSize());
 
     // plaintext = server_public_key || envelope_nonce || auth_tag
-    byte[] plaintext = OctetStringUtils.concat(serverPublicKey, record.envelope().serialize());
-    byte[] maskedResponse = OpaqueCrypto.xor(pad, plaintext);
+    byte[] plaintext = ByteUtils.concat(serverPublicKey, record.envelope().serialize());
+    byte[] maskedResponse = ByteUtils.xor(pad, plaintext);
 
     return new CredentialResponse(evaluatedElement, maskingNonce, maskedResponse);
   }
@@ -141,12 +141,12 @@ public class OpaqueCredentials {
         "MaskingKey".getBytes(StandardCharsets.US_ASCII), config.Nh());
 
     // Unmask: pad = HKDF-Expand(masking_key, masking_nonce || "CredentialResponsePad", ...)
-    byte[] padInfo = OctetStringUtils.concat(
+    byte[] padInfo = ByteUtils.concat(
         response.maskingNonce(),
         "CredentialResponsePad".getBytes(StandardCharsets.US_ASCII)
     );
     byte[] pad = OpaqueCrypto.hkdfExpand(suite, maskingKey, padInfo, config.maskedResponseSize());
-    byte[] plaintext = OpaqueCrypto.xor(pad, response.maskedResponse());
+    byte[] plaintext = ByteUtils.xor(pad, response.maskedResponse());
 
     // Extract server_public_key || envelope
     byte[] serverPublicKey = new byte[config.Npk()];
@@ -164,6 +164,6 @@ public class OpaqueCredentials {
     byte[] oprfOutput = OpaqueOprf.finalize(config.cipherSuite(), password, blind, evaluatedElement);
     byte[] stretchedOutput = config.ksf().stretch(oprfOutput, config);
     return OpaqueCrypto.hkdfExtract(config.cipherSuite(), new byte[0],
-        OctetStringUtils.concat(oprfOutput, stretchedOutput));
+        ByteUtils.concat(oprfOutput, stretchedOutput));
   }
 }

@@ -1,4 +1,4 @@
-package com.codeheadsystems.rfc.oprf;
+package com.codeheadsystems.rfc.common;
 
 import com.codeheadsystems.rfc.oprf.rfc9497.OprfCipherSuite;
 import java.security.SecureRandom;

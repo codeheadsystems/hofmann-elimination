@@ -2,7 +2,7 @@ package com.codeheadsystems.rfc.opaque;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.codeheadsystems.rfc.ellipticcurve.curve.OctetStringUtils;
+import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
 import com.codeheadsystems.rfc.opaque.internal.OpaqueCredentials;
 import com.codeheadsystems.rfc.opaque.model.AuthResult;
@@ -114,7 +114,7 @@ class OpaqueVectorsTest {
    * Serialize KE2: credentialResponse || serverNonce || serverAkePk || serverMac
    */
   private static byte[] concatKE2(KE2 ke2) {
-    return OctetStringUtils.concat(
+    return ByteUtils.concat(
         ke2.serializeCredentialResponse(),
         ke2.serverNonce(),
         ke2.serverAkePublicKey(),
@@ -139,7 +139,7 @@ class OpaqueVectorsTest {
     RegistrationResponse response = server.createRegistrationResponse(state.request(), CREDENTIAL_IDENTIFIER);
 
     // registration_response = evaluatedElement || serverPublicKey
-    byte[] expected = OctetStringUtils.concat(response.evaluatedElement(), response.serverPublicKey());
+    byte[] expected = ByteUtils.concat(response.evaluatedElement(), response.serverPublicKey());
     assertThat(expected).isEqualTo(EXPECTED_REGISTRATION_RESPONSE);
   }
 
@@ -154,7 +154,7 @@ class OpaqueVectorsTest {
         regState, response, null, null, ENVELOPE_NONCE);
 
     // registration_upload = clientPublicKey || maskingKey || envelope_nonce || auth_tag
-    byte[] actual = OctetStringUtils.concat(record.clientPublicKey(), record.maskingKey(), record.envelope().serialize());
+    byte[] actual = ByteUtils.concat(record.clientPublicKey(), record.maskingKey(), record.envelope().serialize());
     assertThat(actual).isEqualTo(EXPECTED_REGISTRATION_UPLOAD);
   }
 
@@ -265,7 +265,7 @@ class OpaqueVectorsTest {
     RegistrationRecord record = client.finalizeRegistrationDeterministic(
         regState, response, SERVER_IDENTITY, CLIENT_IDENTITY, ENVELOPE_NONCE);
 
-    byte[] actual = OctetStringUtils.concat(record.clientPublicKey(), record.maskingKey(), record.envelope().serialize());
+    byte[] actual = ByteUtils.concat(record.clientPublicKey(), record.maskingKey(), record.envelope().serialize());
     assertThat(actual).isEqualTo(EXPECTED_REGISTRATION_UPLOAD_V2);
   }
 

@@ -1,9 +1,9 @@
 package com.codeheadsystems.rfc.opaque.internal;
 
-import static com.codeheadsystems.rfc.ellipticcurve.curve.OctetStringUtils.concat;
+import static com.codeheadsystems.rfc.common.ByteUtils.concat;
 
-import com.codeheadsystems.rfc.ellipticcurve.curve.OctetStringUtils;
-import com.codeheadsystems.rfc.ellipticcurve.rfc9380.WeierstrassGroupSpecImpl;
+import com.codeheadsystems.rfc.common.ByteUtils;
+import com.codeheadsystems.rfc.ellipticcurve.rfc9380.GroupSpec;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -58,10 +58,10 @@ public class OpaqueCrypto {
     byte[] prefix = "OPAQUE-".getBytes(StandardCharsets.US_ASCII);
     byte[] fullLabel = concat(prefix, label);
     byte[] info = concat(
-        OctetStringUtils.I2OSP(length, 2),
-        OctetStringUtils.I2OSP(fullLabel.length, 1),
+        ByteUtils.I2OSP(length, 2),
+        ByteUtils.I2OSP(fullLabel.length, 1),
         fullLabel,
-        OctetStringUtils.I2OSP(context.length, 1),
+        ByteUtils.I2OSP(context.length, 1),
         context
     );
     return hkdfExpand(suite, secret, info, length);
@@ -95,7 +95,7 @@ public class OpaqueCrypto {
    * invalid-curve and small-subgroup attacks on DH computations.
    */
   public static ECPoint deserializePoint(OpaqueCipherSuite suite, byte[] bytes) {
-    WeierstrassGroupSpecImpl wgs = (WeierstrassGroupSpecImpl) suite.oprfSuite().groupSpec();
+    GroupSpec wgs = suite.oprfSuite().groupSpec();
     return wgs.deserializePoint(bytes);
   }
 
@@ -123,20 +123,6 @@ public class OpaqueCrypto {
    */
   public static BigInteger scalarFromBytes(byte[] bytes) {
     return new BigInteger(1, bytes);
-  }
-
-  /**
-   * XOR two byte arrays of equal length.
-   */
-  public static byte[] xor(byte[] a, byte[] b) {
-    if (a.length != b.length) {
-      throw new IllegalArgumentException("XOR arrays must have equal length: " + a.length + " vs " + b.length);
-    }
-    byte[] out = new byte[a.length];
-    for (int i = 0; i < a.length; i++) {
-      out[i] = (byte) (a[i] ^ b[i]);
-    }
-    return out;
   }
 
   /**

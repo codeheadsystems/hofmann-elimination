@@ -1,6 +1,6 @@
 package com.codeheadsystems.rfc.opaque.model;
 
-import com.codeheadsystems.rfc.ellipticcurve.curve.OctetStringUtils;
+import com.codeheadsystems.rfc.common.ByteUtils;
 
 /**
  * Cleartext credentials included in HMAC computation during envelope construction/recovery.
@@ -25,8 +25,8 @@ public record CleartextCredentials(byte[] serverPublicKey, byte[] serverIdentity
    * || I2OSP(len(clientIdentity),2) || clientIdentity
    */
   public byte[] serialize() {
-    byte[] sIdLen = OctetStringUtils.I2OSP(serverIdentity.length, 2);
-    byte[] cIdLen = OctetStringUtils.I2OSP(clientIdentity.length, 2);
+    byte[] sIdLen = ByteUtils.I2OSP(serverIdentity.length, 2);
+    byte[] cIdLen = ByteUtils.I2OSP(clientIdentity.length, 2);
     byte[] out = new byte[serverPublicKey.length + 2 + serverIdentity.length + 2 + clientIdentity.length];
     int off = 0;
     System.arraycopy(serverPublicKey, 0, out, off, serverPublicKey.length);

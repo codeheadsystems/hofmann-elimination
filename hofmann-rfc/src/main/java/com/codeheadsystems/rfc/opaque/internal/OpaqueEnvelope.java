@@ -1,6 +1,6 @@
 package com.codeheadsystems.rfc.opaque.internal;
 
-import com.codeheadsystems.rfc.ellipticcurve.curve.OctetStringUtils;
+import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
 import com.codeheadsystems.rfc.opaque.model.CleartextCredentials;
@@ -36,11 +36,11 @@ public class OpaqueEnvelope {
     byte[] maskingKey = expand(suite, randomizedPwd,
         "MaskingKey".getBytes(StandardCharsets.US_ASCII), config.Nh());
     byte[] authKey = expand(suite, randomizedPwd,
-        OctetStringUtils.concat(envelopeNonce, "AuthKey".getBytes(StandardCharsets.US_ASCII)), config.Nh());
+        ByteUtils.concat(envelopeNonce, "AuthKey".getBytes(StandardCharsets.US_ASCII)), config.Nh());
     byte[] exportKey = expand(suite, randomizedPwd,
-        OctetStringUtils.concat(envelopeNonce, "ExportKey".getBytes(StandardCharsets.US_ASCII)), config.Nh());
+        ByteUtils.concat(envelopeNonce, "ExportKey".getBytes(StandardCharsets.US_ASCII)), config.Nh());
     byte[] seed = expand(suite, randomizedPwd,
-        OctetStringUtils.concat(envelopeNonce, "PrivateKey".getBytes(StandardCharsets.US_ASCII)), config.Nsk());
+        ByteUtils.concat(envelopeNonce, "PrivateKey".getBytes(StandardCharsets.US_ASCII)), config.Nsk());
 
     OpaqueCrypto.AkeKeyPair keyPair = OpaqueCrypto.deriveAkeKeyPair(suite, seed);
     byte[] clientPublicKey = keyPair.publicKeyBytes();
@@ -48,7 +48,7 @@ public class OpaqueEnvelope {
     CleartextCredentials cleartext = CleartextCredentials.create(
         serverPublicKey, clientPublicKey, serverIdentity, clientIdentity);
 
-    byte[] authInput = OctetStringUtils.concat(envelopeNonce, cleartext.serialize());
+    byte[] authInput = ByteUtils.concat(envelopeNonce, cleartext.serialize());
     byte[] authTag = OpaqueCrypto.hmac(suite, authKey, authInput);
 
     Envelope envelope = new Envelope(envelopeNonce, authTag);
@@ -66,11 +66,11 @@ public class OpaqueEnvelope {
     OpaqueCipherSuite suite = config.cipherSuite();
     byte[] nonce = envelope.envelopeNonce();
     byte[] authKey = expand(suite, randomizedPwd,
-        OctetStringUtils.concat(nonce, "AuthKey".getBytes(StandardCharsets.US_ASCII)), config.Nh());
+        ByteUtils.concat(nonce, "AuthKey".getBytes(StandardCharsets.US_ASCII)), config.Nh());
     byte[] exportKey = expand(suite, randomizedPwd,
-        OctetStringUtils.concat(nonce, "ExportKey".getBytes(StandardCharsets.US_ASCII)), config.Nh());
+        ByteUtils.concat(nonce, "ExportKey".getBytes(StandardCharsets.US_ASCII)), config.Nh());
     byte[] seed = expand(suite, randomizedPwd,
-        OctetStringUtils.concat(nonce, "PrivateKey".getBytes(StandardCharsets.US_ASCII)), config.Nsk());
+        ByteUtils.concat(nonce, "PrivateKey".getBytes(StandardCharsets.US_ASCII)), config.Nsk());
 
     OpaqueCrypto.AkeKeyPair keyPair = OpaqueCrypto.deriveAkeKeyPair(suite, seed);
     BigInteger clientSk = keyPair.privateKey();
@@ -79,7 +79,7 @@ public class OpaqueEnvelope {
     CleartextCredentials cleartext = CleartextCredentials.create(
         serverPublicKey, clientPublicKey, serverIdentity, clientIdentity);
 
-    byte[] authInput = OctetStringUtils.concat(nonce, cleartext.serialize());
+    byte[] authInput = ByteUtils.concat(nonce, cleartext.serialize());
     byte[] expectedTag = OpaqueCrypto.hmac(suite, authKey, authInput);
 
     // Security: constant-time comparison prevents timing side-channel attacks on MAC verification

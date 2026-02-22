@@ -1,6 +1,6 @@
 package com.codeheadsystems.rfc.ellipticcurve.rfc9380;
 
-import com.codeheadsystems.rfc.ellipticcurve.curve.OctetStringUtils;
+import com.codeheadsystems.rfc.common.ByteUtils;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -79,7 +79,7 @@ public class ExpandMessageXmd {
       byte[] zPad = new byte[rInBytes];
 
       // l_i_b_str = I2OSP(len_in_bytes, 2)
-      byte[] libStr = OctetStringUtils.I2OSP(lenInBytes, 2);
+      byte[] libStr = ByteUtils.I2OSP(lenInBytes, 2);
 
       // msg_prime = Z_pad || msg || l_i_b_str || I2OSP(0, 1) || DST_prime
       byte[] msgPrime = ByteBuffer.allocate(rInBytes + msg.length + 2 + 1 + dstPrime.length)

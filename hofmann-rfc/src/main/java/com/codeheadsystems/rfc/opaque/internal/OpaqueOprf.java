@@ -1,6 +1,6 @@
 package com.codeheadsystems.rfc.opaque.internal;
 
-import com.codeheadsystems.rfc.ellipticcurve.curve.OctetStringUtils;
+import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -61,7 +61,7 @@ public class OpaqueOprf {
    * @return OPRF private key scalar
    */
   public static BigInteger deriveOprfKey(OpaqueCipherSuite suite, byte[] oprfSeed, byte[] credentialIdentifier) {
-    byte[] info = OctetStringUtils.concat(
+    byte[] info = ByteUtils.concat(
         credentialIdentifier,
         "OprfKey".getBytes(StandardCharsets.US_ASCII)
     );

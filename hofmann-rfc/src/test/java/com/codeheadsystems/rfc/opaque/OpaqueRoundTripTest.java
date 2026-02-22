@@ -16,7 +16,7 @@ import com.codeheadsystems.rfc.opaque.model.RegistrationRecord;
 import com.codeheadsystems.rfc.opaque.model.RegistrationResponse;
 import com.codeheadsystems.rfc.opaque.model.ServerAuthState;
 import com.codeheadsystems.rfc.opaque.model.ServerKE2Result;
-import com.codeheadsystems.rfc.oprf.RandomProvider;
+import com.codeheadsystems.rfc.common.RandomProvider;
 import java.nio.charset.StandardCharsets;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;

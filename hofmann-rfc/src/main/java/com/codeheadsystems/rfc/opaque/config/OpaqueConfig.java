@@ -1,6 +1,6 @@
 package com.codeheadsystems.rfc.opaque.config;
 
-import com.codeheadsystems.rfc.oprf.RandomProvider;
+import com.codeheadsystems.rfc.common.RandomProvider;
 import java.nio.charset.StandardCharsets;
 import org.bouncycastle.crypto.generators.Argon2BytesGenerator;
 import org.bouncycastle.crypto.params.Argon2Parameters;

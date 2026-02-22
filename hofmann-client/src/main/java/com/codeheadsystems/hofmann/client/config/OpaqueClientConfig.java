@@ -2,7 +2,7 @@ package com.codeheadsystems.hofmann.client.config;
 
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
-import com.codeheadsystems.rfc.oprf.RandomProvider;
+import com.codeheadsystems.rfc.common.RandomProvider;
 import java.nio.charset.StandardCharsets;
 
 /**

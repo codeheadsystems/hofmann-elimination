@@ -1,6 +1,6 @@
 package com.codeheadsystems.rfc.opaque.internal;
 
-import com.codeheadsystems.rfc.ellipticcurve.curve.OctetStringUtils;
+import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
 import com.codeheadsystems.rfc.opaque.internal.OpaqueEnvelope.RecoverResult;
@@ -37,7 +37,7 @@ public class OpaqueAke {
                                      byte[] serverIdentity, CredentialResponse credentialResponse,
                                      byte[] serverNonce, byte[] serverAkePublicKey) {
     byte[] prefix = "OPAQUEv1-".getBytes(StandardCharsets.US_ASCII);
-    return OctetStringUtils.concat(
+    return ByteUtils.concat(
         prefix,
         encodeVector(context),
         encodeVector(clientIdentity),
@@ -129,12 +129,12 @@ public class OpaqueAke {
     byte[] dh1 = OpaqueCrypto.dhECDH(suite, serverAkeSk, clientAkePk);
     byte[] dh2 = OpaqueCrypto.dhECDH(suite, serverPrivateKey, clientAkePk);
     byte[] dh3 = OpaqueCrypto.dhECDH(suite, serverAkeSk, clientLongTermPk);
-    byte[] ikm = OctetStringUtils.concat(dh1, dh2, dh3);
+    byte[] ikm = ByteUtils.concat(dh1, dh2, dh3);
 
     DerivedKeys keys = deriveKeys(config, ikm, preamble);
     byte[] serverMac = OpaqueCrypto.hmac(suite, keys.km2(), preambleHash);
     byte[] expectedClientMac = OpaqueCrypto.hmac(suite, keys.km3(),
-        OpaqueCrypto.hash(suite, OctetStringUtils.concat(preamble, serverMac)));
+        OpaqueCrypto.hash(suite, ByteUtils.concat(preamble, serverMac)));
 
     ServerAuthState authState = new ServerAuthState(expectedClientMac, keys.sessionKey());
     KE2 ke2 = new KE2(credResponse, serverNonce, serverAkePk, serverMac);
@@ -178,7 +178,7 @@ public class OpaqueAke {
     byte[] dh1 = OpaqueCrypto.dhECDH(suite, state.clientAkePrivateKey(), serverAkePk);
     byte[] dh2 = OpaqueCrypto.dhECDH(suite, state.clientAkePrivateKey(), serverLongTermPk);
     byte[] dh3 = OpaqueCrypto.dhECDH(suite, clientSk, serverAkePk);
-    byte[] ikm = OctetStringUtils.concat(dh1, dh2, dh3);
+    byte[] ikm = ByteUtils.concat(dh1, dh2, dh3);
 
     DerivedKeys keys = deriveKeys(config, ikm, preamble);
 
@@ -189,17 +189,17 @@ public class OpaqueAke {
     }
 
     byte[] clientMac = OpaqueCrypto.hmac(suite, keys.km3(),
-        OpaqueCrypto.hash(suite, OctetStringUtils.concat(preamble, ke2.serverMac())));
+        OpaqueCrypto.hash(suite, ByteUtils.concat(preamble, ke2.serverMac())));
 
     return new AuthResult(new KE3(clientMac), keys.sessionKey(), recovered.exportKey());
   }
 
   private static byte[] encodeVector(byte[] data) {
-    return OctetStringUtils.concat(OctetStringUtils.I2OSP(data.length, 2), data);
+    return ByteUtils.concat(ByteUtils.I2OSP(data.length, 2), data);
   }
 
   private static byte[] serializeCredentialResponse(CredentialResponse cr) {
-    return OctetStringUtils.concat(cr.evaluatedElement(), cr.maskingNonce(), cr.maskedResponse());
+    return ByteUtils.concat(cr.evaluatedElement(), cr.maskingNonce(), cr.maskedResponse());
   }
 
   private record DerivedKeys(byte[] km2, byte[] km3, byte[] sessionKey) {

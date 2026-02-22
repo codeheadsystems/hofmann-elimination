@@ -1,9 +1,9 @@
 package com.codeheadsystems.rfc.oprf.rfc9497;
 
-import com.codeheadsystems.rfc.ellipticcurve.curve.OctetStringUtils;
+import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.ellipticcurve.rfc9380.GroupSpec;
 import com.codeheadsystems.rfc.ellipticcurve.rfc9380.WeierstrassGroupSpecImpl;
-import com.codeheadsystems.rfc.oprf.RandomProvider;
+import com.codeheadsystems.rfc.common.RandomProvider;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -57,11 +57,11 @@ public class OprfCipherSuite {
                           RandomProvider randomProvider) {
     this.identifier = identifier;
     this.contextString = buildContextString(contextSuffix);
-    this.hashToGroupDst = OctetStringUtils.concat(
+    this.hashToGroupDst = ByteUtils.concat(
         "HashToGroup-".getBytes(StandardCharsets.UTF_8), this.contextString);
-    this.hashToScalarDst = OctetStringUtils.concat(
+    this.hashToScalarDst = ByteUtils.concat(
         "HashToScalar-".getBytes(StandardCharsets.UTF_8), this.contextString);
-    this.deriveKeyPairDst = OctetStringUtils.concat(
+    this.deriveKeyPairDst = ByteUtils.concat(
         "DeriveKeyPair".getBytes(StandardCharsets.UTF_8), this.contextString);
     this.groupSpec = groupSpec;
     this.hashAlgorithm = hashAlgorithm;
@@ -71,7 +71,7 @@ public class OprfCipherSuite {
 
   private static byte[] buildContextString(String suffix) {
     // "OPRFV1-" + 0x00 + "-" + suffix
-    return OctetStringUtils.concat(
+    return ByteUtils.concat(
         "OPRFV1-".getBytes(StandardCharsets.UTF_8),
         new byte[]{0x00},
         ("-" + suffix).getBytes(StandardCharsets.UTF_8)
@@ -185,7 +185,7 @@ public class OprfCipherSuite {
    * @return skS — the derived private key scalar
    */
   public BigInteger deriveKeyPair(byte[] seed, byte[] info) {
-    byte[] deriveInput = OctetStringUtils.concat(seed, OctetStringUtils.I2OSP(info.length, 2), info);
+    byte[] deriveInput = ByteUtils.concat(seed, ByteUtils.I2OSP(info.length, 2), info);
 
     int counter = 0;
     BigInteger skS = BigInteger.ZERO;
@@ -193,7 +193,7 @@ public class OprfCipherSuite {
       if (counter > 255) {
         throw new RuntimeException("DeriveKeyPair: exceeded counter limit");
       }
-      byte[] counterInput = OctetStringUtils.concat(deriveInput, OctetStringUtils.I2OSP(counter, 1));
+      byte[] counterInput = ByteUtils.concat(deriveInput, ByteUtils.I2OSP(counter, 1));
       skS = hashToScalar(counterInput, deriveKeyPairDst);
       counter++;
     }
@@ -221,10 +221,10 @@ public class OprfCipherSuite {
     byte[] unblindedElement = groupSpec.scalarMultiply(inverseBlind, evaluatedElement);
 
     byte[] finalizeLabel = "Finalize".getBytes(StandardCharsets.UTF_8);
-    byte[] hashInput = OctetStringUtils.concat(
-        OctetStringUtils.I2OSP(input.length, 2),
+    byte[] hashInput = ByteUtils.concat(
+        ByteUtils.I2OSP(input.length, 2),
         input,
-        OctetStringUtils.I2OSP(unblindedElement.length, 2),
+        ByteUtils.I2OSP(unblindedElement.length, 2),
         unblindedElement,
         finalizeLabel
     );

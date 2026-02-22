@@ -1,11 +1,11 @@
-package com.codeheadsystems.rfc.ellipticcurve.curve;
+package com.codeheadsystems.rfc.common;
 
 /**
  * Utility methods for octet string encoding and EC point serialization.
  */
-public class OctetStringUtils {
+public class ByteUtils {
 
-  private OctetStringUtils() {
+  private ByteUtils() {
   }
 
   /**
@@ -41,4 +41,17 @@ public class OctetStringUtils {
     return result;
   }
 
+  /**
+   * XOR two byte arrays of equal length.
+   */
+  public static byte[] xor(byte[] a, byte[] b) {
+    if (a.length != b.length) {
+      throw new IllegalArgumentException("XOR arrays must have equal length: " + a.length + " vs " + b.length);
+    }
+    byte[] out = new byte[a.length];
+    for (int i = 0; i < a.length; i++) {
+      out[i] = (byte) (a[i] ^ b[i]);
+    }
+    return out;
+  }
 }
