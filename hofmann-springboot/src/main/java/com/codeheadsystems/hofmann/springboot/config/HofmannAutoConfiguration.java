@@ -125,7 +125,7 @@ public class HofmannAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   public JwtManager jwtManager(HofmannProperties props, SessionStore sessionStore,
-      SecureRandom secureRandom) {
+                               SecureRandom secureRandom) {
     String secretHex = props.getJwtSecretHex();
     byte[] secret;
     if (secretHex == null || secretHex.isEmpty()) {
@@ -139,7 +139,7 @@ public class HofmannAutoConfiguration {
     return new JwtManager(secret, props.getJwtIssuer(), props.getJwtTtlSeconds(), sessionStore);
   }
 
-  @Bean
+  @Bean(destroyMethod = "shutdown")
   @ConditionalOnMissingBean
   public HofmannOpaqueServerManager opaqueServerManager(Server server, CredentialStore credentialStore,
                                                         JwtManager jwtManager) {
@@ -178,7 +178,7 @@ public class HofmannAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   public OprfServerManager oprfServerManager(HofmannProperties props, SecureRandom secureRandom,
-      Supplier<ServerProcessorDetail> serverProcessorDetailSupplier) {
+                                             Supplier<ServerProcessorDetail> serverProcessorDetailSupplier) {
     OprfCipherSuite oprfSuite = OprfCipherSuite.fromName(props.getOprfCipherSuite())
         .withRandom(secureRandom);
     return new OprfServerManager(oprfSuite, serverProcessorDetailSupplier);

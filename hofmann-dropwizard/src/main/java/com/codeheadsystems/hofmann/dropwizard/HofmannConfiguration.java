@@ -104,6 +104,15 @@ public class HofmannConfiguration extends Configuration {
   @Min(1)
   private int argon2Parallelism = 1;
 
+  /**
+   * Maximum allowed request body size in bytes.  Requests with a {@code Content-Length}
+   * header exceeding this value are rejected with HTTP 413 before the body is read.
+   * Defaults to 65536 (64 KiB) — well above the largest OPAQUE/OPRF message
+   * but small enough to block large-payload DoS attempts.
+   */
+  @Min(1)
+  private long maxRequestBodyBytes = 65536;
+
   @JsonProperty
   public String getOpaqueCipherSuite() {
     return opaqueCipherSuite;
@@ -232,5 +241,15 @@ public class HofmannConfiguration extends Configuration {
   @JsonProperty
   public void setOprfProcessorId(String oprfProcessorId) {
     this.oprfProcessorId = oprfProcessorId;
+  }
+
+  @JsonProperty
+  public long getMaxRequestBodyBytes() {
+    return maxRequestBodyBytes;
+  }
+
+  @JsonProperty
+  public void setMaxRequestBodyBytes(long maxRequestBodyBytes) {
+    this.maxRequestBodyBytes = maxRequestBodyBytes;
   }
 }

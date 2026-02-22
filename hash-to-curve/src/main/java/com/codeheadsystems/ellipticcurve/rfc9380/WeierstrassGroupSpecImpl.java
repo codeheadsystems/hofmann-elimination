@@ -129,9 +129,19 @@ public record WeierstrassGroupSpecImpl(
   }
 
   /**
-   * Deserializes a compressed SEC1 byte array to an EC point.
-   * Validates the point is on the curve and not the identity element to prevent
-   * invalid-curve and small-subgroup attacks.
+   * Deserializes a compressed SEC1 byte array to an EC point, with full validation.
+   *
+   * <p>Checks performed:
+   * <ol>
+   *   <li><b>Non-identity</b> — rejects the point at infinity.</li>
+   *   <li><b>On-curve</b> — rejects points that do not satisfy the curve equation.</li>
+   *   <li><b>Prime-order subgroup</b> — for curves with cofactor h&gt;1, verifies that
+   *       {@code n·P = O} where {@code n} is the group order. For all currently supported
+   *       curves (P-256, P-384, P-521, secp256k1) the cofactor {@code h=1}, which means
+   *       every non-identity on-curve point is automatically in the prime-order subgroup
+   *       and this check is a no-op. The guard is retained for defense-in-depth should a
+   *       cofactor&gt;1 curve be added in the future.</li>
+   * </ol>
    */
   public ECPoint deserializePoint(byte[] bytes) {
     ECPoint p = curve.params().getCurve().decodePoint(bytes);
@@ -139,7 +149,13 @@ public record WeierstrassGroupSpecImpl(
       throw new SecurityException("Invalid EC point: identity element not allowed");
     }
     if (!p.isValid()) {
-      throw new SecurityException("Invalid EC point: not on curve or wrong subgroup");
+      throw new SecurityException("Invalid EC point: not on curve");
+    }
+    // For h=1 curves (P-256, P-384, P-521, secp256k1) every non-identity curve point is
+    // in the prime-order subgroup — the check below is skipped at no security cost.
+    // For h>1 curves we verify n·P = O explicitly.
+    if (!curve.h().equals(BigInteger.ONE) && !p.multiply(curve.n()).isInfinity()) {
+      throw new SecurityException("Invalid EC point: not in prime-order subgroup");
     }
     return p;
   }

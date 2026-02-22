@@ -59,6 +59,17 @@ public record RegistrationFinishRequest(
         B64.encodeToString(record.envelope().authTag()));
   }
 
+  private static byte[] decode(String value, String fieldName) {
+    if (value == null || value.isBlank()) {
+      throw new IllegalArgumentException("Missing required field: " + fieldName);
+    }
+    try {
+      return B64D.decode(value);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("Invalid base64 in field: " + fieldName, e);
+    }
+  }
+
   public byte[] credentialIdentifier() {
     return decode(credentialIdentifierBase64, "credentialIdentifier");
   }
@@ -69,16 +80,5 @@ public record RegistrationFinishRequest(
         decode(maskingKeyBase64, "maskingKey"),
         new Envelope(decode(envelopeNonceBase64, "envelopeNonce"),
             decode(authTagBase64, "authTag")));
-  }
-
-  private static byte[] decode(String value, String fieldName) {
-    if (value == null || value.isBlank()) {
-      throw new IllegalArgumentException("Missing required field: " + fieldName);
-    }
-    try {
-      return B64D.decode(value);
-    } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException("Invalid base64 in field: " + fieldName, e);
-    }
   }
 }

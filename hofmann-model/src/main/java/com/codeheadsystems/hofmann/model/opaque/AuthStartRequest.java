@@ -47,17 +47,6 @@ public record AuthStartRequest(
         B64.encodeToString(ke1.clientAkePublicKey()));
   }
 
-  public byte[] credentialIdentifier() {
-    return decode(credentialIdentifierBase64, "credentialIdentifier");
-  }
-
-  public KE1 ke1() {
-    return new KE1(
-        new CredentialRequest(decode(blindedElementBase64, "blindedElement")),
-        decode(clientNonceBase64, "clientNonce"),
-        decode(clientAkePublicKeyBase64, "clientAkePublicKey"));
-  }
-
   private static byte[] decode(String value, String fieldName) {
     if (value == null || value.isBlank()) {
       throw new IllegalArgumentException("Missing required field: " + fieldName);
@@ -67,5 +56,16 @@ public record AuthStartRequest(
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException("Invalid base64 in field: " + fieldName, e);
     }
+  }
+
+  public byte[] credentialIdentifier() {
+    return decode(credentialIdentifierBase64, "credentialIdentifier");
+  }
+
+  public KE1 ke1() {
+    return new KE1(
+        new CredentialRequest(decode(blindedElementBase64, "blindedElement")),
+        decode(clientNonceBase64, "clientNonce"),
+        decode(clientAkePublicKeyBase64, "clientAkePublicKey"));
   }
 }

@@ -54,20 +54,25 @@ addressed; the rest are listed by priority.
       Add bearer token, API key, or mutual TLS authentication. At minimum, the
       `DELETE /opaque/registration` and OPRF endpoints need access control.
 
-- [ ] **Implement key material cleanup** — `ClientAuthState` and
-      `ClientRegistrationState` records hold plaintext `password`, `blind`, and
-      `clientAkePrivateKey` with no zeroing after use. Consider implementing
-      `AutoCloseable` with `Arrays.fill(0)` cleanup, or switching to a mutable
-      holder that can be wiped.
+- [x] **Implement key material cleanup** — `ClientAuthState` and `ClientRegistrationState`
+      now implement `AutoCloseable`; `close()` zeros the `password` byte array via
+      `Arrays.fill`. `BigInteger` fields (`blind`, `clientAkePrivateKey`) are immutable
+      and cannot be zeroed at the Java level.
       Files: `opaque/model/ClientAuthState.java`, `ClientRegistrationState.java`
 
-- [ ] **Shut down sessionReaper on app shutdown** — The `ScheduledExecutorService`
-      in `OpaqueResource` is never shut down. Register it with Dropwizard's
-      `Managed` lifecycle or add a `@PreDestroy` hook.
-      File: `hofmann-server/resource/OpaqueResource.java`
+- [x] **Shut down sessionReaper on app shutdown** — Added `HofmannOpaqueServerManager.shutdown()`
+      which calls `sessionReaper.shutdown()`. `HofmannBundle` registers a Dropwizard `Managed`
+      lifecycle component that calls it on stop. `HofmannAutoConfiguration` declares the bean
+      with `@Bean(destroyMethod = "shutdown")` for Spring Boot.
+      Files: `hofmann-server/manager/HofmannOpaqueServerManager.java`,
+             `hofmann-dropwizard/HofmannBundle.java`,
+             `hofmann-springboot/config/HofmannAutoConfiguration.java`
 
-- [ ] **Add request size limits** — No `Content-Length` limit on incoming requests.
-      Configure max request body size in Dropwizard to prevent large-payload DoS.
+- [x] **Add request size limits** — Added `maxRequestBodyBytes` field to
+      `HofmannConfiguration` (default 65536 bytes / 64 KiB). `HofmannBundle` registers
+      a JAX-RS `ContainerRequestFilter` that checks `Content-Length` and returns HTTP 413
+      if the header exceeds the configured limit.
+      Files: `hofmann-dropwizard/HofmannConfiguration.java`, `HofmannBundle.java`
 
 - [ ] **Add rate limiting** — No rate limiting on any endpoint. Add per-IP or
       per-credential rate limits, especially on `/auth/start` and the OPRF
@@ -75,18 +80,20 @@ addressed; the rest are listed by priority.
 
 ## P3: Good to have
 
-- [ ] **Constant-time modular inverse** — `OprfCipherSuite.java:166` uses
-      `BigInteger.modInverse()` which is not constant-time. Consider replacing
-      with Fermat inversion (`blind.modPow(n.subtract(TWO), n)`) for
-      constant-time behavior.
+- [x] **Constant-time modular inverse** — `OprfCipherSuite.finalize()` now uses
+      Fermat inversion `blind.modPow(n-2, n)` instead of `BigInteger.modInverse()`.
+      `modPow` with a fixed-length exponent (n-2 has the same bit-length as n) is
+      significantly more constant-time than the Extended Euclidean Algorithm.
 
 - [ ] **Secrets manager integration** — `HofmannConfiguration` stores
       `serverKeySeedHex`, `oprfSeedHex`, `oprfMasterKeyHex` in plaintext YAML.
       Add support for environment variable substitution or a secrets manager.
 
-- [ ] **Subgroup membership checks** — EC points are validated for on-curve and
-      non-identity but not for prime-order subgroup membership. For P-256/P-384/P-521
-      (cofactor 1) this is not exploitable, but documenting the assumption is prudent.
+- [x] **Subgroup membership checks** — `WeierstrassGroupSpecImpl.deserializePoint()`
+      now documents the cofactor-1 assumption explicitly. For P-256/P-384/P-521/secp256k1
+      (h=1) every non-identity on-curve point is automatically in the prime-order subgroup.
+      A guarded runtime check (`n·P = O`) is included for defense-in-depth should a
+      cofactor>1 curve be added in the future.
 
 - [ ] **Production KSF enforcement** — The identity KSF is correctly flagged for
       test use only. Consider adding a runtime check that rejects identity KSF

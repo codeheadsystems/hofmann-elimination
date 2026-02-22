@@ -26,23 +26,6 @@ public class OprfCipherSuite {
   public static final OprfCipherSuite P256_SHA256 = buildP256Sha256();
   public static final OprfCipherSuite P384_SHA384 = buildP384Sha384();
   public static final OprfCipherSuite P521_SHA512 = buildP521Sha512();
-
-  /**
-   * Returns the cipher suite for the given name.  Accepted names: {@code "P256_SHA256"},
-   * {@code "P384_SHA384"}, {@code "P521_SHA512"}.
-   *
-   * @throws IllegalArgumentException for unrecognised names
-   */
-  public static OprfCipherSuite fromName(String name) {
-    return switch (name) {
-      case "P256_SHA256" -> P256_SHA256;
-      case "P384_SHA384" -> P384_SHA384;
-      case "P521_SHA512" -> P521_SHA512;
-      default -> throw new IllegalArgumentException("Unknown OPRF cipher suite: " + name
-          + ". Valid values: P256_SHA256, P384_SHA384, P521_SHA512");
-    };
-  }
-
   private final String identifier;
   private final byte[] contextString;
   private final byte[] hashToGroupDst;
@@ -52,7 +35,6 @@ public class OprfCipherSuite {
   private final String hashAlgorithm;
   private final int hashOutputLength; // Nh
   private final SecureRandom random;
-
   OprfCipherSuite(String identifier,
                   String contextSuffix,
                   GroupSpec groupSpec,
@@ -85,6 +67,22 @@ public class OprfCipherSuite {
     this.hashAlgorithm = source.hashAlgorithm;
     this.hashOutputLength = source.hashOutputLength;
     this.random = random;
+  }
+
+  /**
+   * Returns the cipher suite for the given name.  Accepted names: {@code "P256_SHA256"},
+   * {@code "P384_SHA384"}, {@code "P521_SHA512"}.
+   *
+   * @throws IllegalArgumentException for unrecognised names
+   */
+  public static OprfCipherSuite fromName(String name) {
+    return switch (name) {
+      case "P256_SHA256" -> P256_SHA256;
+      case "P384_SHA384" -> P384_SHA384;
+      case "P521_SHA512" -> P521_SHA512;
+      default -> throw new IllegalArgumentException("Unknown OPRF cipher suite: " + name
+          + ". Valid values: P256_SHA256, P384_SHA384, P521_SHA512");
+    };
   }
 
   private static byte[] buildContextString(String suffix) {
@@ -235,7 +233,12 @@ public class OprfCipherSuite {
    * @return Nh-byte OPRF output
    */
   public byte[] finalize(byte[] input, BigInteger blind, byte[] evaluatedElement) {
-    BigInteger inverseBlind = blind.modInverse(groupSpec.groupOrder());
+    // Fermat inversion: blind^(n-2) mod n ≡ blind^(-1) mod n (n is prime).
+    // modPow with a fixed-length exponent (n-2 has the same bit-length as n) runs
+    // in time proportional to the exponent length and is significantly more constant-time
+    // than the Extended Euclidean Algorithm used by BigInteger.modInverse().
+    BigInteger n = groupSpec.groupOrder();
+    BigInteger inverseBlind = blind.modPow(n.subtract(BigInteger.TWO), n);
     byte[] unblindedElement = groupSpec.scalarMultiply(inverseBlind, evaluatedElement);
 
     byte[] finalizeLabel = "Finalize".getBytes(StandardCharsets.UTF_8);

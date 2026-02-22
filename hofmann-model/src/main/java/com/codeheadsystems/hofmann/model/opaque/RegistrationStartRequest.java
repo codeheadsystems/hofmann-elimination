@@ -32,14 +32,6 @@ public record RegistrationStartRequest(
         B64.encodeToString(request.blindedElement()));
   }
 
-  public byte[] credentialIdentifier() {
-    return decode(credentialIdentifierBase64, "credentialIdentifier");
-  }
-
-  public RegistrationRequest registrationRequest() {
-    return new RegistrationRequest(decode(blindedElementBase64, "blindedElement"));
-  }
-
   private static byte[] decode(String value, String fieldName) {
     if (value == null || value.isBlank()) {
       throw new IllegalArgumentException("Missing required field: " + fieldName);
@@ -49,5 +41,13 @@ public record RegistrationStartRequest(
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException("Invalid base64 in field: " + fieldName, e);
     }
+  }
+
+  public byte[] credentialIdentifier() {
+    return decode(credentialIdentifierBase64, "credentialIdentifier");
+  }
+
+  public RegistrationRequest registrationRequest() {
+    return new RegistrationRequest(decode(blindedElementBase64, "blindedElement"));
   }
 }

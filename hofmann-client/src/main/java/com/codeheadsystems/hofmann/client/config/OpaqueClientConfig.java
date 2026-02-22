@@ -27,7 +27,7 @@ public record OpaqueClientConfig(OpaqueConfig opaqueConfig) {
    * {@code "P521_SHA512"}.
    */
   public static OpaqueClientConfig withArgon2id(String cipherSuiteName, byte[] context,
-      int argon2MemoryKib, int argon2Iterations, int argon2Parallelism) {
+                                                int argon2MemoryKib, int argon2Iterations, int argon2Parallelism) {
     OpaqueCipherSuite suite = OpaqueCipherSuite.fromName(cipherSuiteName);
     return new OpaqueClientConfig(
         OpaqueConfig.withArgon2id(suite, context, argon2MemoryKib, argon2Iterations, argon2Parallelism));
@@ -37,7 +37,7 @@ public record OpaqueClientConfig(OpaqueConfig opaqueConfig) {
    * Convenience overload accepting a context string in UTF-8.
    */
   public static OpaqueClientConfig withArgon2id(String cipherSuiteName, String context,
-      int argon2MemoryKib, int argon2Iterations, int argon2Parallelism) {
+                                                int argon2MemoryKib, int argon2Iterations, int argon2Parallelism) {
     return withArgon2id(cipherSuiteName, context.getBytes(StandardCharsets.UTF_8),
         argon2MemoryKib, argon2Iterations, argon2Parallelism);
   }

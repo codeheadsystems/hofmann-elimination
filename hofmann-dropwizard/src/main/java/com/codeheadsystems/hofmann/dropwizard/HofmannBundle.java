@@ -26,6 +26,9 @@ import io.dropwizard.core.setup.Bootstrap;
 import io.dropwizard.core.setup.Environment;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
+import jakarta.ws.rs.container.ContainerRequestContext;
+import jakarta.ws.rs.container.ContainerRequestFilter;
+import jakarta.ws.rs.core.Response;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
@@ -134,11 +137,22 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
 
   @Override
   public void run(C configuration, Environment environment) {
+    registerSizeLimitFilter(configuration, environment);
     OpaqueConfig opaqueConfig = buildOpaqueConfig(configuration);
     Server server = buildServer(configuration, opaqueConfig);
     JwtManager jwtManager = buildJwtManager(configuration);
 
     HofmannOpaqueServerManager hofmannOpaqueServerManager = new HofmannOpaqueServerManager(server, credentialStore, jwtManager);
+    environment.lifecycle().manage(new io.dropwizard.lifecycle.Managed() {
+      @Override
+      public void start() {
+      }
+
+      @Override
+      public void stop() {
+        hofmannOpaqueServerManager.shutdown();
+      }
+    });
     environment.jersey().register(new OpaqueResource(hofmannOpaqueServerManager));
     environment.healthChecks().register("opaque-server", new OpaqueServerHealthCheck(server));
 
@@ -164,6 +178,19 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     }
     OprfServerManager oprfServerManager = new OprfServerManager(oprfSuite, oprfSupplier);
     environment.jersey().register(new OprfResource(oprfServerManager));
+  }
+
+  private void registerSizeLimitFilter(C configuration, Environment environment) {
+    long maxBytes = configuration.getMaxRequestBodyBytes();
+    ContainerRequestFilter filter = (ContainerRequestContext ctx) -> {
+      long length = ctx.getLength();
+      if (length > maxBytes) {
+        ctx.abortWith(Response.status(Response.Status.REQUEST_ENTITY_TOO_LARGE)
+            .entity("Request body exceeds maximum allowed size")
+            .build());
+      }
+    };
+    environment.jersey().register(filter);
   }
 
   private JwtManager buildJwtManager(C configuration) {

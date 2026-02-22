@@ -45,7 +45,9 @@ public class HofmannOpaqueServerManager {
   private static final Logger log = LoggerFactory.getLogger(HofmannOpaqueServerManager.class);
   private static final Base64.Encoder B64 = Base64.getEncoder();
 
-  /** TTL for pending authentication sessions (seconds). */
+  /**
+   * TTL for pending authentication sessions (seconds).
+   */
   private static final long SESSION_TTL_SECONDS = 120;
 
   /**
@@ -77,6 +79,17 @@ public class HofmannOpaqueServerManager {
           Instant cutoff = Instant.now().minusSeconds(SESSION_TTL_SECONDS);
           pendingSessions.entrySet().removeIf(e -> e.getValue().createdAt().isBefore(cutoff));
         }, SESSION_TTL_SECONDS, SESSION_TTL_SECONDS / 4, TimeUnit.SECONDS);
+  }
+
+  /**
+   * Shuts down the session reaper thread pool.
+   * <p>
+   * Should be called on application shutdown to release the background thread.
+   * In Dropwizard, register this instance as a {@code Managed} component.
+   * In Spring Boot, declare the bean with {@code @Bean(destroyMethod = "shutdown")}.
+   */
+  public void shutdown() {
+    sessionReaper.shutdown();
   }
 
   // ── Registration ─────────────────────────────────────────────────────────

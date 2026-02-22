@@ -68,17 +68,6 @@ public record AuthStartResponse(
         B64.encodeToString(ke2.serverMac()));
   }
 
-  public KE2 ke2() {
-    return new KE2(
-        new CredentialResponse(
-            decode(evaluatedElementBase64, "evaluatedElement"),
-            decode(maskingNonceBase64, "maskingNonce"),
-            decode(maskedResponseBase64, "maskedResponse")),
-        decode(serverNonceBase64, "serverNonce"),
-        decode(serverAkePublicKeyBase64, "serverAkePublicKey"),
-        decode(serverMacBase64, "serverMac"));
-  }
-
   private static byte[] decode(String value, String fieldName) {
     if (value == null || value.isBlank()) {
       throw new IllegalArgumentException("Missing required field: " + fieldName);
@@ -88,5 +77,16 @@ public record AuthStartResponse(
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException("Invalid base64 in field: " + fieldName, e);
     }
+  }
+
+  public KE2 ke2() {
+    return new KE2(
+        new CredentialResponse(
+            decode(evaluatedElementBase64, "evaluatedElement"),
+            decode(maskingNonceBase64, "maskingNonce"),
+            decode(maskedResponseBase64, "maskedResponse")),
+        decode(serverNonceBase64, "serverNonce"),
+        decode(serverAkePublicKeyBase64, "serverAkePublicKey"),
+        decode(serverMacBase64, "serverMac"));
   }
 }

@@ -36,12 +36,6 @@ public record RegistrationStartResponse(
         B64.encodeToString(response.serverPublicKey()));
   }
 
-  public RegistrationResponse registrationResponse() {
-    return new RegistrationResponse(
-        decode(evaluatedElementBase64, "evaluatedElement"),
-        decode(serverPublicKeyBase64, "serverPublicKey"));
-  }
-
   private static byte[] decode(String value, String fieldName) {
     if (value == null || value.isBlank()) {
       throw new IllegalArgumentException("Missing required field: " + fieldName);
@@ -51,5 +45,11 @@ public record RegistrationStartResponse(
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException("Invalid base64 in field: " + fieldName, e);
     }
+  }
+
+  public RegistrationResponse registrationResponse() {
+    return new RegistrationResponse(
+        decode(evaluatedElementBase64, "evaluatedElement"),
+        decode(serverPublicKeyBase64, "serverPublicKey"));
   }
 }
