@@ -18,6 +18,7 @@ import com.codeheadsystems.opaque.internal.OpaqueCrypto;
 import com.codeheadsystems.oprf.RandomProvider;
 import com.codeheadsystems.oprf.manager.OprfServerManager;
 import com.codeheadsystems.oprf.model.ServerProcessorDetail;
+import com.codeheadsystems.oprf.rfc9497.CurveHashSuite;
 import com.codeheadsystems.oprf.rfc9497.OprfCipherSuite;
 import io.dropwizard.auth.AuthDynamicFeature;
 import io.dropwizard.auth.AuthValueFactoryProvider;
@@ -167,8 +168,8 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     environment.jersey().register(new AuthValueFactoryProvider.Binder<>(HofmannPrincipal.class));
 
     // OPRF endpoint
-    OprfCipherSuite oprfSuite = OprfCipherSuite.fromName(configuration.getOprfCipherSuite())
-        .withRandom(secureRandom);
+    OprfCipherSuite oprfSuite = OprfCipherSuite.builder().withSuite(configuration.getOprfCipherSuite())
+        .withRandom(secureRandom).build();
     Supplier<ServerProcessorDetail> oprfSupplier;
     if (processorDetailSupplier != null) {
       oprfSupplier = processorDetailSupplier;
@@ -210,8 +211,8 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
   }
 
   private OpaqueConfig buildOpaqueConfig(C configuration) {
-    OprfCipherSuite oprfSuite = OprfCipherSuite.fromName(configuration.getOpaqueCipherSuite())
-        .withRandom(secureRandom);
+    OprfCipherSuite oprfSuite = OprfCipherSuite.builder().withSuite(configuration.getOpaqueCipherSuite())
+        .withRandom(secureRandom).build();
     OpaqueCipherSuite suite = new OpaqueCipherSuite(oprfSuite);
     byte[] context = configuration.getContext().getBytes(StandardCharsets.UTF_8);
     if (configuration.getArgon2MemoryKib() == 0) {
@@ -268,7 +269,10 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
 
   private Supplier<ServerProcessorDetail> buildEphemeralProcessorSupplier(String processorId) {
     // randomScalar() via the configured SecureRandom is intentional — ephemeral mode is dev/test only.
-    BigInteger masterKey = OprfCipherSuite.builder().withRandom(secureRandom).withSuite(OprfCipherSuite.Builder.SUITE.P256_SHA256).build().randomScalar();
+    BigInteger masterKey = OprfCipherSuite.builder()
+        .withRandomProvider(new RandomProvider(secureRandom))
+        .withSuite(CurveHashSuite.P256_SHA256)
+        .build().randomScalar();
     ServerProcessorDetail detail = new ServerProcessorDetail(masterKey, processorId);
     return () -> detail;
   }

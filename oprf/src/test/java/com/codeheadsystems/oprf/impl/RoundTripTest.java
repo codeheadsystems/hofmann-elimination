@@ -9,6 +9,7 @@ import com.codeheadsystems.oprf.model.ClientHashingContext;
 import com.codeheadsystems.oprf.model.EvaluatedResponse;
 import com.codeheadsystems.oprf.model.HashResult;
 import com.codeheadsystems.oprf.model.ServerProcessorDetail;
+import com.codeheadsystems.oprf.rfc9497.CurveHashSuite;
 import com.codeheadsystems.oprf.rfc9497.OprfCipherSuite;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -25,9 +26,9 @@ public class RoundTripTest {
 
   static Stream<OprfCipherSuite> allSuites() {
     return Stream.of(
-        OprfCipherSuite.builder().withSuite(OprfCipherSuite.Builder.SUITE.P256_SHA256).build(),
-        OprfCipherSuite.builder().withSuite(OprfCipherSuite.Builder.SUITE.P384_SHA384).build(),
-        OprfCipherSuite.builder().withSuite(OprfCipherSuite.Builder.SUITE.P521_SHA512).build()
+        OprfCipherSuite.builder().withSuite(CurveHashSuite.P256_SHA256).build(),
+        OprfCipherSuite.builder().withSuite(CurveHashSuite.P384_SHA384).build(),
+        OprfCipherSuite.builder().withSuite(CurveHashSuite.P521_SHA512).build()
     );
   }
 

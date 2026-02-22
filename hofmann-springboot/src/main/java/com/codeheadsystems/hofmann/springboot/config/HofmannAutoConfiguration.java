@@ -65,8 +65,8 @@ public class HofmannAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   public OpaqueConfig opaqueConfig(HofmannProperties props, SecureRandom secureRandom) {
-    OprfCipherSuite oprfSuite = OprfCipherSuite.fromName(props.getOpaqueCipherSuite())
-        .withRandom(secureRandom);
+    OprfCipherSuite oprfSuite = OprfCipherSuite.builder().withSuite(props.getOpaqueCipherSuite())
+        .withRandom(secureRandom).build();
     OpaqueCipherSuite suite = new OpaqueCipherSuite(oprfSuite);
     byte[] context = props.getContext().getBytes(StandardCharsets.UTF_8);
     if (props.getArgon2MemoryKib() == 0) {
@@ -180,8 +180,8 @@ public class HofmannAutoConfiguration {
   @ConditionalOnMissingBean
   public OprfServerManager oprfServerManager(HofmannProperties props, SecureRandom secureRandom,
                                              Supplier<ServerProcessorDetail> serverProcessorDetailSupplier) {
-    OprfCipherSuite oprfSuite = OprfCipherSuite.fromName(props.getOprfCipherSuite())
-        .withRandom(secureRandom);
+    OprfCipherSuite oprfSuite = OprfCipherSuite.builder().withSuite(props.getOprfCipherSuite())
+        .withRandom(secureRandom).build();
     return new OprfServerManager(oprfSuite, serverProcessorDetailSupplier);
   }
 }
