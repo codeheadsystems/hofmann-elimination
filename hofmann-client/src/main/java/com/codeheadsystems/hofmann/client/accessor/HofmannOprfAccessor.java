@@ -54,13 +54,23 @@ public class HofmannOprfAccessor {
           .build();
 
       final HttpResponse<String> httpResponse = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
-
+      checkStatus(serverIdentifier, httpResponse.statusCode());
       return objectMapper.readValue(httpResponse.body(), OprfResponse.class);
     } catch (IOException e) {
       throw new OprfAccessorException("HTTP request failed for server: " + serverIdentifier, e);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new OprfAccessorException("HTTP request interrupted for server: " + serverIdentifier, e);
+    }
+  }
+
+  private void checkStatus(ServerIdentifier serverIdentifier, int statusCode) {
+    if (statusCode == 401) {
+      throw new SecurityException("Server rejected request (401) for server: " + serverIdentifier);
+    }
+    if (statusCode >= 400) {
+      throw new OprfAccessorException(
+          "Server returned HTTP " + statusCode + " for server: " + serverIdentifier, null);
     }
   }
 

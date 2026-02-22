@@ -58,6 +58,7 @@ class HofmannOprfAccessorTest {
 
     when(objectMapper.writeValueAsString(request)).thenReturn(REQUEST_JSON);
     when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponse);
+    when(httpResponse.statusCode()).thenReturn(200);
     when(httpResponse.body()).thenReturn(RESPONSE_JSON);
     when(objectMapper.readValue(RESPONSE_JSON, OprfResponse.class)).thenReturn(expectedResponse);
 
@@ -74,6 +75,34 @@ class HofmannOprfAccessorTest {
     assertThatThrownBy(() -> accessor.handleRequest(UNKNOWN_SERVER_ID, request))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("unknown-server");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void handleRequest_401_throwsSecurityException() throws Exception {
+    OprfRequest request = new OprfRequest(EC_POINT, REQUEST_ID);
+
+    when(objectMapper.writeValueAsString(request)).thenReturn(REQUEST_JSON);
+    when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponse);
+    when(httpResponse.statusCode()).thenReturn(401);
+
+    assertThatThrownBy(() -> accessor.handleRequest(SERVER_ID, request))
+        .isInstanceOf(SecurityException.class)
+        .hasMessageContaining("test-server");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void handleRequest_500_throwsOprfAccessorException() throws Exception {
+    OprfRequest request = new OprfRequest(EC_POINT, REQUEST_ID);
+
+    when(objectMapper.writeValueAsString(request)).thenReturn(REQUEST_JSON);
+    when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponse);
+    when(httpResponse.statusCode()).thenReturn(500);
+
+    assertThatThrownBy(() -> accessor.handleRequest(SERVER_ID, request))
+        .isInstanceOf(OprfAccessorException.class)
+        .hasMessageContaining("500");
   }
 
   @Test

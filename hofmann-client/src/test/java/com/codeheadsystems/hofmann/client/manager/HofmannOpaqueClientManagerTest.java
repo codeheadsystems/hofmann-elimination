@@ -147,8 +147,8 @@ class HofmannOpaqueClientManagerTest {
   }
 
   @Test
-  void deleteRegistration_callsAccessor() {
-    manager.deleteRegistration(SERVER_ID, CREDENTIAL_ID);
-    verify(accessor).registrationDelete(eq(SERVER_ID), any());
+  void deleteRegistration_callsAccessorWithToken() {
+    manager.deleteRegistration(SERVER_ID, CREDENTIAL_ID, "test-jwt-token");
+    verify(accessor).registrationDelete(eq(SERVER_ID), any(), eq("test-jwt-token"));
   }
 }

@@ -118,11 +118,26 @@ public class HofmannOpaqueServerManager {
 
   /**
    * Deletes a previously registered credential.
+   * <p>
+   * Requires a valid JWT bearer token whose subject (credential identifier) matches the
+   * credential being deleted.  This prevents unauthenticated or cross-user deletion.
    *
+   * @param req         the delete request containing the credential identifier
+   * @param bearerToken the JWT bearer token (without "Bearer " prefix)
    * @throws IllegalArgumentException if the request contains missing or invalid fields
+   * @throws SecurityException        if the token is missing, invalid, expired, or does not
+   *                                  match the credential being deleted
    */
-  public void registrationDelete(RegistrationDeleteRequest req) {
+  public void registrationDelete(RegistrationDeleteRequest req, String bearerToken) {
     log.debug("registrationDelete()");
+    if (bearerToken == null || bearerToken.isBlank()) {
+      throw new SecurityException("Authentication required");
+    }
+    JwtManager.VerifyResult result = jwtManager.verify(bearerToken)
+        .orElseThrow(() -> new SecurityException("Authentication failed"));
+    if (!result.subject().equals(req.credentialIdentifierBase64())) {
+      throw new SecurityException("Authentication failed");
+    }
     credentialStore.delete(req.credentialIdentifier());
   }
 

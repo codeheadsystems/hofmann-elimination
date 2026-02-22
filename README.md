@@ -93,6 +93,12 @@ Requires Java 21.
 ./gradlew clean build test
 ```
 
+To run the OWASP dependency check
+
+```
+./gradlew dependencyCheckAnalyze
+```
+
 ## Module Structure
 
 | Module                | Contents                                                                         |

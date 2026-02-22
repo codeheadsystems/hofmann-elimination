@@ -115,14 +115,18 @@ public class HofmannOpaqueClientManager {
 
   /**
    * Deletes a previously registered credential from the server.
+   * Requires a valid JWT bearer token obtained from a prior {@link #authenticate} call
+   * for the same credential identifier.
    *
    * @param serverId             the server to delete from
    * @param credentialIdentifier raw bytes identifying the credential to remove
+   * @param bearerToken          JWT bearer token (without "Bearer " prefix) for authentication
    */
   public void deleteRegistration(final ServerIdentifier serverId,
-                                 final byte[] credentialIdentifier) {
+                                 final byte[] credentialIdentifier,
+                                 final String bearerToken) {
     log.debug("deleteRegistration(serverId={})", serverId);
     accessor.registrationDelete(serverId,
-        new RegistrationDeleteRequest(credentialIdentifier));
+        new RegistrationDeleteRequest(credentialIdentifier), bearerToken);
   }
 }

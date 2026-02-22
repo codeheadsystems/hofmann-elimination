@@ -16,6 +16,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
@@ -49,7 +50,8 @@ public class OpaqueController {
     try {
       return manager.registrationStart(req);
     } catch (IllegalArgumentException e) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+      log.debug("registrationStart bad request: {}", e.getMessage());
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid request");
     }
   }
 
@@ -60,19 +62,33 @@ public class OpaqueController {
       manager.registrationFinish(req);
       return ResponseEntity.noContent().build();
     } catch (IllegalArgumentException e) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+      log.debug("registrationFinish bad request: {}", e.getMessage());
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid request");
     }
   }
 
   @DeleteMapping("/registration")
-  public ResponseEntity<Void> registrationDelete(@RequestBody RegistrationDeleteRequest req) {
+  public ResponseEntity<Void> registrationDelete(
+      @RequestBody RegistrationDeleteRequest req,
+      @RequestHeader(value = "Authorization", required = false) String authHeader) {
     log.trace("registrationDelete()");
     try {
-      manager.registrationDelete(req);
+      manager.registrationDelete(req, extractBearerToken(authHeader));
       return ResponseEntity.noContent().build();
+    } catch (SecurityException e) {
+      log.debug("registrationDelete auth failed: {}", e.getMessage());
+      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
     } catch (IllegalArgumentException e) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+      log.debug("registrationDelete bad request: {}", e.getMessage());
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid request");
     }
+  }
+
+  private static String extractBearerToken(String authHeader) {
+    if (authHeader != null && authHeader.startsWith("Bearer ")) {
+      return authHeader.substring(7);
+    }
+    return null;
   }
 
   @PostMapping("/auth/start")
@@ -81,9 +97,11 @@ public class OpaqueController {
     try {
       return manager.authStart(req);
     } catch (IllegalArgumentException e) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+      log.debug("authStart bad request: {}", e.getMessage());
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid request");
     } catch (IllegalStateException e) {
-      throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, e.getMessage());
+      log.debug("authStart unavailable: {}", e.getMessage());
+      throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Service unavailable");
     }
   }
 
@@ -96,7 +114,8 @@ public class OpaqueController {
       log.debug("authFinish failed: {}", e.getMessage());
       throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
     } catch (IllegalArgumentException e) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+      log.debug("authFinish bad request: {}", e.getMessage());
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid request");
     }
   }
 }

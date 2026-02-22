@@ -105,11 +105,20 @@ class OpaqueIntegrationTest {
   // ── Delete ────────────────────────────────────────────────────────────────
 
   @Test
-  void deleteRegistration_completesWithoutError() {
+  void deleteRegistration_withValidToken_completesWithoutError() {
     byte[] credId = "delete-me@example.com".getBytes(StandardCharsets.UTF_8);
     hofmannOpaqueClientManager.register(SERVER_ID, credId, PASSWORD);
-    hofmannOpaqueClientManager.deleteRegistration(SERVER_ID, credId);
+    AuthFinishResponse authResp = hofmannOpaqueClientManager.authenticate(SERVER_ID, credId, PASSWORD);
+    hofmannOpaqueClientManager.deleteRegistration(SERVER_ID, credId, authResp.token());
     // No exception = server accepted the delete
+  }
+
+  @Test
+  void deleteRegistration_withoutToken_throwsSecurityException() {
+    byte[] credId = "delete-noauth@example.com".getBytes(StandardCharsets.UTF_8);
+    hofmannOpaqueClientManager.register(SERVER_ID, credId, PASSWORD);
+    assertThatThrownBy(() -> hofmannOpaqueClientManager.deleteRegistration(SERVER_ID, credId, null))
+        .isInstanceOf(SecurityException.class);
   }
 
   private String baseUrl() {

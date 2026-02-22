@@ -78,12 +78,18 @@ public class HofmannOpaqueAccessor {
 
   /**
    * Deletes a previously registered credential from the server.
+   * Requires a valid JWT bearer token for authentication and ownership verification.
+   *
+   * @param serverId    the server to delete from
+   * @param request     the delete request containing the credential identifier
+   * @param bearerToken the JWT bearer token (without "Bearer " prefix)
    */
   public void registrationDelete(final ServerIdentifier serverId,
-                                 final RegistrationDeleteRequest request) {
+                                 final RegistrationDeleteRequest request,
+                                 final String bearerToken) {
     log.debug("registrationDelete(serverId={})", serverId);
     URI uri = baseUri(serverId).resolve(baseUri(serverId).getPath() + "/opaque/registration");
-    deleteNoContent(serverId, uri, request);
+    deleteNoContent(serverId, uri, request, bearerToken);
   }
 
   // ── Authentication ────────────────────────────────────────────────────────
@@ -157,15 +163,17 @@ public class HofmannOpaqueAccessor {
     }
   }
 
-  private void deleteNoContent(ServerIdentifier serverId, URI uri, Object body) {
+  private void deleteNoContent(ServerIdentifier serverId, URI uri, Object body, String bearerToken) {
     try {
       String requestBody = objectMapper.writeValueAsString(body);
-      HttpRequest request = HttpRequest.newBuilder()
+      HttpRequest.Builder builder = HttpRequest.newBuilder()
           .uri(uri)
           .header("Content-Type", "application/json")
-          .method("DELETE", HttpRequest.BodyPublishers.ofString(requestBody))
-          .build();
-      HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+          .method("DELETE", HttpRequest.BodyPublishers.ofString(requestBody));
+      if (bearerToken != null) {
+        builder.header("Authorization", "Bearer " + bearerToken);
+      }
+      HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
       checkStatus(serverId, response.statusCode());
     } catch (IOException e) {
       throw new OpaqueAccessorException("HTTP request failed for server: " + serverId, e);

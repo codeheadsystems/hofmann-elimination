@@ -11,10 +11,12 @@ import com.codeheadsystems.hofmann.model.opaque.RegistrationStartResponse;
 import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.HeaderParam;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.slf4j.Logger;
@@ -51,7 +53,8 @@ public class OpaqueResource {
     try {
       return manager.registrationStart(req);
     } catch (IllegalArgumentException e) {
-      throw new WebApplicationException(e.getMessage(), Response.Status.BAD_REQUEST);
+      log.debug("registrationStart bad request: {}", e.getMessage());
+      throw new WebApplicationException("Invalid request", Response.Status.BAD_REQUEST);
     }
   }
 
@@ -63,20 +66,33 @@ public class OpaqueResource {
       manager.registrationFinish(req);
       return Response.noContent().build();
     } catch (IllegalArgumentException e) {
-      throw new WebApplicationException(e.getMessage(), Response.Status.BAD_REQUEST);
+      log.debug("registrationFinish bad request: {}", e.getMessage());
+      throw new WebApplicationException("Invalid request", Response.Status.BAD_REQUEST);
     }
   }
 
   @DELETE
   @Path("/registration")
-  public Response registrationDelete(RegistrationDeleteRequest req) {
+  public Response registrationDelete(RegistrationDeleteRequest req,
+                                     @HeaderParam(HttpHeaders.AUTHORIZATION) String authHeader) {
     log.trace("registrationDelete()");
     try {
-      manager.registrationDelete(req);
+      manager.registrationDelete(req, extractBearerToken(authHeader));
       return Response.noContent().build();
+    } catch (SecurityException e) {
+      log.debug("registrationDelete auth failed: {}", e.getMessage());
+      throw new WebApplicationException(Response.Status.UNAUTHORIZED);
     } catch (IllegalArgumentException e) {
-      throw new WebApplicationException(e.getMessage(), Response.Status.BAD_REQUEST);
+      log.debug("registrationDelete bad request: {}", e.getMessage());
+      throw new WebApplicationException("Invalid request", Response.Status.BAD_REQUEST);
     }
+  }
+
+  private static String extractBearerToken(String authHeader) {
+    if (authHeader != null && authHeader.startsWith("Bearer ")) {
+      return authHeader.substring(7);
+    }
+    return null;
   }
 
   @POST
@@ -86,9 +102,11 @@ public class OpaqueResource {
     try {
       return manager.authStart(req);
     } catch (IllegalArgumentException e) {
-      throw new WebApplicationException(e.getMessage(), Response.Status.BAD_REQUEST);
+      log.debug("authStart bad request: {}", e.getMessage());
+      throw new WebApplicationException("Invalid request", Response.Status.BAD_REQUEST);
     } catch (IllegalStateException e) {
-      throw new WebApplicationException(e.getMessage(), Response.Status.SERVICE_UNAVAILABLE);
+      log.debug("authStart unavailable: {}", e.getMessage());
+      throw new WebApplicationException("Service unavailable", Response.Status.SERVICE_UNAVAILABLE);
     }
   }
 
@@ -102,7 +120,8 @@ public class OpaqueResource {
       log.debug("authFinish failed: {}", e.getMessage());
       throw new WebApplicationException(Response.Status.UNAUTHORIZED);
     } catch (IllegalArgumentException e) {
-      throw new WebApplicationException(e.getMessage(), Response.Status.BAD_REQUEST);
+      log.debug("authFinish bad request: {}", e.getMessage());
+      throw new WebApplicationException("Invalid request", Response.Status.BAD_REQUEST);
     }
   }
 }
