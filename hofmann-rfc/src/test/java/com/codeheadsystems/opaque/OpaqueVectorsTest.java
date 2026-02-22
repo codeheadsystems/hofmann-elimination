@@ -124,7 +124,7 @@ class OpaqueVectorsTest {
 
   @Test
   void vector1_registrationRequest() {
-    Client client = new Client(CONFIG);
+    com.codeheadsystems.opaque.Client client = new Client(CONFIG);
     ClientRegistrationState state = client.createRegistrationRequestDeterministic(PASSWORD, BLIND_REGISTRATION);
     assertThat(state.request().blindedElement()).isEqualTo(EXPECTED_REGISTRATION_REQUEST);
   }

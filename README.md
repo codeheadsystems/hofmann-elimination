@@ -95,16 +95,13 @@ Requires Java 21.
 
 ## Module Structure
 
-| Module                | Contents                                                                         |
-|-----------------------|----------------------------------------------------------------------------------|
-| `hash-to-curve/`      | Core elliptic curve classes to implement RFC 9380 (hash-to-curve) and utilities  |
-| `oprf/`               | Core protocol classes for RFC 9497 (OPRF) implementations                        |
-| `opaque/`             | RFC 9807 OPAQUE-3DH implementation                                               |
-| `hofmann-model/`      | Common model classes and interfaces for client/server interactions.              |
-| `hofmann-client/`     | Client files needed for OPRF/OPAQUE integration.                                 |
-| `hofmann-server/`     | Server files needed for OPRF/OPAQUE integration.                                 |
-| `hofmann-dropwizard/` | Integration files specific for dropwizard.                                       |
-| `hofmann-sprintboot/` | Integration files specific for springboot.                                       |
+| Module                | Contents                                                                        |
+|-----------------------|---------------------------------------------------------------------------------|
+| `hofmann-rfc/`        | Common model classes, interfaces, and RFC impl for client/server interactions.  |
+| `hofmann-client/`     | Client files needed for OPRF/OPAQUE integration.                                |
+| `hofmann-server/`     | Server files needed for OPRF/OPAQUE integration.                                |
+| `hofmann-dropwizard/` | Integration files specific for dropwizard.                                      |
+| `hofmann-sprintboot/` | Integration files specific for springboot.                                      |
 
 ## OPRF Protocol
 
