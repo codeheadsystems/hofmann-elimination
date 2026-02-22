@@ -239,6 +239,9 @@ public class OprfCipherSuite {
     // than the Extended Euclidean Algorithm used by BigInteger.modInverse().
     BigInteger n = groupSpec.groupOrder();
     BigInteger inverseBlind = blind.modPow(n.subtract(BigInteger.TWO), n);
+    // Before using Fermat's inversion, the above was this:
+    // BigInteger inverseBlind = blind.modInverse(groupSpec.groupOrder());
+
     byte[] unblindedElement = groupSpec.scalarMultiply(inverseBlind, evaluatedElement);
 
     byte[] finalizeLabel = "Finalize".getBytes(StandardCharsets.UTF_8);
