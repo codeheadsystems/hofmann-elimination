@@ -37,7 +37,7 @@ import java.util.Base64;
  * <p>
  * Used by: {@code POST /opaque/auth/start} response
  *
- * @param sessionToken             server-generated opaque token the client echoes back in                                 {@code /auth/finish} so the server can retrieve its pending AKE state
+ * @param sessionToken             server-generated opaque token the client echoes back in {@code /auth/finish} so the server can retrieve its pending AKE state
  * @param evaluatedElementBase64   base64-encoded OPRF-evaluated element (compressed SEC1 EC point)
  * @param maskingNonceBase64       base64-encoded fresh random nonce used to derive the masking stream
  * @param maskedResponseBase64     base64-encoded masked (XOR-encrypted) envelope + server public key
