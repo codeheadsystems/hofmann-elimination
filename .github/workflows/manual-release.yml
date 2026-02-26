@@ -40,6 +40,9 @@ jobs:
             # Split version into major.minor.patch
             IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
 
+            # Strip any pre-release suffix from patch before incrementing (e.g., "0-alpha" -> "0")
+            PATCH=${PATCH%%-*}
+
             # Increment patch version
             PATCH=$((PATCH + 1))
 
