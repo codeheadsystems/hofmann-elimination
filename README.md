@@ -1,12 +1,31 @@
 # the Hofmann Elimination
 
-![the Hofmann Elimination Build](https://github.com/wolpert/hofmann-elimination/actions/workflows/gradle.yml/badge.svg)
-
 ## tl;dr
 
 This project implements the OPRF and OPAQUE security protocols to provide a way
 for common services to reduce their attack surfaces including offline attacks
 from stolen credentials. Usable with standard frameworks like Dropwizard and Spring Boot.
+
+
+## Module Structure
+
+![the Hofmann Elimination Build](https://github.com/wolpert/hofmann-elimination/actions/workflows/gradle.yml/badge.svg)
+
+| -- Artifact ID       | Version                                                                                                                                                                                                                        | Description                                                                                                    |
+|----------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------|
+| `hofmann-rfc`        | [![Maven Central: hofmann-rfc](https://img.shields.io/maven-central/v/com.codeheadsystems/hofmann-rfc?label=hofmann-rfc)](https://central.sonatype.com/artifact/com.codeheadsystems/hofmann-rfc)                               | All RFC implementations: hash-to-curve (RFC 9380), OPRF (RFC 9497), OPAQUE (RFC 9807), plus shared model DTOs. |
+| `hofmann-client`     | [![Maven Central: hofmann-client](https://img.shields.io/maven-central/v/com.codeheadsystems/hofmann-client?label=hofmann-client)](https://central.sonatype.com/artifact/com.codeheadsystems/hofmann-client)                   | Client files needed for OPRF/OPAQUE integration.                                                               |
+| `hofmann-server`     | [![Maven Central: hofmann-server](https://img.shields.io/maven-central/v/com.codeheadsystems/hofmann-server?label=hofmann-server)](https://central.sonatype.com/artifact/com.codeheadsystems/hofmann-server)                   | Server files needed for OPRF/OPAQUE integration.                                                               |
+| `hofmann-dropwizard` | [![Maven Central: hofmann-dropwizard](https://img.shields.io/maven-central/v/com.codeheadsystems/hofmann-dropwizard?label=hofmann-dropwizard)](https://central.sonatype.com/artifact/com.codeheadsystems/hofmann-dropwizard)   | Integration files specific for Dropwizard.                                                                     |
+| `hofmann-springboot` | [![Maven Central: hofmann-springboot](https://img.shields.io/maven-central/v/com.codeheadsystems/hofmann-springboot?label=hofmann-springboot)](https://central.sonatype.com/artifact/com.codeheadsystems/hofmann-springboot)   | Integration files specific for Spring Boot.                                                                    | 
+
+### Building
+
+Requires Java 21.
+
+```
+./gradlew clean build test
+```
 
 ## Purpose
 
@@ -74,24 +93,6 @@ from AI tooling.
 AIs have been, and will continue to be, used to try to find direct or side-channel
 attacks. But the AI review is not a substitute for a formal security audit by a
 reputable third party.
-
-### Building
-
-Requires Java 21.
-
-```
-./gradlew clean build test
-```
-
-## Module Structure
-
-| Module                | Contents                                                                                                       |
-|-----------------------|----------------------------------------------------------------------------------------------------------------|
-| `hofmann-rfc/`        | All RFC implementations: hash-to-curve (RFC 9380), OPRF (RFC 9497), OPAQUE (RFC 9807), plus shared model DTOs. |
-| `hofmann-client/`     | Client files needed for OPRF/OPAQUE integration.                                                               |
-| `hofmann-server/`     | Server files needed for OPRF/OPAQUE integration.                                                               |
-| `hofmann-dropwizard/` | Integration files specific for Dropwizard.                                                                     |
-| `hofmann-springboot/` | Integration files specific for Spring Boot.                                                                    |
 
 ## OPRF Protocol
 
