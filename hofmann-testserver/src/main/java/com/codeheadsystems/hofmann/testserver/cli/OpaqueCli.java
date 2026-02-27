@@ -31,6 +31,7 @@ import java.util.Map;
  * Commands:
  *   register   Register a credential with the server.
  *   login      Authenticate and print the session key and JWT token.
+ *   delete     Delete a registration using a JWT token from a prior login.
  *   whoami     Call GET /api/whoami using a JWT token from a prior login.
  *
  * Options (register / login only):
@@ -43,7 +44,8 @@ import java.util.Map;
  * Typical workflow:
  *   ./gradlew :hofmann-testserver:runOpaqueCli --args="register alice@example.com hunter2" -q
  *   ./gradlew :hofmann-testserver:runOpaqueCli --args="login    alice@example.com hunter2" -q
- *   ./gradlew :hofmann-testserver:runOpaqueCli --args="whoami   &lt;token-from-login&gt;"      -q
+ *   ./gradlew :hofmann-testserver:runOpaqueCli --args="delete   alice@example.com &lt;token&gt;" -q
+ *   ./gradlew :hofmann-testserver:runOpaqueCli --args="whoami   &lt;token-from-login&gt;"       -q
  * </pre>
  *
  * <p>The --context, --memory, --iterations, and --parallelism options must match the
@@ -111,6 +113,18 @@ public class OpaqueCli {
             runLogin(manager, credentialId, password);
           }
         }
+        case "delete" -> {
+          if (positional.size() < 3) {
+            printUsage();
+            System.exit(1);
+          }
+          byte[] credentialId = positional.get(1).getBytes(StandardCharsets.UTF_8);
+          String token = positional.get(2);
+          HofmannOpaqueClientManager manager = buildManager(server, context, memory, iterations, parallelism);
+          System.out.println("Server : " + server);
+          System.out.println();
+          runDelete(manager, credentialId, token);
+        }
         case "whoami" -> {
           if (positional.size() < 2) {
             printUsage();
@@ -163,6 +177,13 @@ public class OpaqueCli {
     System.out.println("  JWT token   : " + resp.token());
   }
 
+  private static void runDelete(HofmannOpaqueClientManager manager,
+                               byte[] credentialId, String token) {
+    System.out.println("Deleting registration...");
+    manager.deleteRegistration(SERVER_ID, credentialId, token);
+    System.out.println("Deletion successful.");
+  }
+
   private static void runWhoami(String server, String token)
       throws IOException, InterruptedException {
     System.out.println("Calling GET /api/whoami...");
@@ -187,11 +208,13 @@ public class OpaqueCli {
     System.err.println("Usage:");
     System.err.println("  register <credentialId> <password> [options]");
     System.err.println("  login    <credentialId> <password> [options]");
-    System.err.println("  whoami   <jwtToken>     [--server <url>]");
+    System.err.println("  delete   <credentialId> <jwtToken> [--server <url>]");
+    System.err.println("  whoami   <jwtToken>                [--server <url>]");
     System.err.println();
     System.err.println("Commands:");
     System.err.println("  register   Register a credential with the server");
     System.err.println("  login      Authenticate and print the session key and JWT token");
+    System.err.println("  delete     Delete a registration (requires JWT from a prior login)");
     System.err.println("  whoami     Call GET /api/whoami with a JWT token from a prior login");
     System.err.println();
     System.err.println("Options (register / login):");

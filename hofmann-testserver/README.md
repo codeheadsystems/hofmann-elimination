@@ -102,10 +102,11 @@ The OPAQUE CLI exercises the full OPAQUE-3DH protocol. It supports three sub-com
 |---------|-------------|
 | `register` | Register a credential with the server |
 | `login` | Authenticate and print the session key and JWT token |
+| `delete` | Delete a registration using a JWT token from a prior `login` |
 | `whoami` | Call `GET /api/whoami` with a JWT token obtained from a prior `login` |
 
-These three commands form a natural workflow: `register` once, `login` to get a JWT, then use
-`whoami` to verify the JWT grants access to a protected endpoint.
+These commands form a natural workflow: `register` once, `login` to get a JWT, then use
+`delete` to remove the registration or `whoami` to verify the JWT grants access to a protected endpoint.
 
 ### Usage — register / login
 
@@ -126,6 +127,17 @@ These three commands form a natural workflow: `register` once, `login` to get a 
 
 > The defaults match `config/config.yml` exactly. See [Argon2id consistency](#argon2id-consistency)
 > below before changing any of these options.
+
+### Usage — delete
+
+```
+./gradlew :hofmann-testserver:runOpaqueCli \
+    --args="delete <credentialId> <jwtToken> [--server <url>]" -q
+```
+
+`delete` sends `DELETE /opaque/registration` with the credential identifier and the JWT in
+the `Authorization: Bearer` header. The server validates that the JWT subject matches the
+credential being deleted, so you must supply a token obtained by logging in as that user.
 
 ### Usage — whoami
 
@@ -151,6 +163,10 @@ These three commands form a natural workflow: `register` once, `login` to get a 
 # 3. Call the protected endpoint with the JWT
 ./gradlew :hofmann-testserver:runOpaqueCli \
     --args="whoami eyJ..." -q
+
+# 4. Delete the registration
+./gradlew :hofmann-testserver:runOpaqueCli \
+    --args="delete alice@example.com eyJ..." -q
 ```
 
 ### Sample Output — `register`
@@ -175,6 +191,15 @@ Authenticating...
 Authentication successful.
   session key : <base64>
   JWT token   : eyJ...
+```
+
+### Sample Output — `delete`
+
+```
+Server : http://localhost:8080
+
+Deleting registration...
+Deletion successful.
 ```
 
 ### Sample Output — `whoami`
