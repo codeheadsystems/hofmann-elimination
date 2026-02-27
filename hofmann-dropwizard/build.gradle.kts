@@ -1,6 +1,7 @@
 
 plugins {
     id("buildlogic.java-library-conventions")
+    id("buildlogic.publish-conventions")
 }
 
 description = "Hofmann dropwizard bundle for easy integration of Hofmann server into dropwizard applications"

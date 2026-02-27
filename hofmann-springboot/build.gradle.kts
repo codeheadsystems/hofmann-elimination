@@ -1,6 +1,7 @@
 
 plugins {
     id("buildlogic.java-library-conventions")
+    id("buildlogic.publish-conventions")
 }
 
 description = "Hofmann spring boot starter for easy integration of Hofmann server into spring boot applications"

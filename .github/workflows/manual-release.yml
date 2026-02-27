@@ -146,6 +146,8 @@ jobs:
 
             ### Maven Central
 
+            Sample dependency for Maven:
+
             ```xml
             <dependency>
               <groupId>com.codeheadsystems</groupId>

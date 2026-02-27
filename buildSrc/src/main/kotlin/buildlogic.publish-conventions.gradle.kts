@@ -22,7 +22,7 @@ publishing {
                 name.set(project.findProperty("pomName")?.toString() ?: project.name)
                 description.set(project.findProperty("description")?.toString()
                     ?: "Implementation of OPRF and OPAQUE protocols")
-                url.set("https://github.com/wolpert/hofmann-elimination")
+                url.set("https://github.com/codeheadsystems/hofmann-elimination")
 
                 licenses {
                     license {
@@ -40,9 +40,9 @@ publishing {
                 }
 
                 scm {
-                    connection.set("scm:git:git://github.com/wolpert/hofmann-elimination.git")
-                    developerConnection.set("scm:git:ssh://git@github.com:wolpert/hofmann-elimination.git")
-                    url.set("https://github.com/wolpert/hofmann-elimination")
+                    connection.set("scm:git:git://github.com/codeheadsystems/hofmann-elimination.git")
+                    developerConnection.set("scm:git:ssh://git@github.com:codeheadsystems/hofmann-elimination.git")
+                    url.set("https://github.com/codeheadsystems/hofmann-elimination")
                 }
             }
         }

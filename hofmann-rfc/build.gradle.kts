@@ -1,6 +1,7 @@
 
 plugins {
     id("buildlogic.java-library-conventions")
+    id("buildlogic.publish-conventions")
 }
 
 description = "Hofmann's RFC implementation for OPRF and OPAQUE"
