@@ -1,6 +1,7 @@
 package com.codeheadsystems.hofmann.server.store;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -64,5 +65,31 @@ class InMemorySessionStoreTest {
 
     store.revoke("jti-revoke");
     assertThat(store.load("jti-revoke")).isEmpty();
+  }
+
+  /**
+   * Revoke by credential identifier removes all sessions for that credential and leaves others intact.
+   */
+  @Test
+  void revokeByCredentialIdentifier_removesAllSessionsForCredential_leavesOthersIntact() {
+    Instant expiry = Instant.now().plusSeconds(3600);
+    store.store("jti-a1", new SessionData("cred-a", "key", Instant.now(), expiry));
+    store.store("jti-a2", new SessionData("cred-a", "key", Instant.now(), expiry));
+    store.store("jti-b1", new SessionData("cred-b", "key", Instant.now(), expiry));
+
+    store.revokeByCredentialIdentifier("cred-a");
+
+    assertThat(store.load("jti-a1")).isEmpty();
+    assertThat(store.load("jti-a2")).isEmpty();
+    assertThat(store.load("jti-b1")).isPresent();
+  }
+
+  /**
+   * Revoke by credential identifier for unknown credential does not throw.
+   */
+  @Test
+  void revokeByCredentialIdentifier_unknownCredential_doesNotThrow() {
+    assertThatCode(() -> store.revokeByCredentialIdentifier("nonexistent"))
+        .doesNotThrowAnyException();
   }
 }

@@ -2,6 +2,7 @@ package com.codeheadsystems.hofmann.server.store;
 
 import java.time.Instant;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,10 +18,14 @@ public class InMemorySessionStore implements SessionStore {
   private static final Logger log = LoggerFactory.getLogger(InMemorySessionStore.class);
 
   private final ConcurrentHashMap<String, SessionData> store = new ConcurrentHashMap<>();
+  // Reverse index: credentialIdentifierBase64 → set of jtis, kept in sync with store.
+  private final ConcurrentHashMap<String, Set<String>> credentialToJtis = new ConcurrentHashMap<>();
 
   @Override
   public void store(String jti, SessionData sessionData) {
     store.put(jti, sessionData);
+    credentialToJtis.computeIfAbsent(sessionData.credentialIdentifier(),
+        k -> ConcurrentHashMap.newKeySet()).add(jti);
     log.debug("Stored session jti={}", jti);
   }
 
@@ -39,7 +44,22 @@ public class InMemorySessionStore implements SessionStore {
 
   @Override
   public void revoke(String jti) {
-    store.remove(jti);
+    SessionData data = store.remove(jti);
+    if (data != null) {
+      Set<String> jtis = credentialToJtis.get(data.credentialIdentifier());
+      if (jtis != null) {
+        jtis.remove(jti);
+      }
+    }
     log.debug("Revoked session jti={}", jti);
+  }
+
+  @Override
+  public void revokeByCredentialIdentifier(String credentialIdentifierBase64) {
+    Set<String> jtis = credentialToJtis.remove(credentialIdentifierBase64);
+    if (jtis != null) {
+      jtis.forEach(store::remove);
+      log.debug("Revoked {} session(s) for credential", jtis.size());
+    }
   }
 }

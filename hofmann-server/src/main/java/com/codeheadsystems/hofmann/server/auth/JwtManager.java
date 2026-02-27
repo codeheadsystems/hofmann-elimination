@@ -103,6 +103,18 @@ public class JwtManager {
   }
 
   /**
+   * Revokes all active sessions for the given credential identifier.
+   * <p>
+   * Must be called when a credential is deleted so that any JWT tokens issued for that
+   * credential are immediately rejected, rather than remaining valid until natural expiry.
+   *
+   * @param credentialIdentifierBase64 base64-encoded credential identifier
+   */
+  public void revokeByCredentialIdentifier(String credentialIdentifierBase64) {
+    sessionStore.revokeByCredentialIdentifier(credentialIdentifierBase64);
+  }
+
+  /**
    * Result of a successful JWT verification.
    *
    * @param subject the JWT subject (credential identifier base64)
