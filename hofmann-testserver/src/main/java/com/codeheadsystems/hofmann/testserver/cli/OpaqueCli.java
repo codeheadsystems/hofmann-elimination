@@ -24,25 +24,26 @@ import java.util.Map;
  * <pre>
  * Usage:
  *   ./gradlew :hofmann-testserver:runOpaqueCli \
- *       --args="register|login|whoami &lt;credentialId&gt; &lt;password&gt; [options]" -q
+ *       --args="register|login &lt;credentialId&gt; &lt;password&gt; [options]" -q
+ *   ./gradlew :hofmann-testserver:runOpaqueCli \
+ *       --args="whoami &lt;jwtToken&gt; [--server &lt;url&gt;]" -q
  *
  * Commands:
  *   register   Register a credential with the server.
  *   login      Authenticate and print the session key and JWT token.
- *   whoami     Register, authenticate, then call GET /api/whoami with the JWT.
- *              Verifies the full OPAQUE + protected-endpoint round-trip.
+ *   whoami     Call GET /api/whoami using a JWT token from a prior login.
  *
- * Options:
+ * Options (register / login only):
  *   --server &lt;url&gt;       Server base URL          (default: http://localhost:8080)
  *   --context &lt;string&gt;   OPAQUE context string    (default: hofmann-testserver)
  *   --memory &lt;kib&gt;       Argon2id memory in KiB   (default: 65536)
  *   --iterations &lt;n&gt;     Argon2id iterations      (default: 3)
  *   --parallelism &lt;n&gt;    Argon2id parallelism     (default: 1)
  *
- * Examples:
+ * Typical workflow:
  *   ./gradlew :hofmann-testserver:runOpaqueCli --args="register alice@example.com hunter2" -q
  *   ./gradlew :hofmann-testserver:runOpaqueCli --args="login    alice@example.com hunter2" -q
- *   ./gradlew :hofmann-testserver:runOpaqueCli --args="whoami   alice@example.com hunter2" -q
+ *   ./gradlew :hofmann-testserver:runOpaqueCli --args="whoami   &lt;token-from-login&gt;"      -q
  * </pre>
  *
  * <p>The --context, --memory, --iterations, and --parallelism options must match the
@@ -82,34 +83,44 @@ public class OpaqueCli {
       }
     }
 
-    if (positional.size() < 3) {
+    if (positional.isEmpty()) {
       printUsage();
       System.exit(1);
     }
 
     String command = positional.get(0);
-    byte[] credentialId = positional.get(1).getBytes(StandardCharsets.UTF_8);
-    byte[] password = positional.get(2).getBytes(StandardCharsets.UTF_8);
-
-    OpaqueClientConfig config = OpaqueClientConfig.withArgon2id(
-        "P256_SHA256", context, memory, iterations, parallelism);
-    Map<ServerIdentifier, ServerConnectionInfo> connections = Map.of(
-        SERVER_ID, new ServerConnectionInfo(URI.create(server)));
-    HofmannOpaqueAccessor accessor = new HofmannOpaqueAccessor(
-        HttpClient.newHttpClient(), new ObjectMapper(), connections);
-    HofmannOpaqueClientManager manager = new HofmannOpaqueClientManager(config, accessor);
-
-    System.out.println("Server  : " + server);
-    System.out.println("Context : " + context);
-    System.out.println("Argon2id: memory=" + memory + " KiB, iterations=" + iterations
-        + ", parallelism=" + parallelism);
-    System.out.println();
 
     try {
       switch (command) {
-        case "register" -> runRegister(manager, credentialId, password);
-        case "login"    -> runLogin(manager, credentialId, password);
-        case "whoami"   -> runWhoami(manager, server, credentialId, password);
+        case "register", "login" -> {
+          if (positional.size() < 3) {
+            printUsage();
+            System.exit(1);
+          }
+          byte[] credentialId = positional.get(1).getBytes(StandardCharsets.UTF_8);
+          byte[] password = positional.get(2).getBytes(StandardCharsets.UTF_8);
+          HofmannOpaqueClientManager manager = buildManager(server, context, memory, iterations, parallelism);
+          System.out.println("Server  : " + server);
+          System.out.println("Context : " + context);
+          System.out.println("Argon2id: memory=" + memory + " KiB, iterations=" + iterations
+              + ", parallelism=" + parallelism);
+          System.out.println();
+          if (command.equals("register")) {
+            runRegister(manager, credentialId, password);
+          } else {
+            runLogin(manager, credentialId, password);
+          }
+        }
+        case "whoami" -> {
+          if (positional.size() < 2) {
+            printUsage();
+            System.exit(1);
+          }
+          String token = positional.get(1);
+          System.out.println("Server : " + server);
+          System.out.println();
+          runWhoami(server, token);
+        }
         default -> {
           System.err.println("Unknown command: " + command);
           printUsage();
@@ -123,6 +134,17 @@ public class OpaqueCli {
       System.err.println("Error: " + e.getMessage());
       System.exit(1);
     }
+  }
+
+  private static HofmannOpaqueClientManager buildManager(String server, String context,
+                                                         int memory, int iterations, int parallelism) {
+    OpaqueClientConfig config = OpaqueClientConfig.withArgon2id(
+        "P256_SHA256", context, memory, iterations, parallelism);
+    Map<ServerIdentifier, ServerConnectionInfo> connections = Map.of(
+        SERVER_ID, new ServerConnectionInfo(URI.create(server)));
+    HofmannOpaqueAccessor accessor = new HofmannOpaqueAccessor(
+        HttpClient.newHttpClient(), new ObjectMapper(), connections);
+    return new HofmannOpaqueClientManager(config, accessor);
   }
 
   private static void runRegister(HofmannOpaqueClientManager manager,
@@ -141,19 +163,12 @@ public class OpaqueCli {
     System.out.println("  JWT token   : " + resp.token());
   }
 
-  private static void runWhoami(HofmannOpaqueClientManager manager, String server,
-                                byte[] credentialId, byte[] password)
+  private static void runWhoami(String server, String token)
       throws IOException, InterruptedException {
-    System.out.println("Registering credential...");
-    manager.register(SERVER_ID, credentialId, password);
-    System.out.println("Authenticating...");
-    AuthFinishResponse resp = manager.authenticate(SERVER_ID, credentialId, password);
-    System.out.println("Authentication successful.");
-    System.out.println("Calling GET /api/whoami with JWT...");
-
+    System.out.println("Calling GET /api/whoami...");
     HttpRequest request = HttpRequest.newBuilder()
         .uri(URI.create(server + "/api/whoami"))
-        .header("Authorization", "Bearer " + resp.token())
+        .header("Authorization", "Bearer " + token)
         .GET()
         .build();
     HttpResponse<String> response = HttpClient.newHttpClient()
@@ -169,23 +184,27 @@ public class OpaqueCli {
   }
 
   private static void printUsage() {
-    System.err.println("Usage: OpaqueCli <command> <credentialId> <password> [options]");
+    System.err.println("Usage:");
+    System.err.println("  register <credentialId> <password> [options]");
+    System.err.println("  login    <credentialId> <password> [options]");
+    System.err.println("  whoami   <jwtToken>     [--server <url>]");
     System.err.println();
     System.err.println("Commands:");
     System.err.println("  register   Register a credential with the server");
     System.err.println("  login      Authenticate and print the session key and JWT token");
-    System.err.println("  whoami     Register + authenticate + call GET /api/whoami (full round-trip)");
+    System.err.println("  whoami     Call GET /api/whoami with a JWT token from a prior login");
     System.err.println();
-    System.err.println("Options:");
+    System.err.println("Options (register / login):");
     System.err.println("  --server <url>       Server base URL        (default: " + DEFAULT_SERVER + ")");
     System.err.println("  --context <string>   OPAQUE context string  (default: " + DEFAULT_CONTEXT + ")");
     System.err.println("  --memory <kib>       Argon2id memory KiB    (default: " + DEFAULT_MEMORY + ")");
     System.err.println("  --iterations <n>     Argon2id iterations    (default: " + DEFAULT_ITERATIONS + ")");
     System.err.println("  --parallelism <n>    Argon2id parallelism   (default: " + DEFAULT_PARALLELISM + ")");
     System.err.println();
-    System.err.println("Examples:");
+    System.err.println("Workflow:");
     System.err.println("  ./gradlew :hofmann-testserver:runOpaqueCli --args=\"register alice@example.com hunter2\" -q");
     System.err.println("  ./gradlew :hofmann-testserver:runOpaqueCli --args=\"login    alice@example.com hunter2\" -q");
-    System.err.println("  ./gradlew :hofmann-testserver:runOpaqueCli --args=\"whoami   alice@example.com hunter2\" -q");
+    System.err.println("  # copy the JWT token printed by login, then:");
+    System.err.println("  ./gradlew :hofmann-testserver:runOpaqueCli --args=\"whoami   <token>\" -q");
   }
 }

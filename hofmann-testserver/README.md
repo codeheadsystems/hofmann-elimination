@@ -102,27 +102,22 @@ The OPAQUE CLI exercises the full OPAQUE-3DH protocol. It supports three sub-com
 |---------|-------------|
 | `register` | Register a credential with the server |
 | `login` | Authenticate and print the session key and JWT token |
-| `whoami` | Full round-trip: register → authenticate → call `GET /api/whoami` with the JWT |
+| `whoami` | Call `GET /api/whoami` with a JWT token obtained from a prior `login` |
 
-### Usage
+These three commands form a natural workflow: `register` once, `login` to get a JWT, then use
+`whoami` to verify the JWT grants access to a protected endpoint.
+
+### Usage — register / login
 
 ```
 ./gradlew :hofmann-testserver:runOpaqueCli \
-    --args="<command> <credentialId> <password> [options]" -q
+    --args="register|login <credentialId> <password> [options]" -q
 ```
 
-**Positional arguments** (all required):
-
-| Argument | Description |
-|----------|-------------|
-| `<command>` | `register`, `login`, or `whoami` |
-| `<credentialId>` | A unique identifier for this credential (e.g. an email address) |
-| `<password>` | The password to register or authenticate with |
-
-**Options** (must match server configuration):
-
-| Option | Default | Description |
-|--------|---------|-------------|
+| Argument / Option | Default | Description |
+|-------------------|---------|-------------|
+| `<credentialId>` | _(required)_ | Unique identifier for the credential (e.g. an email address) |
+| `<password>` | _(required)_ | The password to register or authenticate with |
 | `--server <url>` | `http://localhost:8080` | Server base URL |
 | `--context <string>` | `hofmann-testserver` | OPAQUE context string |
 | `--memory <kib>` | `65536` | Argon2id memory in KiB |
@@ -132,20 +127,30 @@ The OPAQUE CLI exercises the full OPAQUE-3DH protocol. It supports three sub-com
 > The defaults match `config/config.yml` exactly. See [Argon2id consistency](#argon2id-consistency)
 > below before changing any of these options.
 
-### Examples
+### Usage — whoami
+
+```
+./gradlew :hofmann-testserver:runOpaqueCli \
+    --args="whoami <jwtToken> [--server <url>]" -q
+```
+
+`whoami` does not perform any OPAQUE protocol steps — it simply forwards the JWT token in an
+`Authorization: Bearer` header to `GET /api/whoami` and prints the response body.
+
+### Full workflow example
 
 ```bash
-# Register a credential
+# 1. Register once
 ./gradlew :hofmann-testserver:runOpaqueCli \
     --args="register alice@example.com hunter2" -q
 
-# Authenticate and print the session key + JWT
+# 2. Authenticate — copy the JWT token from the output
 ./gradlew :hofmann-testserver:runOpaqueCli \
     --args="login alice@example.com hunter2" -q
 
-# Full end-to-end round-trip (register + authenticate + call /api/whoami)
+# 3. Call the protected endpoint with the JWT
 ./gradlew :hofmann-testserver:runOpaqueCli \
-    --args="whoami alice@example.com hunter2" -q
+    --args="whoami eyJ..." -q
 ```
 
 ### Sample Output — `register`
@@ -175,14 +180,9 @@ Authentication successful.
 ### Sample Output — `whoami`
 
 ```
-Server  : http://localhost:8080
-Context : hofmann-testserver
-Argon2id: memory=65536 KiB, iterations=3, parallelism=1
+Server : http://localhost:8080
 
-Registering credential...
-Authenticating...
-Authentication successful.
-Calling GET /api/whoami with JWT...
+Calling GET /api/whoami...
   HTTP status : 200
   Body        : {"credentialIdentifier":"alice@example.com"}
 ```
