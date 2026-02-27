@@ -1,0 +1,47 @@
+# Hofmann Test Server – Dropwizard Configuration
+#
+# This configuration is intended for local developer testing only.
+# In-memory credential and session stores are used; all data is lost on restart.
+#
+# Keys are stable across restarts by default so that clients can be developed
+# against a consistent server.  Override any key via the corresponding
+# environment variable (see docker-compose.yml).
+#
+# WARNING: Do NOT use this configuration in production.
+
+server:
+  applicationConnectors:
+    - type: http
+      port: 8080
+  adminConnectors:
+    - type: http
+      port: 8081
+
+logging:
+  level: INFO
+
+# ── OPAQUE ────────────────────────────────────────────────────────────────────
+
+opaqueCipherSuite: P256_SHA256
+context: hofmann-testserver
+
+argon2MemoryKib: 65536
+argon2Iterations: 3
+argon2Parallelism: 1
+
+# Stable test-only keys – generated with: openssl rand -hex 32
+# Override via environment variable for isolation between test environments.
+serverKeySeedHex: ${SERVER_KEY_SEED_HEX:-71c35fd9647f464e7288c68fabe22a07a0a062a3423a9d402e55c55b07d1dae3}
+oprfSeedHex: ${OPRF_SEED_HEX:-20aa81d9ea8bf9de0877e02bc9d6adf4ef9d6bd50bbb515c84d78d1f246f49a3}
+
+# ── Standalone OPRF ───────────────────────────────────────────────────────────
+
+oprfCipherSuite: P256_SHA256
+oprfMasterKeyHex: ${OPRF_MASTER_KEY_HEX:-137564f38fb14059492bbab74f03624de228817bd877b74e6df5ac378878720e}
+oprfProcessorId: hofmann-testserver
+
+# ── JWT ───────────────────────────────────────────────────────────────────────
+
+jwtSecretHex: ${JWT_SECRET_HEX:-04fb50080c93c055a4195cb535c9311381975a94eaaac8aeef3df0776aca4f6d}
+jwtTtlSeconds: 3600
+jwtIssuer: hofmann-testserver

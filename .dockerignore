@@ -1,0 +1,12 @@
+# Exclude generated build outputs and Gradle caches from the Docker build
+# context to keep the context small and avoid stale artifacts.
+#
+# .git is intentionally NOT excluded: settings.gradle.kts runs
+# "git describe --tags --exact-match HEAD" and needs the git directory.
+
+**/build/
+**/.gradle/
+
+# IDE metadata
+.idea/
+*.iml

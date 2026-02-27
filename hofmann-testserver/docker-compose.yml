@@ -1,0 +1,36 @@
+services:
+  hofmann:
+    build:
+      # Build context is the project root so the Dockerfile can access all modules
+      context: ..
+      dockerfile: hofmann-testserver/Dockerfile
+    image: hofmann-testserver:latest
+    ports:
+      - "${HOFMANN_APP_PORT:-8080}:8080"
+      - "${HOFMANN_ADMIN_PORT:-8081}:8081"
+    environment:
+      # Each variable is only forwarded to the container when it is set in the
+      # host environment; if unset, the config.yml default is used instead,
+      # giving a consistent local-development experience out of the box.
+      #
+      # Set any of these to override the default stable test keys:
+      #   export SERVER_KEY_SEED_HEX=$(openssl rand -hex 32)
+      #   export OPRF_SEED_HEX=$(openssl rand -hex 32)
+      #   export OPRF_MASTER_KEY_HEX=$(openssl rand -hex 32)
+      #   export JWT_SECRET_HEX=$(openssl rand -hex 32)
+      - SERVER_KEY_SEED_HEX
+      - OPRF_SEED_HEX
+      - OPRF_MASTER_KEY_HEX
+      - JWT_SECRET_HEX
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --no-verbose
+        - --tries=1
+        - --spider
+        - http://localhost:8081/healthcheck
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s

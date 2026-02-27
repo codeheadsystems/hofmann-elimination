@@ -25,6 +25,7 @@ include("hofmann-client")
 include("hofmann-server")
 include("hofmann-dropwizard")
 include("hofmann-springboot")
+include("hofmann-testserver")
 
 
 // Configure Central Portal publishing credentials
