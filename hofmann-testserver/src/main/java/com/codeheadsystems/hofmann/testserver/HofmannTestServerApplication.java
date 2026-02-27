@@ -2,6 +2,8 @@ package com.codeheadsystems.hofmann.testserver;
 
 import com.codeheadsystems.hofmann.dropwizard.HofmannBundle;
 import com.codeheadsystems.hofmann.dropwizard.HofmannConfiguration;
+import com.codeheadsystems.hofmann.server.store.InMemoryCredentialStore;
+import com.codeheadsystems.hofmann.server.store.InMemorySessionStore;
 import io.dropwizard.configuration.EnvironmentVariableSubstitutor;
 import io.dropwizard.configuration.SubstitutingSourceProvider;
 import io.dropwizard.core.Application;
@@ -10,7 +12,9 @@ import io.dropwizard.core.setup.Environment;
 
 /**
  * Runnable Dropwizard application for local developer testing of OPAQUE and OPRF clients.
- * Uses in-memory credential and session stores; all data is lost on restart.
+ * Uses in-memory credential and session stores (data lost on restart), but reads the OPRF
+ * master key and all other key material from {@code config/config.yml} so that OPRF hashes
+ * are stable across restarts as long as the configured keys do not change.
  * Start via Docker Compose from the hofmann-testserver directory.
  */
 public class HofmannTestServerApplication extends Application<HofmannConfiguration> {
@@ -41,7 +45,14 @@ public class HofmannTestServerApplication extends Application<HofmannConfigurati
             new EnvironmentVariableSubstitutor(false)
         )
     );
-    bootstrap.addBundle(new HofmannBundle<>());
+    // Use the 3-arg constructor (not the no-arg one) so ephemeralKey stays false.
+    // With ephemeralKey=false and a null processorDetailSupplier, HofmannBundle reads
+    // oprfMasterKeyHex from configuration — giving stable OPRF hashes across restarts.
+    // Credentials and sessions still live in memory and are lost on restart.
+    bootstrap.addBundle(new HofmannBundle<>(
+        new InMemoryCredentialStore(),
+        new InMemorySessionStore(),
+        null));
   }
 
   @Override
