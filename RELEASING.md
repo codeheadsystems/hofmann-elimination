@@ -70,7 +70,7 @@ gpg --keyserver keyserver.ubuntu.com --recv-keys YOUR_KEY_ID
 
 ### 3. Configure GitHub Secrets
 
-Navigate to: https://github.com/wolpert/hofmann-elimination/settings/secrets/actions
+Navigate to: https://github.com/codeheadsystems/hofmann-elimination/settings/secrets/actions
 
 Add the following secrets:
 
@@ -144,19 +144,19 @@ git push origin v1.0.0
 ### Step 3: Monitor Release
 
 1. Watch the GitHub Actions workflow at:
-   - https://github.com/wolpert/hofmann-elimination/actions
+   - https://github.com/codeheadsystems/hofmann-elimination/actions
 
 2. The workflow takes approximately 10-15 minutes to complete
 
 3. If successful:
-   - GitHub release will be created at: https://github.com/wolpert/hofmann-elimination/releases
+   - GitHub release will be created at: https://github.com/codeheadsystems/hofmann-elimination/releases
    - Artifacts will be available in Maven Central within 15-120 minutes
    - Pre-release flag will be set automatically for tags with suffixes
 
 ### Step 4: Verify Publication
 
 1. Check GitHub release:
-   - https://github.com/wolpert/hofmann-elimination/releases/tag/v1.0.0
+   - https://github.com/codeheadsystems/hofmann-elimination/releases/tag/v1.0.0
 
 2. Verify Maven Central (wait 15-120 minutes after release):
    - https://repo1.maven.org/maven2/com/codeheadsystems/
@@ -332,7 +332,7 @@ If you need to fix a released version:
 3. **For security issues:** Release a hotfix immediately (e.g., v1.0.0-hotfix.1 or v1.0.1)
 
 To mark a GitHub release as problematic:
-1. Edit the release at https://github.com/wolpert/hofmann-elimination/releases
+1. Edit the release at https://github.com/codeheadsystems/hofmann-elimination/releases
 2. Check "Set as a pre-release" or add a warning to the description
 3. Create a new release with fixes
 
@@ -482,5 +482,5 @@ However, manual tagging provides more control and prevents accidental releases.
 ## Support
 
 For questions or issues with releases:
-- Create an issue: https://github.com/wolpert/hofmann-elimination/issues
+- Create an issue: https://github.com/codeheadsystems/hofmann-elimination/issues
 - Contact: ned.wolpert@gmail.com

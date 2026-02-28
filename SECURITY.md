@@ -22,7 +22,7 @@ Use in production is at your own risk. A formal security audit is planned but no
 If you discover a security vulnerability, please **do not open a public GitHub issue**.
 
 Report privately via GitHub's security advisory workflow:
-- https://github.com/wolpert/hofmann-elimination/security/advisories/new
+- https://github.com/codeheadsystems/hofmann-elimination/security/advisories/new
 
 Please include:
 - A description of the vulnerability

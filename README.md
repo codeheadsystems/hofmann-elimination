@@ -9,7 +9,7 @@ from stolen credentials. Usable with standard frameworks like Dropwizard and Spr
 
 ## Module Structure
 
-![the Hofmann Elimination Build](https://github.com/wolpert/hofmann-elimination/actions/workflows/gradle.yml/badge.svg)
+![the Hofmann Elimination Build](https://github.com/codeheadsystems/hofmann-elimination/actions/workflows/gradle.yml/badge.svg)
 
 ### Java / Server-side (Maven artifacts)
 
