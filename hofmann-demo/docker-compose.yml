@@ -1,0 +1,58 @@
+services:
+
+  server:
+    build:
+      # Build context is the project root so the Dockerfile can access all modules
+      context: ..
+      dockerfile: hofmann-demo/server/Dockerfile
+    image: hofmann-demo-server:latest
+    environment:
+      # Each variable is only forwarded to the container when it is set in the
+      # host environment; if unset, config.yml defaults are used instead.
+      #
+      # Set any of these to override the default stable test keys:
+      #   export SERVER_KEY_SEED_HEX=$(openssl rand -hex 32)
+      #   export OPRF_SEED_HEX=$(openssl rand -hex 32)
+      #   export OPRF_MASTER_KEY_HEX=$(openssl rand -hex 32)
+      #   export JWT_SECRET_HEX=$(openssl rand -hex 32)
+      - SERVER_KEY_SEED_HEX
+      - OPRF_SEED_HEX
+      - OPRF_MASTER_KEY_HEX
+      - JWT_SECRET_HEX
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --no-verbose
+        - --tries=1
+        - --spider
+        - http://localhost:8081/healthcheck
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  demo-ui:
+    build:
+      # Build context is the project root so the Dockerfile can access both
+      # hofmann-typescript/ and hofmann-demo/demo-ui/
+      context: ..
+      dockerfile: hofmann-demo/demo-ui/Dockerfile
+    image: hofmann-demo-ui:latest
+    depends_on:
+      server:
+        condition: service_healthy
+
+  haproxy:
+    image: haproxy:3.0-alpine
+    ports:
+      - "${DEMO_PORT:-443}:443"
+      - "${API_PORT:-8443}:8443"
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./haproxy/certs:/etc/haproxy/certs:ro
+    depends_on:
+      server:
+        condition: service_healthy
+      demo-ui:
+        condition: service_started

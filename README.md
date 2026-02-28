@@ -27,6 +27,12 @@ from stolen credentials. Usable with standard frameworks like Dropwizard and Spr
 |------------------------|----------------------------------------------------------------------------------------------------------|
 | [`hofmann-typescript`](hofmann-typescript/README.md) | Browser/Node TypeScript client — RFC 9497 OPRF + RFC 9807 OPAQUE-3DH. Built on `@noble/curves` and `@noble/hashes`. Includes a Vite-powered interactive demo page. |
 
+### Demo environment
+
+| Directory              | Description                                                                                              |
+|------------------------|----------------------------------------------------------------------------------------------------------|
+| [`hofmann-demo`](hofmann-demo/README.md) | Docker Compose environment running the Dropwizard server and the TypeScript demo UI behind HAProxy with TLS 1.3. Self-signed P-256 cert generated via `make certs`. Run with `make up`. |
+
 ### Building
 
 #### Java (requires Java 21)

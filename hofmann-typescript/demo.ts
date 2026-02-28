@@ -59,7 +59,7 @@ function escHtml(s: string): string {
 // ── Config readers ────────────────────────────────────────────────────────────
 
 function getServerUrl(): string {
-  return val('serverUrl') || 'http://localhost:8080';
+  return val('serverUrl') || '';
 }
 
 function getKSF(): KSF {
