@@ -1,12 +1,12 @@
 # Release Process
 
-This document describes how to create a new release of PretenderDB.
+This document describes how to create a new release of the Hofmann Elimination.
 
 ## Prerequisites
 
 Before creating your first release, ensure you have:
 
-1. **Maven Central Account**: Account at https://central.sonatype.com with verified namespace for `io.github.pretenderdb`
+1. **Maven Central Account**: Account at https://central.sonatype.com with verified namespace for `com.codeheadsystems`
 2. **GPG Key**: GPG key for signing artifacts, published to public keyservers
 3. **GitHub Secrets**: Five secrets configured in the repository settings
 
@@ -24,21 +24,13 @@ Before creating your first release, ensure you have:
      - Alternative: Create username/password account
    - Provide a valid email address (required for support and notifications)
 
-2. **Verify Namespace for `io.github.pretenderdb`**
+2. **Verify Namespace for `com.codeheadsystems`**
 
-   **For GitHub Organization namespaces:**
-   - Currently, `io.github.<organization-name>` namespaces are not automatically available
-   - You must contact Maven Central Support to request the namespace
-   - Email Central Support at: https://central.sonatype.org/support
-   - Provide:
-     - Desired namespace: `io.github.pretenderdb`
-     - GitHub organization: https://github.com/PretenderDB
-     - Proof of ownership (you are an owner/admin of the PretenderDB organization)
-   - They may provide a verification key and ask you to create a temporary public repository
-
-   **Alternative (if using personal account):**
-   - If you sign in with your personal GitHub account, `io.github.<your-username>` is auto-verified
-   - However, this won't match the `io.github.pretenderdb` namespace
+   - The `com.codeheadsystems` namespace requires DNS-based or repository-based verification.
+   - Log in at https://central.sonatype.com and navigate to **Namespaces**.
+   - Follow the verification workflow for `com.codeheadsystems` — Sonatype will provide a
+     verification key to add as a DNS TXT record or place in a public repository.
+   - Once verified the namespace will be available for publishing.
 
 3. **Generate User Token**
    - Once your namespace is verified, visit https://central.sonatype.com
@@ -50,7 +42,7 @@ Before creating your first release, ensure you have:
 **Important Notes:**
 - The user token is different from your login credentials
 - These tokens are used specifically for publishing via API/build tools
-- Keep your token secure - treat it like a password
+- Keep your token secure — treat it like a password
 
 ### 2. GPG Key Setup
 
@@ -78,7 +70,7 @@ gpg --keyserver keyserver.ubuntu.com --recv-keys YOUR_KEY_ID
 
 ### 3. Configure GitHub Secrets
 
-Navigate to: https://github.com/PretenderDB/PretenderDB/settings/secrets/actions
+Navigate to: https://github.com/wolpert/hofmann-elimination/settings/secrets/actions
 
 Add the following secrets:
 
@@ -121,7 +113,6 @@ git log --oneline
 3. Update documentation if needed:
    - README.md
    - CHANGELOG.md (if you maintain one)
-   - IMPLEMENTATION_SUMMARY.md
 
 ### Step 2: Create and Push Tag
 
@@ -153,31 +144,34 @@ git push origin v1.0.0
 ### Step 3: Monitor Release
 
 1. Watch the GitHub Actions workflow at:
-   - https://github.com/PretenderDB/PretenderDB/actions
+   - https://github.com/wolpert/hofmann-elimination/actions
 
 2. The workflow takes approximately 10-15 minutes to complete
 
 3. If successful:
-   - GitHub release will be created at: https://github.com/PretenderDB/PretenderDB/releases
+   - GitHub release will be created at: https://github.com/wolpert/hofmann-elimination/releases
    - Artifacts will be available in Maven Central within 15-120 minutes
    - Pre-release flag will be set automatically for tags with suffixes
 
 ### Step 4: Verify Publication
 
 1. Check GitHub release:
-   - https://github.com/PretenderDB/PretenderDB/releases/tag/v1.0.0
+   - https://github.com/wolpert/hofmann-elimination/releases/tag/v1.0.0
 
 2. Verify Maven Central (wait 15-120 minutes after release):
-   - https://repo1.maven.org/maven2/io/github/pretenderdb/
-   - Check that both published modules are present with correct version:
-     - `database-utils`
-     - `pretender`
+   - https://repo1.maven.org/maven2/com/codeheadsystems/
+   - Check that all published modules are present with the correct version:
+     - `hofmann-rfc`
+     - `hofmann-client`
+     - `hofmann-server`
+     - `hofmann-dropwizard`
+     - `hofmann-springboot`
 
 3. Test downloading the artifacts:
 
 ```bash
 # Create a test project
-mkdir /tmp/test-pretenderdb && cd /tmp/test-pretenderdb
+mkdir /tmp/test-hofmann && cd /tmp/test-hofmann
 
 # Create minimal build.gradle.kts
 cat > build.gradle.kts << 'EOF'
@@ -188,7 +182,7 @@ repositories {
     mavenCentral()
 }
 dependencies {
-    implementation("io.github.pretenderdb:pretender:1.0.0")
+    implementation("com.codeheadsystems:hofmann-client:1.0.0")
 }
 EOF
 
@@ -207,7 +201,7 @@ gradle dependencies --configuration runtimeClasspath
 
 ## Version Strategy
 
-PretenderDB follows [Semantic Versioning](https://semver.org/):
+This project follows [Semantic Versioning](https://semver.org/):
 
 - **Major (X.0.0)**: Breaking API changes, incompatible changes
 - **Minor (1.X.0)**: New features, backward-compatible additions
@@ -221,9 +215,9 @@ Examples:
 - `v2.0.0` - Breaking changes
 - `v1.2.0-rc.1` - Release candidate
 
-**Both published modules share the same version number.**
+**All published Java modules share the same version number.**
 
-Note: The `pretender-integ` module is for integration testing only and is not published to Maven Central.
+Note: `hofmann-typescript` is published separately to npm and versioned independently.
 
 ## Troubleshooting
 
@@ -252,8 +246,8 @@ Note: The `pretender-integ` module is for integration testing only and is not pu
 **Solutions:**
 1. Verify `CENTRAL_PORTAL_USERNAME` and `CENTRAL_PORTAL_PASSWORD` secrets contain the **user token credentials** (not your login credentials)
 2. Regenerate user token at https://central.sonatype.com (Account page → Generate User Token)
-3. Check your namespace `io.github.pretenderdb` is verified in Central Portal
-4. Verify account has publishing rights for `io.github.pretenderdb` namespace
+3. Check your namespace `com.codeheadsystems` is verified in Central Portal
+4. Verify account has publishing rights for `com.codeheadsystems` namespace
 5. Try logging into https://central.sonatype.com to confirm your account is active
 
 ### Release Failed: Version Mismatch
@@ -338,7 +332,7 @@ If you need to fix a released version:
 3. **For security issues:** Release a hotfix immediately (e.g., v1.0.0-hotfix.1 or v1.0.1)
 
 To mark a GitHub release as problematic:
-1. Edit the release at https://github.com/PretenderDB/PretenderDB/releases
+1. Edit the release at https://github.com/wolpert/hofmann-elimination/releases
 2. Check "Set as a pre-release" or add a warning to the description
 3. Create a new release with fixes
 
@@ -367,8 +361,8 @@ git tag -d v0.1.0-test
 ./gradlew verifyPublishConfig
 
 # Expected output:
-# Group: io.github.pretenderdb
-# Artifact: pretender (or database-utils, pretender-integ)
+# Group: com.codeheadsystems
+# Artifact: hofmann-rfc (or hofmann-client, hofmann-server, etc.)
 # Version: 0.0.1-SNAPSHOT
 # Is SNAPSHOT: true
 # Repository: snapshots
@@ -381,13 +375,15 @@ git tag -d v0.1.0-test
 ./gradlew clean build publishToMavenLocal
 
 # Verify artifacts in ~/.m2/repository
-ls -R ~/.m2/repository/io/github/pretenderdb/
+ls -R ~/.m2/repository/com/codeheadsystems/
 
 # Expected structure:
-# ~/.m2/repository/io/github/pretenderdb/
-# ├── database-utils/
-# ├── pretender/
-# └── pretender-integ/
+# ~/.m2/repository/com/codeheadsystems/
+# ├── hofmann-rfc/
+# ├── hofmann-client/
+# ├── hofmann-server/
+# ├── hofmann-dropwizard/
+# └── hofmann-springboot/
 ```
 
 ### Test Signing (Requires GPG Setup)
@@ -406,23 +402,12 @@ EOF
 find . -name "*.asc"
 ```
 
-## Dry-Run Release (Optional)
-
-For additional safety, you can create a manual dry-run workflow:
-
-1. Go to: https://github.com/PretenderDB/PretenderDB/actions
-2. Run "Release Dry Run" workflow (if implemented)
-3. Provide a test version like `0.0.1-dryrun`
-4. Verify the build completes successfully
-
-This tests the build and artifact generation without publishing.
-
 ## Release Checklist
 
 Use this checklist when creating a release:
 
 - [ ] All tests pass locally: `./gradlew clean build test`
-- [ ] Documentation is up to date (README, CLAUDE.md, etc.)
+- [ ] Documentation is up to date (README.md, CLAUDE.md, etc.)
 - [ ] Changes reviewed and ready for release
 - [ ] Semantic version chosen appropriately
 - [ ] Tag created with correct format: `vX.Y.Z`
@@ -452,7 +437,7 @@ Follow semantic versioning:
 ```
 
 Snapshots are available at:
-- https://central.sonatype.com/repository/maven-snapshots/io/github/pretenderdb/
+- https://central.sonatype.com/repository/maven-snapshots/com/codeheadsystems/
 
 Users can depend on SNAPSHOT versions by adding the snapshots repository:
 ```kotlin
@@ -462,7 +447,7 @@ repositories {
 }
 
 dependencies {
-    implementation("io.github.pretenderdb:pretender:0.0.1-SNAPSHOT")
+    implementation("com.codeheadsystems:hofmann-client:0.0.1-SNAPSHOT")
 }
 ```
 
@@ -497,5 +482,5 @@ However, manual tagging provides more control and prevents accidental releases.
 ## Support
 
 For questions or issues with releases:
-- Create an issue: https://github.com/PretenderDB/PretenderDB/issues
+- Create an issue: https://github.com/wolpert/hofmann-elimination/issues
 - Contact: ned.wolpert@gmail.com

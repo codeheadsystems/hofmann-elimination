@@ -224,15 +224,10 @@ Calling GET /api/whoami...
 
 ## Argon2id Consistency
 
-The OPAQUE protocol runs the Argon2id key-stretching function **on the client**, not on the
-server. The output feeds directly into the protocol's cryptographic binding. This means the
-four Argon2id parameters — **context**, **memory**, **iterations**, and **parallelism** —
-must be identical between registration and every subsequent login, and they must also match
-the server's configured values.
-
-If they do not match, registration appears to succeed but authentication will fail with a
-`SecurityException` (exit code 2). There is no server-side error message that distinguishes
-a wrong password from a parameter mismatch — this is intentional for security.
+The OPAQUE protocol runs Argon2id **on the client**. The context string and all three Argon2id
+parameters must be identical between registration and every subsequent login, and must also
+match the server's configured values. A mismatch causes silent authentication failure
+indistinguishable from a wrong password (exit code 2).
 
 The testserver's defaults (`config/config.yml`):
 
@@ -244,19 +239,8 @@ argon2Parallelism: 1
 ```
 
 The CLI defaults are hard-coded to match these values. If you change the server configuration
-you must pass the matching `--context`, `--memory`, `--iterations`, and `--parallelism` flags
-to every CLI invocation.
+you must pass matching `--context`, `--memory`, `--iterations`, and `--parallelism` flags to
+every CLI invocation.
 
-When building your own client, use `OpaqueClientConfig.withArgon2id(...)` — not
-`OpaqueClientConfig.forTesting()`. `forTesting()` uses an identity KSF (no Argon2id) and
-is incompatible with this server.
-
-```java
-OpaqueClientConfig config = OpaqueClientConfig.withArgon2id(
-    "P256_SHA256",        // cipher suite
-    "hofmann-testserver", // context — must match server
-    65536,                // memory KiB — must match server
-    3,                    // iterations — must match server
-    1                     // parallelism — must match server
-);
-```
+For a full explanation of the failure modes and Java client setup, see
+[USAGE.md — Argon2id consistency](../USAGE.md#argon2id-consistency-between-server-and-client).

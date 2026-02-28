@@ -10,7 +10,7 @@ An OPRF lets a client compute a pseudorandom function of a private input using a
 
 ## Cipher Suites
 
-All three RFC 9497 cipher suites are supported, plus soon Ristretto255-SHA-512:
+All four cipher suites are supported:
 
 | Constant | Curve | Hash | Element Size |
 |---|---|---|---|

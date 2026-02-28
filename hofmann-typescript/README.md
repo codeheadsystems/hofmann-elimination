@@ -315,18 +315,18 @@ const myKsf: KSF = async (input) => {
 
 ## Matching Server Configuration
 
-The following parameters **must be identical** between client and server, or authentication will silently fail:
+The `context` string and Argon2id parameters **must be identical** between client and server.
+A mismatch causes silent authentication failure indistinguishable from a wrong password.
 
-| Server YAML field | Client option | Notes |
-|---|---|---|
-| `context` | `options.context` | String bound into the OPAQUE preamble transcript |
-| `argon2MemoryKib` | First arg to `argon2idKsf(...)` | `0` on server → use `identityKsf` on client |
-| `argon2Iterations` | Second arg to `argon2idKsf(...)` | |
-| `argon2Parallelism` | Third arg to `argon2idKsf(...)` | |
+| Server YAML field | Client option |
+|---|---|
+| `context` | `options.context` |
+| `argon2MemoryKib` | First arg to `argon2idKsf(...)` |
+| `argon2Iterations` | Second arg to `argon2idKsf(...)` |
+| `argon2Parallelism` | Third arg to `argon2idKsf(...)` |
 
-**Why silent failure?** If parameters differ, the client derives a different `randomizedPwd` from the same password. The envelope decrypts to garbage, the OPAQUE MAC verification fails, and the error is indistinguishable from a wrong password by design — leaking which parameter is wrong would reduce security.
-
-**Changing parameters after registration** invalidates all existing credentials. Every user must re-register.
+For a full explanation of the failure modes and migration considerations, see
+[USAGE.md — Argon2id consistency](../USAGE.md#argon2id-consistency-between-server-and-client).
 
 ---
 
@@ -448,17 +448,5 @@ hofmann-typescript/
 
 ## Server Endpoints
 
-The hofmann-server exposes the following REST endpoints that this client communicates with:
-
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/opaque/registration/start` | Begin registration — exchanges blinded element for OPRF evaluation |
-| `POST` | `/opaque/registration/finish` | Complete registration — stores credential record |
-| `DELETE` | `/opaque/registration` | Delete a credential (requires `Authorization: Bearer <token>`) |
-| `POST` | `/opaque/auth/start` | Begin authentication — KE1 → KE2 |
-| `POST` | `/opaque/auth/finish` | Complete authentication — KE3 → JWT |
-| `POST` | `/oprf` | Standalone OPRF evaluation |
-
-All request and response bodies are JSON with base64-encoded byte fields. The `/oprf` endpoint uses hex encoding for the EC point field.
-
-For server setup, see the [server configuration guide](../USAGE.md).
+For the full REST endpoint listing, request/response format, and server setup, see the
+[server configuration guide](../USAGE.md).
