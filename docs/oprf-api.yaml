@@ -1,0 +1,162 @@
+openapi: "3.1.1"
+info:
+  title: Hofmann OPRF API
+  description: |
+    Oblivious Pseudorandom Function (OPRF) service implementing RFC 9497 mode 0
+    (base mode) over NIST P-256 with SHA-256.
+
+    In OPRF mode 0, the server evaluates a PRF on a client-supplied input without
+    learning the input. The client blinds its input before sending it, and the
+    server applies a keyed PRF using its secret. The client then unblinds the
+    server's response to obtain the final PRF output — a value the server cannot
+    compute on its own.
+
+    **Protocol flow:**
+    1. Client blinds its input: `blindedElement = H(input) * r` (where `r` is a random scalar)
+    2. Client sends `blindedElement` (as a hex-encoded compressed EC point) to this endpoint
+    3. Server evaluates: `evaluatedElement = blindedElement * serverSecret`
+    4. Client unblinds: `output = evaluatedElement * r⁻¹ = H(input) * serverSecret`
+
+    The `processIdentifier` in the response traces back to the server's keying material
+    so that results are deterministic per identifier: the same input + same identifier
+    always produces the same PRF output.
+  version: "1.0.0"
+  contact:
+    url: https://github.com/wolpert/hofmann-elimination
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: /
+    description: Base path (no prefix)
+
+tags:
+  - name: OPRF
+    description: |
+      Oblivious Pseudorandom Function evaluation (RFC 9497 §3.3, mode 0).
+      The server applies its keyed PRF to the client's blinded EC point.
+
+paths:
+  /oprf:
+    post:
+      tags:
+        - OPRF
+      operationId: evaluate
+      summary: Evaluate a blinded OPRF element
+      description: |
+        Accepts a client's blinded elliptic-curve point and returns the server's
+        evaluated response.
+
+        The client must have already:
+        - Hashed its input to a P-256 curve point using `hash_to_curve` (RFC 9380)
+        - Multiplied that point by a random scalar `r` to produce the blinded element
+
+        The server multiplies the blinded element by its secret key and returns the
+        result along with a `processIdentifier` that identifies the keying context.
+
+        **Error conditions:**
+        - `400 Bad Request` — `ecPoint` or `requestId` is missing, blank, or contains
+          data that does not decode to a valid compressed P-256 point.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OprfRequest"
+            examples:
+              typical:
+                summary: Typical OPRF request
+                value:
+                  ecPoint: "02b94d27b9934d3e08a52e52d7da7dabfac484efe04a5020000000000000000000"
+                  requestId: "req-abc123"
+      responses:
+        "200":
+          description: OPRF evaluation succeeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OprfResponse"
+              examples:
+                typical:
+                  summary: Typical OPRF response
+                  value:
+                    ecPoint: "03a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9"
+                    processIdentifier: "default"
+        "400":
+          description: |
+            Bad request. The `ecPoint` or `requestId` field is missing, blank, or
+            the `ecPoint` value does not represent a valid compressed P-256 point.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missingField:
+                  summary: Missing required field
+                  value:
+                    message: "Invalid EC point data"
+                invalidPoint:
+                  summary: Invalid EC point
+                  value:
+                    message: "Invalid EC point data"
+
+components:
+  schemas:
+    OprfRequest:
+      type: object
+      required:
+        - ecPoint
+        - requestId
+      properties:
+        ecPoint:
+          type: string
+          description: |
+            Hex-encoded compressed SEC1 elliptic-curve point on P-256.
+            This is the client's blinded input: `H(password) * r`, where `r`
+            is a random scalar chosen by the client. The point is in compressed
+            form: 33 bytes (1-byte prefix `02` or `03` followed by 32-byte x-coordinate),
+            encoded as 66 hex characters.
+          pattern: "^[0-9a-fA-F]{66}$"
+          example: "02b94d27b9934d3e08a52e52d7da7dabfac484efe04a5020000000000000000000"
+        requestId:
+          type: string
+          description: |
+            Client-supplied request identifier used for correlation and tracing.
+            This value is not used in any cryptographic computation.
+          minLength: 1
+          example: "req-abc123"
+
+    OprfResponse:
+      type: object
+      required:
+        - ecPoint
+        - processIdentifier
+      properties:
+        ecPoint:
+          type: string
+          description: |
+            Hex-encoded compressed SEC1 elliptic-curve point on P-256.
+            This is the server-evaluated element: `blindedElement * serverSecret`.
+            The client unblinds this by computing `evaluatedElement * r⁻¹` to
+            obtain the final OPRF output, `H(password) * serverSecret`.
+            33 bytes encoded as 66 hex characters.
+          pattern: "^[0-9a-fA-F]{66}$"
+          example: "03a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9"
+        processIdentifier:
+          type: string
+          description: |
+            Identifier for the server's keying context. Results are deterministic
+            per (input, processIdentifier) pair: the same input with the same
+            identifier always yields the same unblinded output. This allows a
+            server to maintain multiple independent PRF keys.
+          minLength: 1
+          example: "default"
+
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Human-readable error description
+          example: "Invalid EC point data"

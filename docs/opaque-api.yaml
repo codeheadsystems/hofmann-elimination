@@ -1,0 +1,667 @@
+openapi: "3.1.1"
+info:
+  title: Hofmann OPAQUE API
+  description: |
+    OPAQUE aPAKE (Asymmetric Password-Authenticated Key Exchange) service
+    implementing RFC 9807 OPAQUE-3DH over NIST P-256 with SHA-256.
+
+    OPAQUE is a password authentication protocol that allows a client to
+    authenticate to a server **without the server ever seeing the password**,
+    not even during initial registration. The server cannot perform an offline
+    dictionary attack even if its database is fully compromised.
+
+    ## Protocol Overview
+
+    ### Registration (one-time, per user)
+
+    ```
+    Client                            Server
+      |                                 |
+      |─── POST /registration/start ───►|  (KE1: blinded element + credential ID)
+      |◄─── RegistrationStartResponse ──|  (evaluated element + server public key)
+      |                                 |
+      | [client derives randomized_pwd, |
+      |  creates envelope, keys]        |
+      |                                 |
+      |─── POST /registration/finish ──►|  (client public key + sealed envelope)
+      |◄─── 204 No Content ─────────────|
+    ```
+
+    ### Authentication (each login)
+
+    ```
+    Client                            Server
+      |                                 |
+      |─── POST /auth/start ───────────►|  (KE1: blinded element + ephemeral key)
+      |◄─── AuthStartResponse ──────────|  (KE2: evaluated element + masked envelope +
+      |                                 |        ephemeral key + server MAC)
+      |                                 |
+      | [client verifies server MAC,    |
+      |  unseals envelope, derives keys]|
+      |                                 |
+      |─── POST /auth/finish ──────────►|  (KE3: client MAC + session token)
+      |◄─── AuthFinishResponse ─────────|  (shared session key + JWT)
+    ```
+
+    ## Security Properties
+
+    - **Zero password exposure**: The server never sees the plaintext password
+    - **Mutual authentication**: Both parties prove knowledge of the shared secret
+    - **Forward secrecy**: Ephemeral DH keys ensure past sessions remain safe if long-term keys are compromised
+    - **User enumeration resistance**: Unknown credential identifiers return a fake-but-valid-looking KE2 response (RFC 9807 §10.6)
+    - **Replay protection**: Session tokens are single-use; nonces bind each session
+
+    ## Encoding
+
+    All binary fields (EC points, keys, nonces, MACs) are **Base64-encoded** strings
+    in JSON request and response bodies.
+
+    ## Session Management
+
+    The server maintains in-memory pending sessions during the two-round authentication
+    handshake. Sessions expire after **120 seconds**. The server enforces a maximum of
+    **10,000 concurrent pending sessions** to prevent memory exhaustion.
+
+  version: "1.0.0"
+  contact:
+    url: https://github.com/wolpert/hofmann-elimination
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: /
+    description: Base path (no prefix)
+
+tags:
+  - name: Registration
+    description: |
+      Two-round registration flow that stores a password-derived record on the server
+      without transmitting the password. Requires no prior authentication.
+  - name: Authentication
+    description: |
+      Two-round OPAQUE-3DH login flow. On success, returns a shared session key and
+      a signed JWT for subsequent API calls. Requires a prior completed registration.
+  - name: Credential Management
+    description: |
+      Operations on existing registrations. Requires a valid JWT obtained from a
+      successful authentication.
+
+paths:
+  /opaque/registration/start:
+    post:
+      tags:
+        - Registration
+      operationId: registrationStart
+      summary: Start OPAQUE registration (phase 1 of 2)
+      description: |
+        Accepts the client's credential identifier and blinded OPRF element, and
+        returns the server's OPRF-evaluated element together with the server's
+        long-term public key.
+
+        The client should:
+        1. Generate a random scalar `r`
+        2. Compute `blindedElement = H(password) * r` using `hash_to_curve` (RFC 9380)
+        3. Send this endpoint the blinded element and the chosen credential identifier
+
+        The server:
+        - Evaluates the blinded element under its OPRF key
+        - Returns its long-term AKE public key so the client can bind it into the envelope
+
+        After receiving the response the client:
+        1. Unblinds the evaluated element: `oprfOutput = evaluatedElement * r⁻¹`
+        2. Derives `randomized_pwd` from `oprfOutput`
+        3. Derives an AKE key pair from `randomized_pwd`
+        4. Seals the server's public key in an envelope authenticated by `randomized_pwd`
+        5. Calls `/opaque/registration/finish`
+
+        **Error conditions:**
+        - `400 Bad Request` — Any field is missing, blank, or not valid base64.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrationStartRequest"
+            examples:
+              typical:
+                summary: Typical registration start
+                value:
+                  credentialIdentifier: "dXNlckBleGFtcGxlLmNvbQ=="
+                  blindedElement: "Ao3YJ7mTTT4IpS5S3afavaxIT+4EpQIAAAAAAAAAAAAA"
+      responses:
+        "200":
+          description: Registration start succeeded; client should proceed to `/registration/finish`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegistrationStartResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /opaque/registration/finish:
+    post:
+      tags:
+        - Registration
+      operationId: registrationFinish
+      summary: Finish OPAQUE registration (phase 2 of 2)
+      description: |
+        Stores the client's registration record on the server. After this call
+        succeeds, the client can authenticate using `/opaque/auth/start` and
+        `/opaque/auth/finish`.
+
+        The client must supply the credential record produced by finalizing the
+        OPRF output from `/registration/start`:
+        - `clientPublicKey` — the AKE public key derived from `randomized_pwd`
+        - `maskingKey` — used during authentication to blind the stored envelope
+        - `envelopeNonce` — unique random nonce sealing the envelope
+        - `authTag` — authentication tag binding the server's public key to the envelope
+
+        **Error conditions:**
+        - `400 Bad Request` — Any field is missing, blank, or not valid base64.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrationFinishRequest"
+      responses:
+        "204":
+          description: Registration record stored successfully; no response body
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /opaque/registration:
+    delete:
+      tags:
+        - Credential Management
+      operationId: registrationDelete
+      summary: Delete a registration record
+      description: |
+        Permanently removes a credential registration from the server store.
+        After deletion the credential identifier can no longer authenticate.
+
+        **Authorization required:** A valid JWT bearer token obtained from a
+        prior successful authentication (`/opaque/auth/finish`). The token's
+        subject must match the `credentialIdentifier` being deleted, preventing
+        one user from deleting another's registration.
+
+        As a side effect, all active JWT sessions for the deleted credential
+        are revoked, even if they have not yet expired.
+
+        **Error conditions:**
+        - `400 Bad Request` — `credentialIdentifier` is missing, blank, or not valid base64.
+        - `401 Unauthorized` — `Authorization` header is absent, the token is invalid,
+          expired, or its subject does not match the credential being deleted.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrationDeleteRequest"
+            examples:
+              typical:
+                summary: Delete by credential identifier
+                value:
+                  credentialIdentifier: "dXNlckBleGFtcGxlLmNvbQ=="
+      responses:
+        "204":
+          description: Registration deleted successfully; no response body
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /opaque/auth/start:
+    post:
+      tags:
+        - Authentication
+      operationId: authStart
+      summary: Start OPAQUE authentication (KE1 → KE2)
+      description: |
+        Accepts the client's KE1 message (blinded OPRF element + ephemeral AKE
+        public key + client nonce) and returns the server's KE2 message (evaluated
+        element + masked credential record + ephemeral AKE public key + server MAC).
+
+        **User enumeration resistance (RFC 9807 §10.6):** If the `credentialIdentifier`
+        is not registered, the server returns a fake-but-computationally-valid KE2
+        response rather than an error. The client will fail to verify the server MAC
+        and thereby learn that authentication failed — but the error reveals nothing
+        about whether the identifier exists. Callers must not distinguish "unknown user"
+        from "wrong password" based on this endpoint's response.
+
+        The client must:
+        1. Verify the `serverMac` in the response before computing KE3
+        2. Unmask the `maskedResponse` to recover the server's long-term public key
+           and envelope
+        3. Unseal the envelope using `randomized_pwd` to recover its AKE private key
+        4. Proceed to `/opaque/auth/finish` only if server MAC verification succeeds
+
+        **Error conditions:**
+        - `400 Bad Request` — Any field is missing, blank, or not valid base64.
+        - `503 Service Unavailable` — The server's pending-session store has reached
+          its 10,000-session capacity; retry after a short delay.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthStartRequest"
+      responses:
+        "200":
+          description: |
+            KE2 message produced. The `sessionToken` in the response must be
+            echoed verbatim in the subsequent `/auth/finish` call.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthStartResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /opaque/auth/finish:
+    post:
+      tags:
+        - Authentication
+      operationId: authFinish
+      summary: Finish OPAQUE authentication (KE3 → session key + JWT)
+      description: |
+        Accepts the client's KE3 message (client MAC over the full AKE transcript)
+        and returns a shared session key and a signed JWT bearer token.
+
+        The `sessionToken` must match the one returned by the corresponding
+        `/auth/start` call. Sessions expire **120 seconds** after `/auth/start`;
+        requests with an expired or unknown token receive `401 Unauthorized`.
+
+        The `clientMac` is computed as:
+        ```
+        clientMac = HMAC(Km3, SHA-256(preamble || serverMac))
+        ```
+        where `preamble` is the concatenated KE1 and KE2 transcript bytes.
+
+        On success the server:
+        1. Verifies the client MAC proves knowledge of the correct password
+        2. Removes the pending session (tokens are single-use)
+        3. Issues a signed JWT with the credential identifier as the subject
+
+        **Error conditions:**
+        - `400 Bad Request` — `clientMac` is missing, blank, or not valid base64;
+          or `sessionToken` is missing or blank.
+        - `401 Unauthorized` — `sessionToken` is unknown, expired (>120 s), or
+          the `clientMac` does not verify (wrong password or tampered transcript).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthFinishRequest"
+      responses:
+        "200":
+          description: |
+            Authentication succeeded. The `token` is a signed JWT that the client
+            should present as `Authorization: Bearer <token>` for subsequent calls.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthFinishResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT obtained from a successful `/opaque/auth/finish` response.
+        The token subject is the credential identifier used during registration.
+
+  schemas:
+
+    # ─── Registration ──────────────────────────────────────────────────────────
+
+    RegistrationStartRequest:
+      type: object
+      required:
+        - credentialIdentifier
+        - blindedElement
+      properties:
+        credentialIdentifier:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded credential identifier (username, email address, or any
+            opaque byte sequence that uniquely identifies the user on this server).
+            The server stores this as the key for the registration record.
+          example: "dXNlckBleGFtcGxlLmNvbQ=="
+        blindedElement:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded blinded OPRF input: a compressed SEC1 P-256 point (33 bytes)
+            computed as `H(password) * r`, where `r` is a random scalar chosen by the
+            client and `H` is the `hash_to_curve` function (RFC 9380).
+          example: "Ao3YJ7mTTT4IpS5S3afavaxIT+4EpQIAAAAAAAAAAAAA"
+
+    RegistrationStartResponse:
+      type: object
+      required:
+        - evaluatedElement
+        - serverPublicKey
+      properties:
+        evaluatedElement:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded OPRF-evaluated element: a compressed SEC1 P-256 point (33 bytes)
+            computed as `blindedElement * serverOprfKey`. The client unblinds this with
+            `evaluatedElement * r⁻¹` to obtain the OPRF output used to derive
+            `randomized_pwd`.
+          example: "A6GywnTj7YkHqO5KFuIjJrX9KlQgzGdCkQAAAAAAAAA"
+        serverPublicKey:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded server long-term AKE public key: a compressed SEC1 P-256
+            point (33 bytes, first byte `0x02` or `0x03`). The client seals this into
+            the envelope during registration so that it can authenticate the server
+            during subsequent logins.
+          example: "Az1234567890abcdefghijklmnopqrstuvwxyzABCDE="
+
+    RegistrationFinishRequest:
+      type: object
+      required:
+        - credentialIdentifier
+        - clientPublicKey
+        - maskingKey
+        - envelopeNonce
+        - authTag
+      properties:
+        credentialIdentifier:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded credential identifier. Must be identical to the value
+            sent in the corresponding `/registration/start` request.
+          example: "dXNlckBleGFtcGxlLmNvbQ=="
+        clientPublicKey:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded client AKE public key: a compressed SEC1 P-256 point
+            (33 bytes) derived from `randomized_pwd`. The server stores this and
+            uses it in the 3DH computation during authentication.
+          example: "Aq+2abc123def456ghi789jkl012mno345pqr678st=="
+        maskingKey:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded masking key (32 bytes) derived from `randomized_pwd`
+            via HKDF-Expand. During authentication the server uses this to XOR-encrypt
+            the envelope before transmission, preventing offline dictionary attacks even
+            if the credential store is compromised.
+          example: "c2VjcmV0TWFza2luZ0tleVZhbHVlSGVyZTEyMzQ1Ng=="
+        envelopeNonce:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded random nonce (32 bytes) generated by the client and used
+            to seal the envelope. Must be unique per registration.
+          example: "cmFuZG9tTm9uY2UxMjM0NTY3ODkwMTIzNDU2Nzg5MA=="
+        authTag:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded authentication tag (32 bytes) that authenticates the
+            envelope contents and binds the server's public key to the envelope.
+            Computed during client-side OPAQUE finalization.
+          example: "YXV0aFRhZ1ZhbHVlMTIzNDU2Nzg5MDEyMzQ1Njc4OTA="
+
+    RegistrationDeleteRequest:
+      type: object
+      required:
+        - credentialIdentifier
+      properties:
+        credentialIdentifier:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded credential identifier of the registration to delete.
+            The JWT subject (from the `Authorization` header) must match this value.
+          example: "dXNlckBleGFtcGxlLmNvbQ=="
+
+    # ─── Authentication ────────────────────────────────────────────────────────
+
+    AuthStartRequest:
+      type: object
+      required:
+        - credentialIdentifier
+        - blindedElement
+        - clientNonce
+        - clientAkePublicKey
+      properties:
+        credentialIdentifier:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded credential identifier. The server uses this to look up the
+            stored registration record. If not found, a fake KE2 is returned (see
+            user enumeration resistance note in the endpoint description).
+          example: "dXNlckBleGFtcGxlLmNvbQ=="
+        blindedElement:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded blinded OPRF input element: a compressed SEC1 P-256 point
+            (33 bytes). Same construction as in registration: `H(password) * r`.
+          example: "Ao3YJ7mTTT4IpS5S3afavaxIT+4EpQIAAAAAAAAAAAAA"
+        clientNonce:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded 32-byte random client nonce for this AKE session.
+            Included in the transcript preamble to prevent replay attacks and
+            bind this session uniquely.
+          example: "Y2xpZW50Tm9uY2UxMjM0NTY3ODkwMTIzNDU2Nzg5MA=="
+        clientAkePublicKey:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded ephemeral client AKE public key: a compressed SEC1 P-256
+            point (33 bytes). This is the client's ephemeral Diffie-Hellman contribution
+            for the 3DH handshake. A fresh key pair must be generated for each login attempt.
+          example: "AiKE3phemeralClientPublicKey1234567890ABCD="
+
+    AuthStartResponse:
+      type: object
+      required:
+        - sessionToken
+        - evaluatedElement
+        - maskingNonce
+        - maskedResponse
+        - serverNonce
+        - serverAkePublicKey
+        - serverMac
+      properties:
+        sessionToken:
+          type: string
+          description: |
+            Server-generated opaque token identifying the pending AKE session.
+            Must be echoed verbatim in the `sessionToken` field of the subsequent
+            `/auth/finish` request. Has no cryptographic role; used only for server-side
+            session lookup. Sessions expire 120 seconds after `/auth/start`.
+          example: "7f3d9a1c-4b2e-4f8a-8c6d-1e2f3a4b5c6d"
+        evaluatedElement:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded OPRF-evaluated element: a compressed SEC1 P-256 point (33 bytes).
+            The client unblinds this with `evaluatedElement * r⁻¹` to recover
+            `randomized_pwd` and then uses it to unseal the envelope.
+          example: "A6GywnTj7YkHqO5KFuIjJrX9KlQgzGdCkQAAAAAAAAA"
+        maskingNonce:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded fresh random nonce (32 bytes) generated by the server.
+            Combined with the stored `maskingKey` (from registration) to derive
+            a one-time masking stream that XOR-encrypts the envelope.
+          example: "bWFza2luZ05vbmNlMTIzNDU2Nzg5MDEyMzQ1Njc4OTA="
+        maskedResponse:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded masked (XOR-encrypted) credential record transmitted to the
+            client. Contains the server's long-term public key concatenated with the
+            stored envelope, both XORed with the masking stream derived from
+            `maskingNonce` and the registration `maskingKey`. The client unmasks
+            it to recover the envelope, then unseals the envelope using `randomized_pwd`.
+          example: "bWFza2VkUmVzcG9uc2VEYXRhMTIzNDU2Nzg5MDEyMzQ1Njc4OTA="
+        serverNonce:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded 32-byte random server nonce for this AKE session.
+            Included in the transcript preamble alongside the client nonce to
+            uniquely bind this session.
+          example: "c2VydmVyTm9uY2UxMjM0NTY3ODkwMTIzNDU2Nzg5MA=="
+        serverAkePublicKey:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded ephemeral server AKE public key: a compressed SEC1 P-256
+            point (33 bytes). The server's ephemeral Diffie-Hellman contribution for
+            the 3DH handshake. A fresh key pair is generated for each `/auth/start` call.
+          example: "A3NlcnZlckVwaGVtZXJhbFB1YmxpY0tleUFCQ0RFRg=="
+        serverMac:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded server MAC (32 bytes) authenticating the server's commitment
+            to this AKE session. Computed as:
+            `HMAC-SHA-256(Km2, SHA-256(preamble))`
+            The client MUST verify this before computing and sending KE3. Failure to
+            verify means the password was wrong or the server is not authentic.
+          example: "c2VydmVyTWFjVmFsdWUxMjM0NTY3ODkwMTIzNDU2Nzg="
+
+    AuthFinishRequest:
+      type: object
+      required:
+        - sessionToken
+        - clientMac
+      properties:
+        sessionToken:
+          type: string
+          description: |
+            The opaque session token returned by the corresponding `/auth/start` call.
+            Used by the server to retrieve the pending AKE state. Must be provided
+            within 120 seconds of the `/auth/start` response.
+          example: "7f3d9a1c-4b2e-4f8a-8c6d-1e2f3a4b5c6d"
+        clientMac:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded client MAC (32 bytes) authenticating the full AKE transcript.
+            Proves that the client knows the correct password. Computed as:
+            `HMAC-SHA-256(Km3, SHA-256(preamble || serverMac))`
+            where `preamble` is the concatenated KE1 and KE2 transcript bytes,
+            and `serverMac` is the value from the `/auth/start` response.
+          example: "Y2xpZW50TWFjVmFsdWUxMjM0NTY3ODkwMTIzNDU2Nzg="
+
+    AuthFinishResponse:
+      type: object
+      required:
+        - sessionKey
+        - token
+      properties:
+        sessionKey:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded shared session key (32 bytes) derived from the 3DH handshake.
+            Both client and server independently compute this key; agreement confirms
+            mutual authentication. The client should verify its locally-computed session
+            key matches this value.
+          example: "c2Vzc2lvbktleVZhbHVlMTIzNDU2Nzg5MDEyMzQ1Njc="
+        token:
+          type: string
+          description: |
+            Signed JWT bearer token. Present this in the `Authorization: Bearer <token>`
+            header for API calls that require authentication (e.g., `/opaque/registration`
+            DELETE). The token subject is the credential identifier.
+          example: "eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiJ1c2VyQGV4YW1wbGUuY29tIn0.signature"
+
+    # ─── Error responses ───────────────────────────────────────────────────────
+
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Human-readable error description
+          example: "Invalid request data"
+
+  responses:
+    BadRequest:
+      description: |
+        Bad request. A required field is missing, blank, contains invalid base64,
+        or decodes to data that is cryptographically invalid (e.g., a point not on
+        the curve).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            missingField:
+              summary: Required field absent or blank
+              value:
+                message: "Invalid request data"
+            invalidBase64:
+              summary: Field contains invalid base64
+              value:
+                message: "Invalid request data"
+
+    Unauthorized:
+      description: |
+        Unauthorized. The `Authorization` header is absent or contains an invalid,
+        expired, or mismatched JWT; or the client MAC did not verify (wrong password
+        or tampered transcript); or the session token is unknown or expired.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            missingToken:
+              summary: Authorization header absent
+              value:
+                message: "Unauthorized"
+            expiredSession:
+              summary: Session token expired (>120 s)
+              value:
+                message: "Session expired or not found"
+            macFailure:
+              summary: Client MAC did not verify
+              value:
+                message: "Authentication failed"
+
+    ServiceUnavailable:
+      description: |
+        Service unavailable. The server's pending-session store has reached its
+        10,000-session capacity. The client should retry after a short delay.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            capacityExceeded:
+              summary: Too many pending sessions
+              value:
+                message: "Service temporarily unavailable; retry shortly"
