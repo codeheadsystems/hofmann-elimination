@@ -1,5 +1,7 @@
 package com.codeheadsystems.hofmann.springboot.config;
 
+import com.codeheadsystems.hofmann.model.opaque.OpaqueClientConfigResponse;
+import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
 import com.codeheadsystems.hofmann.server.auth.JwtManager;
 import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
@@ -189,6 +191,35 @@ public class HofmannAutoConfiguration {
   public HofmannOpaqueServerManager opaqueServerManager(Server server, CredentialStore credentialStore,
                                                         JwtManager jwtManager) {
     return new HofmannOpaqueServerManager(server, credentialStore, jwtManager);
+  }
+
+  /**
+   * OPRF client config response bean.
+   *
+   * @param props the props
+   * @return the oprf client config response
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public OprfClientConfigResponse oprfClientConfig(HofmannProperties props) {
+    return new OprfClientConfigResponse(props.getOprfCipherSuite());
+  }
+
+  /**
+   * OPAQUE client config response bean.
+   *
+   * @param props the props
+   * @return the opaque client config response
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public OpaqueClientConfigResponse opaqueClientConfig(HofmannProperties props) {
+    return new OpaqueClientConfigResponse(
+        props.getOpaqueCipherSuite(),
+        props.getContext(),
+        props.getArgon2MemoryKib(),
+        props.getArgon2Iterations(),
+        props.getArgon2Parallelism());
   }
 
   /**

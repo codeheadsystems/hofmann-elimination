@@ -158,7 +158,7 @@ public class OpaqueCli {
         SERVER_ID, new ServerConnectionInfo(URI.create(server)));
     HofmannOpaqueAccessor accessor = new HofmannOpaqueAccessor(
         HttpClient.newHttpClient(), new ObjectMapper(), connections);
-    return new HofmannOpaqueClientManager(config, accessor);
+    return new HofmannOpaqueClientManager(accessor, Map.of(SERVER_ID, config));
   }
 
   private static void runRegister(HofmannOpaqueClientManager manager,

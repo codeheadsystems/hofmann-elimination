@@ -18,7 +18,29 @@ export interface OprfResponse {
  * Thin HTTP wrapper for the OPRF protocol.
  */
 export class OprfHttpClient {
+  cachedConfig: { cipherSuite: string } | null = null;
+
   constructor(private readonly baseUrl: string) {}
+
+  /**
+   * Factory that fetches server config and constructs a pre-configured client.
+   */
+  static async create(baseUrl: string): Promise<OprfHttpClient> {
+    const client = new OprfHttpClient(baseUrl);
+    client.cachedConfig = await client.getConfig();
+    return client;
+  }
+
+  /**
+   * Fetches the OPRF configuration from the server.
+   */
+  async getConfig(): Promise<{ cipherSuite: string }> {
+    const r = await fetch(`${this.baseUrl}/oprf/config`);
+    if (!r.ok) {
+      throw new Error(`getConfig failed: ${r.status} ${r.statusText}`);
+    }
+    return r.json();
+  }
 
   /**
    * Evaluate the OPRF for the given input.

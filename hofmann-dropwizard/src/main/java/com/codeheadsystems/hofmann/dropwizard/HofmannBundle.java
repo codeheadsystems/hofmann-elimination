@@ -3,6 +3,8 @@ package com.codeheadsystems.hofmann.dropwizard;
 import com.codeheadsystems.hofmann.dropwizard.auth.HofmannAuthenticator;
 import com.codeheadsystems.hofmann.dropwizard.auth.HofmannPrincipal;
 import com.codeheadsystems.hofmann.dropwizard.health.OpaqueServerHealthCheck;
+import com.codeheadsystems.hofmann.model.opaque.OpaqueClientConfigResponse;
+import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
 import com.codeheadsystems.hofmann.server.auth.JwtManager;
 import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
 import com.codeheadsystems.hofmann.server.resource.OpaqueResource;
@@ -150,6 +152,13 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     Server server = buildServer(configuration, opaqueConfig);
     JwtManager jwtManager = buildJwtManager(configuration);
 
+    OpaqueClientConfigResponse opaqueClientConfig = new OpaqueClientConfigResponse(
+        configuration.getOpaqueCipherSuite(),
+        configuration.getContext(),
+        configuration.getArgon2MemoryKib(),
+        configuration.getArgon2Iterations(),
+        configuration.getArgon2Parallelism());
+
     HofmannOpaqueServerManager hofmannOpaqueServerManager = new HofmannOpaqueServerManager(server, credentialStore, jwtManager);
     environment.lifecycle().manage(new io.dropwizard.lifecycle.Managed() {
       @Override
@@ -161,7 +170,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
         hofmannOpaqueServerManager.shutdown();
       }
     });
-    environment.jersey().register(new OpaqueResource(hofmannOpaqueServerManager));
+    environment.jersey().register(new OpaqueResource(hofmannOpaqueServerManager, opaqueClientConfig));
     environment.healthChecks().register("opaque-server", new OpaqueServerHealthCheck(server));
 
     // JWT auth filter
@@ -184,8 +193,10 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     } else {
       oprfSupplier = buildDefaultProcessorSupplier(configuration);
     }
+    OprfClientConfigResponse oprfClientConfig = new OprfClientConfigResponse(
+        configuration.getOprfCipherSuite());
     OprfServerManager oprfServerManager = new OprfServerManager(oprfSuite, oprfSupplier);
-    environment.jersey().register(new OprfResource(oprfServerManager));
+    environment.jersey().register(new OprfResource(oprfServerManager, oprfClientConfig));
   }
 
   private void registerSizeLimitFilter(C configuration, Environment environment) {

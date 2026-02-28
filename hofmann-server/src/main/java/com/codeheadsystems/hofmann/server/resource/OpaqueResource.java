@@ -4,6 +4,7 @@ import com.codeheadsystems.hofmann.model.opaque.AuthFinishRequest;
 import com.codeheadsystems.hofmann.model.opaque.AuthFinishResponse;
 import com.codeheadsystems.hofmann.model.opaque.AuthStartRequest;
 import com.codeheadsystems.hofmann.model.opaque.AuthStartResponse;
+import com.codeheadsystems.hofmann.model.opaque.OpaqueClientConfigResponse;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationDeleteRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationFinishRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartRequest;
@@ -11,6 +12,7 @@ import com.codeheadsystems.hofmann.model.opaque.RegistrationStartResponse;
 import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.GET;
 import jakarta.ws.rs.HeaderParam;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
@@ -41,14 +43,30 @@ public class OpaqueResource {
   private static final Logger log = LoggerFactory.getLogger(OpaqueResource.class);
 
   private final HofmannOpaqueServerManager manager;
+  private final OpaqueClientConfigResponse clientConfig;
 
   /**
    * Instantiates a new Opaque resource.
    *
-   * @param manager the manager
+   * @param manager      the manager
+   * @param clientConfig the client config response to expose via GET /opaque/config
    */
-  public OpaqueResource(HofmannOpaqueServerManager manager) {
+  public OpaqueResource(HofmannOpaqueServerManager manager,
+                        OpaqueClientConfigResponse clientConfig) {
     this.manager = manager;
+    this.clientConfig = clientConfig;
+  }
+
+  /**
+   * Returns the OPAQUE configuration that clients need to self-configure.
+   *
+   * @return the opaque client config response
+   */
+  @GET
+  @Path("/config")
+  public OpaqueClientConfigResponse getConfig() {
+    log.trace("getConfig()");
+    return clientConfig;
   }
 
   /**

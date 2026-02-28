@@ -4,10 +4,12 @@ import com.codeheadsystems.hofmann.client.config.OprfClientConfig;
 import com.codeheadsystems.hofmann.client.exceptions.OprfAccessorException;
 import com.codeheadsystems.hofmann.client.model.ServerConnectionInfo;
 import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
+import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
 import com.codeheadsystems.hofmann.model.oprf.OprfRequest;
 import com.codeheadsystems.hofmann.model.oprf.OprfResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -48,6 +50,22 @@ public class HofmannOprfAccessor {
   }
 
   /**
+   * Fetches the OPRF configuration from the server.
+   *
+   * @param serverIdentifier the server identifier
+   * @return the oprf client config response
+   */
+  public OprfClientConfigResponse getOprfConfig(final ServerIdentifier serverIdentifier) {
+    log.debug("getOprfConfig(serverIdentifier={})", serverIdentifier);
+    final ServerConnectionInfo connectionInfo = serverConnections.get(serverIdentifier);
+    if (connectionInfo == null) {
+      throw new IllegalArgumentException("No connection info for server: " + serverIdentifier);
+    }
+    URI uri = connectionInfo.endpoint().resolve(connectionInfo.endpoint().getPath() + "/oprf/config");
+    return get(serverIdentifier, uri, OprfClientConfigResponse.class);
+  }
+
+  /**
    * Handle request oprf response.
    *
    * @param serverIdentifier the server identifier
@@ -74,6 +92,24 @@ public class HofmannOprfAccessor {
       final HttpResponse<String> httpResponse = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
       checkStatus(serverIdentifier, httpResponse.statusCode());
       return objectMapper.readValue(httpResponse.body(), OprfResponse.class);
+    } catch (IOException e) {
+      throw new OprfAccessorException("HTTP request failed for server: " + serverIdentifier, e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new OprfAccessorException("HTTP request interrupted for server: " + serverIdentifier, e);
+    }
+  }
+
+  private <T> T get(ServerIdentifier serverIdentifier, URI uri, Class<T> responseType) {
+    try {
+      final HttpRequest httpRequest = HttpRequest.newBuilder()
+          .uri(uri)
+          .header("Accept", "application/json")
+          .GET()
+          .build();
+      final HttpResponse<String> httpResponse = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+      checkStatus(serverIdentifier, httpResponse.statusCode());
+      return objectMapper.readValue(httpResponse.body(), responseType);
     } catch (IOException e) {
       throw new OprfAccessorException("HTTP request failed for server: " + serverIdentifier, e);
     } catch (InterruptedException e) {

@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
 import com.codeheadsystems.hofmann.model.oprf.OprfRequest;
 import com.codeheadsystems.hofmann.model.oprf.OprfResponse;
 import com.codeheadsystems.rfc.oprf.manager.OprfServerManager;
@@ -69,7 +70,7 @@ class OprfResourceTest {
    */
   @BeforeEach
   void setUp() {
-    resource = new OprfResource(oprfServerManager);
+    resource = new OprfResource(oprfServerManager, new OprfClientConfigResponse("P256_SHA256"));
   }
 
   /**

@@ -1,10 +1,12 @@
 package com.codeheadsystems.hofmann.server.resource;
 
+import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
 import com.codeheadsystems.hofmann.model.oprf.OprfRequest;
 import com.codeheadsystems.hofmann.model.oprf.OprfResponse;
 import com.codeheadsystems.rfc.oprf.manager.OprfServerManager;
 import com.codeheadsystems.rfc.oprf.model.EvaluatedResponse;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
@@ -25,16 +27,33 @@ public class OprfResource {
   private static final Logger log = LoggerFactory.getLogger(OprfResource.class);
 
   private final OprfServerManager oprfServerManager;
+  private final OprfClientConfigResponse clientConfig;
 
   /**
    * Instantiates a new Oprf resource.
    *
    * @param oprfServerManager the oprf server manager
+   * @param clientConfig      the client config response to expose via GET /oprf/config
    */
   @Inject
-  public OprfResource(final OprfServerManager oprfServerManager) {
+  public OprfResource(final OprfServerManager oprfServerManager,
+                      final OprfClientConfigResponse clientConfig) {
     this.oprfServerManager = oprfServerManager;
+    this.clientConfig = clientConfig;
     log.info("OprfResource({})", oprfServerManager);
+  }
+
+  /**
+   * Returns the OPRF configuration that clients need to self-configure.
+   *
+   * @return the oprf client config response
+   */
+  @GET
+  @Path("/config")
+  @Produces(MediaType.APPLICATION_JSON)
+  public OprfClientConfigResponse getConfig() {
+    log.trace("getConfig()");
+    return clientConfig;
   }
 
   /**

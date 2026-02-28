@@ -46,7 +46,7 @@ class AuthIntegrationTest {
     Map<ServerIdentifier, ServerConnectionInfo> connections = Map.of(
         SERVER_ID, new ServerConnectionInfo(URI.create(baseUrl())));
     HofmannOpaqueAccessor accessor = new HofmannOpaqueAccessor(httpClient, new ObjectMapper(), connections);
-    hofmannOpaqueClientManager = new HofmannOpaqueClientManager(config, accessor);
+    hofmannOpaqueClientManager = new HofmannOpaqueClientManager(accessor, Map.of(SERVER_ID, config));
   }
 
   /**

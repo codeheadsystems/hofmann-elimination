@@ -4,6 +4,7 @@ import com.codeheadsystems.hofmann.model.opaque.AuthFinishRequest;
 import com.codeheadsystems.hofmann.model.opaque.AuthFinishResponse;
 import com.codeheadsystems.hofmann.model.opaque.AuthStartRequest;
 import com.codeheadsystems.hofmann.model.opaque.AuthStartResponse;
+import com.codeheadsystems.hofmann.model.opaque.OpaqueClientConfigResponse;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationDeleteRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationFinishRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartRequest;
@@ -14,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -39,14 +41,29 @@ public class OpaqueController {
   private static final Logger log = LoggerFactory.getLogger(OpaqueController.class);
 
   private final HofmannOpaqueServerManager manager;
+  private final OpaqueClientConfigResponse clientConfig;
 
   /**
    * Instantiates a new Opaque controller.
    *
-   * @param manager the manager
+   * @param manager      the manager
+   * @param clientConfig the client config response to expose via GET /opaque/config
    */
-  public OpaqueController(HofmannOpaqueServerManager manager) {
+  public OpaqueController(HofmannOpaqueServerManager manager,
+                          OpaqueClientConfigResponse clientConfig) {
     this.manager = manager;
+    this.clientConfig = clientConfig;
+  }
+
+  /**
+   * Returns the OPAQUE configuration that clients need to self-configure.
+   *
+   * @return the opaque client config response
+   */
+  @GetMapping("/config")
+  public OpaqueClientConfigResponse getConfig() {
+    log.trace("getConfig()");
+    return clientConfig;
   }
 
   /**

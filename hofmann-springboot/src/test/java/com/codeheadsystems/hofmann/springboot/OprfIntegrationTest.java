@@ -8,7 +8,6 @@ import com.codeheadsystems.hofmann.client.manager.HofmannOprfClientManager;
 import com.codeheadsystems.hofmann.client.model.HofmannHashResult;
 import com.codeheadsystems.hofmann.client.model.ServerConnectionInfo;
 import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
-import com.codeheadsystems.rfc.oprf.manager.OprfClientManager;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -40,8 +39,7 @@ class OprfIntegrationTest {
     Map<ServerIdentifier, ServerConnectionInfo> connections = Map.of(
         SERVER_ID, new ServerConnectionInfo(URI.create(baseUrl() + "/oprf")));
     HofmannOprfAccessor accessor = new HofmannOprfAccessor(oprfClientConfig, HttpClient.newHttpClient(), new ObjectMapper(), connections);
-    OprfClientManager oprfClientManager = new OprfClientManager(oprfClientConfig.suite());
-    hofmannOprfClientManager = new HofmannOprfClientManager(accessor, oprfClientManager);
+    hofmannOprfClientManager = new HofmannOprfClientManager(accessor, Map.of(SERVER_ID, oprfClientConfig));
   }
 
   /**

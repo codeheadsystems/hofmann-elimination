@@ -6,7 +6,6 @@ import com.codeheadsystems.hofmann.client.manager.HofmannOprfClientManager;
 import com.codeheadsystems.hofmann.client.model.HofmannHashResult;
 import com.codeheadsystems.hofmann.client.model.ServerConnectionInfo;
 import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
-import com.codeheadsystems.rfc.oprf.manager.OprfClientManager;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -66,8 +65,7 @@ public class OprfCli {
         SERVER_ID, new ServerConnectionInfo(URI.create(server + "/oprf")));
     HofmannOprfAccessor accessor = new HofmannOprfAccessor(
         oprfClientConfig, HttpClient.newHttpClient(), new ObjectMapper(), connections);
-    OprfClientManager oprfClientManager = new OprfClientManager(oprfClientConfig.suite());
-    HofmannOprfClientManager manager = new HofmannOprfClientManager(accessor, oprfClientManager);
+    HofmannOprfClientManager manager = new HofmannOprfClientManager(accessor, Map.of(SERVER_ID, oprfClientConfig));
 
     System.out.println("Server : " + server);
     System.out.println("Input  : " + input);

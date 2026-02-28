@@ -74,6 +74,10 @@ servers:
     description: Base path (no prefix)
 
 tags:
+  - name: Configuration
+    description: |
+      Server configuration endpoints for client self-configuration.
+      These endpoints are unauthenticated and safe to call before registration or login.
   - name: Registration
     description: |
       Two-round registration flow that stores a password-derived record on the server
@@ -88,6 +92,44 @@ tags:
       successful authentication.
 
 paths:
+  /opaque/config:
+    get:
+      tags:
+        - Configuration
+      operationId: getOpaqueConfig
+      summary: Retrieve OPAQUE client configuration
+      description: |
+        Returns the OPAQUE cipher suite, context string, and KSF parameters the server is
+        using.  Clients can call this endpoint at startup to self-configure instead of
+        hard-coding these values.
+
+        **Note:** `argon2MemoryKib: 0` indicates the server is using the identity KSF
+        (dev/test only — no password stretching).
+      responses:
+        "200":
+          description: OPAQUE client configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpaqueClientConfig"
+              examples:
+                production:
+                  summary: Production config with Argon2id
+                  value:
+                    cipherSuite: "P256_SHA256"
+                    context: "hofmann-opaque-v1"
+                    argon2MemoryKib: 65536
+                    argon2Iterations: 3
+                    argon2Parallelism: 1
+                testing:
+                  summary: Test/dev config with identity KSF
+                  value:
+                    cipherSuite: "P256_SHA256"
+                    context: "hofmann-opaque-v1"
+                    argon2MemoryKib: 0
+                    argon2Iterations: 0
+                    argon2Parallelism: 0
+
   /opaque/registration/start:
     post:
       tags:
@@ -325,6 +367,46 @@ components:
         The token subject is the credential identifier used during registration.
 
   schemas:
+
+    # ─── Configuration ─────────────────────────────────────────────────────────
+
+    OpaqueClientConfig:
+      type: object
+      required:
+        - cipherSuite
+        - context
+        - argon2MemoryKib
+        - argon2Iterations
+        - argon2Parallelism
+      properties:
+        cipherSuite:
+          type: string
+          description: |
+            The OPAQUE cipher suite the server is using.  Clients must configure the same suite.
+          enum: [P256_SHA256, P384_SHA384, P521_SHA512]
+          example: P256_SHA256
+        context:
+          type: string
+          description: |
+            The OPAQUE protocol context string bound into every AKE transcript.
+            Must be supplied verbatim to the client's OPAQUE config.
+          example: "hofmann-opaque-v1"
+        argon2MemoryKib:
+          type: integer
+          description: |
+            Argon2id memory cost in kibibytes.  A value of `0` indicates the server is
+            using the identity KSF (no password stretching — for dev/test only).
+          example: 65536
+        argon2Iterations:
+          type: integer
+          description: |
+            Argon2id iteration count.  Ignored when `argon2MemoryKib` is `0`.
+          example: 3
+        argon2Parallelism:
+          type: integer
+          description: |
+            Argon2id parallelism degree.  Ignored when `argon2MemoryKib` is `0`.
+          example: 1
 
     # ─── Registration ──────────────────────────────────────────────────────────
 

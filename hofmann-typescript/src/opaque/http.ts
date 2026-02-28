@@ -4,7 +4,7 @@
  */
 import { OpaqueClient } from './client.js';
 import { base64Encode, base64Decode, strToBytes } from '../crypto/encoding.js';
-import { type KSF, identityKsf } from './ksf.js';
+import { type KSF, identityKsf, argon2idKsf } from './ksf.js';
 import type { KE2 } from './types.js';
 
 export interface OpaqueHttpClientOptions {
@@ -65,6 +65,14 @@ interface RegistrationDeleteRequestDto {
   credentialIdentifier: string;  // base64-encoded credential identifier
 }
 
+export interface OpaqueConfigResponseDto {
+  cipherSuite: string;
+  context: string;
+  argon2MemoryKib: number;
+  argon2Iterations: number;
+  argon2Parallelism: number;
+}
+
 // ── Client ─────────────────────────────────────────────────────────────────
 
 /**
@@ -74,11 +82,40 @@ export class OpaqueHttpClient {
   private readonly opaque: OpaqueClient;
   private readonly ctx: Uint8Array;
   private readonly ksf: KSF;
+  configResponse: OpaqueConfigResponseDto | null = null;
 
   constructor(private readonly baseUrl: string, options?: OpaqueHttpClientOptions) {
     this.opaque = new OpaqueClient();
     this.ctx = options?.context ? strToBytes(options.context) : new Uint8Array(0);
     this.ksf = options?.ksf ?? identityKsf;
+  }
+
+  /**
+   * Fetches the OPAQUE configuration from the server.
+   */
+  async getConfig(): Promise<OpaqueConfigResponseDto> {
+    const r = await fetch(`${this.baseUrl}/opaque/config`);
+    if (!r.ok) {
+      throw new Error(`getConfig failed: ${r.status} ${r.statusText}`);
+    }
+    return r.json();
+  }
+
+  /**
+   * Factory that fetches server config and constructs a pre-configured client.
+   */
+  static async create(baseUrl: string): Promise<OpaqueHttpClient> {
+    const r = await fetch(`${baseUrl}/opaque/config`);
+    if (!r.ok) {
+      throw new Error(`Failed to fetch OPAQUE config: ${r.status} ${r.statusText}`);
+    }
+    const cfg = await r.json() as OpaqueConfigResponseDto;
+    const ksf = cfg.argon2MemoryKib > 0
+        ? argon2idKsf(cfg.argon2MemoryKib, cfg.argon2Iterations, cfg.argon2Parallelism)
+        : identityKsf;
+    const client = new OpaqueHttpClient(baseUrl, { context: cfg.context, ksf });
+    client.configResponse = cfg;
+    return client;
   }
 
   /**

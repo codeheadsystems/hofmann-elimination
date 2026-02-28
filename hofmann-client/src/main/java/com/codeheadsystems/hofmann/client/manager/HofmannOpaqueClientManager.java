@@ -16,6 +16,9 @@ import com.codeheadsystems.rfc.opaque.model.AuthResult;
 import com.codeheadsystems.rfc.opaque.model.ClientAuthState;
 import com.codeheadsystems.rfc.opaque.model.ClientRegistrationState;
 import com.codeheadsystems.rfc.opaque.model.RegistrationRecord;
+import java.util.Collections;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
@@ -28,6 +31,9 @@ import org.slf4j.LoggerFactory;
  * coordinating the cryptographic operations (via the opaque {@link Client}) with the HTTP
  * transport layer (via {@link HofmannOpaqueAccessor}).  Callers deal only with plain passwords and
  * credential identifiers; all protocol details are hidden inside this class.
+ * <p>
+ * The OPAQUE {@link Client} is created lazily on first use per {@link ServerIdentifier}: the
+ * manager auto-fetches the server's config from GET /opaque/config and caches the result.
  * <p>
  * <strong>Registration:</strong>
  * <ol>
@@ -47,20 +53,43 @@ public class HofmannOpaqueClientManager {
 
   private static final Logger log = LoggerFactory.getLogger(HofmannOpaqueClientManager.class);
 
-  private final Client client;
   private final HofmannOpaqueAccessor accessor;
+  private final Map<ServerIdentifier, OpaqueClientConfig> overrides;
+  private final ConcurrentHashMap<ServerIdentifier, Client> clientCache;
 
   /**
-   * Instantiates a new Hofmann opaque client manager.
+   * Production constructor — auto-fetches OPAQUE config from each server on first use.
    *
-   * @param config   the config
    * @param accessor the accessor
    */
   @Inject
-  public HofmannOpaqueClientManager(final OpaqueClientConfig config, final HofmannOpaqueAccessor accessor) {
-    log.info("OpaqueManager()");
-    this.client = new Client(config.opaqueConfig());
+  public HofmannOpaqueClientManager(final HofmannOpaqueAccessor accessor) {
+    this(accessor, Collections.emptyMap());
+  }
+
+  /**
+   * CLI / override constructor — uses the supplied per-server config overrides; falls back to
+   * auto-fetching for servers not present in the map.
+   *
+   * @param accessor  the accessor
+   * @param overrides per-server config overrides (may be empty)
+   */
+  public HofmannOpaqueClientManager(final HofmannOpaqueAccessor accessor,
+                                     final Map<ServerIdentifier, OpaqueClientConfig> overrides) {
+    log.info("OpaqueManager(overrides={})", overrides.size());
     this.accessor = accessor;
+    this.overrides = overrides;
+    this.clientCache = new ConcurrentHashMap<>();
+  }
+
+  private Client clientFor(final ServerIdentifier serverId) {
+    return clientCache.computeIfAbsent(serverId, id -> {
+      OpaqueClientConfig cfg = overrides.get(id);
+      if (cfg == null) {
+        cfg = OpaqueClientConfig.fromServerConfig(accessor.getOpaqueConfig(id));
+      }
+      return new Client(cfg.opaqueConfig());
+    });
   }
 
   /**
@@ -77,12 +106,12 @@ public class HofmannOpaqueClientManager {
     log.debug("register(serverId={})", serverId);
 
     // Step 1 — blind the password and obtain the OPRF-evaluated element from the server
-    ClientRegistrationState regState = client.createRegistrationRequest(password);
+    ClientRegistrationState regState = clientFor(serverId).createRegistrationRequest(password);
     RegistrationStartResponse startResp = accessor.registrationStart(serverId,
         new RegistrationStartRequest(credentialIdentifier, regState.request()));
 
     // Step 2 — finalize locally: unblind, derive the envelope, and build the registration record
-    RegistrationRecord record = client.finalizeRegistration(
+    RegistrationRecord record = clientFor(serverId).finalizeRegistration(
         regState, startResp.registrationResponse(), null, null);
 
     // Step 3 — upload the completed registration record to the server
@@ -98,7 +127,8 @@ public class HofmannOpaqueClientManager {
    * @param credentialIdentifier raw bytes identifying the credential (e.g. UTF-8 email)
    * @param password             the password to authenticate with
    * @return the server's response containing session key and JWT token
-   * @throws SecurityException if the server MAC in KE2 fails verification (wrong password or                           server mismatch), or if the server rejects the client MAC in KE3
+   * @throws SecurityException if the server MAC in KE2 fails verification (wrong password or
+   *                           server mismatch), or if the server rejects the client MAC in KE3
    */
   public AuthFinishResponse authenticate(final ServerIdentifier serverId,
                                          final byte[] credentialIdentifier,
@@ -106,12 +136,12 @@ public class HofmannOpaqueClientManager {
     log.debug("authenticate(serverId={})", serverId);
 
     // Step 1 — generate KE1 and send it to the server
-    ClientAuthState authState = client.generateKE1(password);
+    ClientAuthState authState = clientFor(serverId).generateKE1(password);
     AuthStartResponse startResp = accessor.authStart(serverId,
         new AuthStartRequest(credentialIdentifier, authState.ke1()));
 
     // Step 2 — reconstruct KE2 and compute KE3 (throws SecurityException on bad server MAC)
-    AuthResult authResult = client.generateKE3(authState, null, null, startResp.ke2());
+    AuthResult authResult = clientFor(serverId).generateKE3(authState, null, null, startResp.ke2());
 
     // Step 3 — send KE3 to the server; throws SecurityException on 401
     return accessor.authFinish(serverId,

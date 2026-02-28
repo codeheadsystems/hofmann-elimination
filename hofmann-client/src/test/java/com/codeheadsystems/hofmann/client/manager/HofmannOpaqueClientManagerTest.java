@@ -4,17 +4,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.codeheadsystems.hofmann.client.accessor.HofmannOpaqueAccessor;
-import com.codeheadsystems.hofmann.client.config.OpaqueClientConfig;
 import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
 import com.codeheadsystems.hofmann.model.opaque.AuthFinishResponse;
 import com.codeheadsystems.hofmann.model.opaque.AuthStartResponse;
+import com.codeheadsystems.hofmann.model.opaque.OpaqueClientConfigResponse;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartResponse;
 import com.codeheadsystems.rfc.opaque.Client;
 import com.codeheadsystems.rfc.opaque.Server;
+import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
+import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
+import com.codeheadsystems.rfc.common.RandomProvider;
 import com.codeheadsystems.rfc.opaque.model.ClientRegistrationState;
 import com.codeheadsystems.rfc.opaque.model.RegistrationRecord;
 import com.codeheadsystems.rfc.opaque.model.RegistrationRequest;
@@ -34,6 +39,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
  * Uses the real opaque {@link Client} with a P-256 / identity-KSF
  * test config so that all cryptographic operations execute correctly, while the
  * {@link HofmannOpaqueAccessor} HTTP layer is mocked out.
+ * Config is fetched lazily via the mocked accessor's {@code getOpaqueConfig} method.
  */
 @ExtendWith(MockitoExtension.class)
 class HofmannOpaqueClientManagerTest {
@@ -42,9 +48,17 @@ class HofmannOpaqueClientManagerTest {
   private static final ServerIdentifier SERVER_ID = new ServerIdentifier("test-server");
   private static final byte[] CREDENTIAL_ID = "alice@example.com".getBytes(StandardCharsets.UTF_8);
   private static final byte[] PASSWORD = "correct-horse-battery-staple".getBytes(StandardCharsets.UTF_8);
-  // A real opaque Client is used via OpaqueManager so we can exercise the full crypto path.
-  // We use the identity KSF and a fixed context so the test is deterministic (no Argon2 cost).
-  private static final OpaqueClientConfig CONFIG = OpaqueClientConfig.forTesting("opaque-manager-test");
+  // OpaqueClientConfigResponse with argon2MemoryKib=0 triggers forTesting("opaque-manager-test")
+  // which is identical to the old CONFIG used in earlier tests.
+  private static final OpaqueClientConfigResponse SERVER_CONFIG =
+      new OpaqueClientConfigResponse("P256_SHA256", "opaque-manager-test", 0, 0, 0);
+
+  // Resolved config used for direct Server/Client construction in tests
+  private static final OpaqueConfig OPAQUE_CONFIG = new OpaqueConfig(
+      OpaqueCipherSuite.P256_SHA256, 0, 0, 0,
+      "opaque-manager-test".getBytes(StandardCharsets.UTF_8),
+      new OpaqueConfig.IdentityKsf(), new RandomProvider());
+
   @Mock private HofmannOpaqueAccessor accessor;
   private HofmannOpaqueClientManager manager;
 
@@ -53,7 +67,8 @@ class HofmannOpaqueClientManagerTest {
    */
   @BeforeEach
   void setUp() {
-    manager = new HofmannOpaqueClientManager(CONFIG, accessor);
+    lenient().when(accessor.getOpaqueConfig(SERVER_ID)).thenReturn(SERVER_CONFIG);
+    manager = new HofmannOpaqueClientManager(accessor);
   }
 
   /**
@@ -61,11 +76,10 @@ class HofmannOpaqueClientManagerTest {
    */
   @Test
   void register_callsAllThreeEndpoints() {
-    Server server =
-        Server.generate(CONFIG.opaqueConfig());
+    Server server = Server.generate(OPAQUE_CONFIG);
 
     // Do the full registration via manager by having the accessor mock return real server outputs
-    Client realClient = new Client(CONFIG.opaqueConfig());
+    Client realClient = new Client(OPAQUE_CONFIG);
     ClientRegistrationState regState =
         realClient.createRegistrationRequest(PASSWORD);
 
@@ -85,15 +99,45 @@ class HofmannOpaqueClientManagerTest {
   }
 
   /**
+   * Config is fetched exactly once and cached across multiple calls to the same server.
+   */
+  @Test
+  void register_configFetchedOnce_whenCalledTwice() {
+    Server server = Server.generate(OPAQUE_CONFIG);
+
+    Client realClient = new Client(OPAQUE_CONFIG);
+
+    // First call
+    ClientRegistrationState regState1 = realClient.createRegistrationRequest(PASSWORD);
+    RegistrationResponse regResp1 = server.createRegistrationResponse(
+        new RegistrationRequest(regState1.request().blindedElement()), CREDENTIAL_ID);
+    when(accessor.registrationStart(eq(SERVER_ID), any()))
+        .thenReturn(new RegistrationStartResponse(regResp1));
+
+    manager.register(SERVER_ID, CREDENTIAL_ID, PASSWORD);
+
+    // Second call — reset the start stub
+    ClientRegistrationState regState2 = realClient.createRegistrationRequest(PASSWORD);
+    RegistrationResponse regResp2 = server.createRegistrationResponse(
+        new RegistrationRequest(regState2.request().blindedElement()), CREDENTIAL_ID);
+    when(accessor.registrationStart(eq(SERVER_ID), any()))
+        .thenReturn(new RegistrationStartResponse(regResp2));
+
+    manager.register(SERVER_ID, CREDENTIAL_ID, PASSWORD);
+
+    // Config should have been fetched exactly once
+    verify(accessor, times(1)).getOpaqueConfig(SERVER_ID);
+  }
+
+  /**
    * Authenticate successful handshake returns session key.
    */
   @Test
   void authenticate_successfulHandshake_returnsSessionKey() {
-    Server server =
-        Server.generate(CONFIG.opaqueConfig());
+    Server server = Server.generate(OPAQUE_CONFIG);
 
     // First do a real registration so the server has the record
-    Client realClient = new Client(CONFIG.opaqueConfig());
+    Client realClient = new Client(OPAQUE_CONFIG);
     ClientRegistrationState regState =
         realClient.createRegistrationRequest(PASSWORD);
     RegistrationResponse regResp =
@@ -134,11 +178,10 @@ class HofmannOpaqueClientManagerTest {
    */
   @Test
   void authenticate_wrongPassword_throwsSecurityException() {
-    Server server =
-        Server.generate(CONFIG.opaqueConfig());
+    Server server = Server.generate(OPAQUE_CONFIG);
 
     // Register with the correct password
-    Client realClient = new Client(CONFIG.opaqueConfig());
+    Client realClient = new Client(OPAQUE_CONFIG);
     ClientRegistrationState regState =
         realClient.createRegistrationRequest(PASSWORD);
     RegistrationResponse regResp =

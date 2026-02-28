@@ -7,6 +7,7 @@ import com.codeheadsystems.hofmann.model.opaque.AuthFinishRequest;
 import com.codeheadsystems.hofmann.model.opaque.AuthFinishResponse;
 import com.codeheadsystems.hofmann.model.opaque.AuthStartRequest;
 import com.codeheadsystems.hofmann.model.opaque.AuthStartResponse;
+import com.codeheadsystems.hofmann.model.opaque.OpaqueClientConfigResponse;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationDeleteRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationFinishRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartRequest;
@@ -58,6 +59,20 @@ public class HofmannOpaqueAccessor {
     this.httpClient = httpClient;
     this.objectMapper = objectMapper;
     this.serverConnections = serverConnections;
+  }
+
+  // ── Config ────────────────────────────────────────────────────────────────
+
+  /**
+   * Fetches the OPAQUE configuration from the server.
+   *
+   * @param serverId the server id
+   * @return the opaque client config response
+   */
+  public OpaqueClientConfigResponse getOpaqueConfig(final ServerIdentifier serverId) {
+    log.debug("getOpaqueConfig(serverId={})", serverId);
+    URI uri = baseUri(serverId).resolve(baseUri(serverId).getPath() + "/opaque/config");
+    return get(serverId, uri, OpaqueClientConfigResponse.class);
   }
 
   // ── Registration ─────────────────────────────────────────────────────────
@@ -138,6 +153,24 @@ public class HofmannOpaqueAccessor {
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
+
+  private <T> T get(ServerIdentifier serverId, URI uri, Class<T> responseType) {
+    try {
+      HttpRequest request = HttpRequest.newBuilder()
+          .uri(uri)
+          .header("Accept", "application/json")
+          .GET()
+          .build();
+      HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+      checkStatus(serverId, response.statusCode());
+      return objectMapper.readValue(response.body(), responseType);
+    } catch (IOException e) {
+      throw new OpaqueAccessorException("HTTP request failed for server: " + serverId, e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new OpaqueAccessorException("HTTP request interrupted for server: " + serverId, e);
+    }
+  }
 
   private URI baseUri(ServerIdentifier serverId) {
     ServerConnectionInfo info = serverConnections.get(serverId);

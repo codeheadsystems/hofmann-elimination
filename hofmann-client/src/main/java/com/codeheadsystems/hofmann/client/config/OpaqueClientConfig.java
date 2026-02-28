@@ -1,5 +1,6 @@
 package com.codeheadsystems.hofmann.client.config;
 
+import com.codeheadsystems.hofmann.model.opaque.OpaqueClientConfigResponse;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
 import com.codeheadsystems.rfc.common.RandomProvider;
@@ -78,5 +79,23 @@ public record OpaqueClientConfig(OpaqueConfig opaqueConfig) {
    */
   public static OpaqueClientConfig forTesting(String context) {
     return forTesting(context.getBytes(StandardCharsets.UTF_8));
+  }
+
+  /**
+   * Creates an {@link OpaqueClientConfig} from a server-supplied config response.
+   * <p>
+   * When {@code argon2MemoryKib == 0} the server is using the identity KSF (test/dev only),
+   * so {@link #forTesting(String)} is used.  Otherwise {@link #withArgon2id} is used with
+   * the exact parameters returned by the server.
+   *
+   * @param cfg the server config response from GET /opaque/config
+   * @return the opaque client config
+   */
+  public static OpaqueClientConfig fromServerConfig(OpaqueClientConfigResponse cfg) {
+    if (cfg.argon2MemoryKib() == 0) {
+      return forTesting(cfg.context());
+    }
+    return withArgon2id(cfg.cipherSuite(), cfg.context(),
+        cfg.argon2MemoryKib(), cfg.argon2Iterations(), cfg.argon2Parallelism());
   }
 }

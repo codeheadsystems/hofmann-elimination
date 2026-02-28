@@ -38,6 +38,28 @@ tags:
       The server applies its keyed PRF to the client's blinded EC point.
 
 paths:
+  /oprf/config:
+    get:
+      tags:
+        - OPRF
+      operationId: getOprfConfig
+      summary: Retrieve OPRF client configuration
+      description: |
+        Returns the OPRF cipher suite the server is using.  Clients can call this endpoint
+        at startup to self-configure instead of hard-coding the cipher suite.
+      responses:
+        "200":
+          description: OPRF configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OprfClientConfig"
+              examples:
+                typical:
+                  summary: Typical OPRF config response
+                  value:
+                    cipherSuite: "P256_SHA256"
+
   /oprf:
     post:
       tags:
@@ -152,6 +174,18 @@ components:
             server to maintain multiple independent PRF keys.
           minLength: 1
           example: "default"
+
+    OprfClientConfig:
+      type: object
+      required:
+        - cipherSuite
+      properties:
+        cipherSuite:
+          type: string
+          description: |
+            The OPRF cipher suite the server is using.  Clients must configure the same suite.
+          enum: [P256_SHA256, P384_SHA384, P521_SHA512, RISTRETTO255_SHA512]
+          example: P256_SHA256
 
     ErrorResponse:
       type: object
