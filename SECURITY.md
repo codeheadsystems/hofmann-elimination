@@ -24,8 +24,6 @@ If you discover a security vulnerability, please **do not open a public GitHub i
 Report privately via GitHub's security advisory workflow:
 - https://github.com/wolpert/hofmann-elimination/security/advisories/new
 
-Or contact the maintainer directly at: ned.wolpert@gmail.com
-
 Please include:
 - A description of the vulnerability
 - Steps to reproduce or a proof-of-concept
