@@ -483,4 +483,3 @@ However, manual tagging provides more control and prevents accidental releases.
 
 For questions or issues with releases:
 - Create an issue: https://github.com/codeheadsystems/hofmann-elimination/issues
-- Contact: ned.wolpert@gmail.com
