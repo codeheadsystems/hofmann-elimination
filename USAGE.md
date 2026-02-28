@@ -72,6 +72,65 @@ The same principle applies to `jwtSecretHex` (tokens survive restart) and `oprfM
 
 ---
 
+## Client configuration
+
+### Auto-configuration (recommended)
+
+Both `HofmannOpaqueClientManager` and `HofmannOprfClientManager` auto-configure themselves
+on first use by calling the server's config endpoint (`GET /opaque/config` or
+`GET /oprf/config`).  The response is cached per server, so the endpoint is hit exactly
+once regardless of how many operations follow.
+
+```java
+// OPAQUE — no config needed; cipher suite, context, and Argon2id params
+// are fetched automatically from GET /opaque/config on first use.
+HofmannOpaqueClientManager opaqueManager =
+    new HofmannOpaqueClientManager(opaqueAccessor);
+
+// OPRF — cipher suite fetched from GET /oprf/config on first use.
+HofmannOprfClientManager oprfManager =
+    new HofmannOprfClientManager(oprfAccessor);
+```
+
+Both classes are `@Singleton`-annotated and suitable for injection by Dagger, Guice, or
+Spring.  The accessor requires only a `Map<ServerIdentifier, ServerConnectionInfo>` that
+maps each logical server name to its base URL — no cipher suite or Argon2id parameters
+needed.
+
+### TypeScript / browser
+
+The TypeScript clients have matching factory methods:
+
+```typescript
+// OPAQUE — fetches /opaque/config and configures KSF automatically
+const opaqueClient = await OpaqueHttpClient.create('https://api.example.com');
+// opaqueClient.configResponse holds the parsed OpaqueConfigResponseDto if needed
+
+// OPRF — fetches /oprf/config and stores it in cachedConfig
+const oprfClient = await OprfHttpClient.create('https://api.example.com');
+// oprfClient.cachedConfig holds { cipherSuite: string } if needed
+```
+
+### Per-server config overrides (CLI / advanced use)
+
+For tools that must work offline or where specific parameters must be pinned, supply a
+`Map<ServerIdentifier, OpaqueClientConfig>` (or `OprfClientConfig`) as the second argument.
+Servers present in the map skip the auto-fetch; others still auto-fetch.
+
+```java
+// Pins exact parameters for one server; other servers are still auto-fetched.
+Map<ServerIdentifier, OpaqueClientConfig> overrides = Map.of(
+    myServerId,
+    OpaqueClientConfig.withArgon2id("P256_SHA256", "my-app", 65536, 3, 1)
+);
+HofmannOpaqueClientManager manager =
+    new HofmannOpaqueClientManager(accessor, overrides);
+```
+
+This is the pattern used by the `OpaqueCli` / `OprfCli` command-line tools.
+
+---
+
 ## Argon2id consistency between server and client
 
 The Argon2id KSF runs **on the client**, not the server.  The client calls it during both
@@ -83,60 +142,28 @@ randomizedPwd = HKDF-Extract("", oprfOutput || Argon2id(oprfOutput))
 ```
 
 The server never executes Argon2id.  It stores only the already-stretched output
-(inside the `envelope` and `maskingKey`).  The Argon2id parameters are therefore **not
-communicated over the wire** — the client must be configured with the same values the server
-was configured with at registration time.
+(inside the `envelope` and `maskingKey`).
 
-### What happens when parameters mismatch
+**When using auto-configuration** (the default), the client fetches these parameters from
+`GET /opaque/config` and applies them automatically.  No manual alignment is required.
 
-If the client uses different Argon2id parameters (or identity KSF) from the server's
-configuration:
+**When using config overrides**, the parameters must match the server exactly.  A mismatch
+causes silent authentication failures:
 
 - **Registration appears to succeed** — the server stores whatever the client sends.
 - **Authentication always fails** — the client derives a different `randomizedPwd` and
-  therefore a different `maskingKey`, so the masked credential response decrypts to garbage.
-  The OPAQUE MAC verification fails and the client receives a `SecurityException`.
-  The failure is indistinguishable from a wrong password.
+  therefore a different `maskingKey`.  The OPAQUE MAC check fails with a `SecurityException`,
+  indistinguishable from a wrong password.
 
-This is a silent failure mode that is difficult to debug.
+### Parameters that must match (override path only)
 
-### Parameters that must match exactly
-
-The client and server must agree on all four values simultaneously:
-
-| Server config field | Matching client parameter | `OpaqueClientConfig` factory          |
-|---------------------|---------------------------|---------------------------------------|
-| `opaqueCipherSuite` | cipher suite name         | `withArgon2id(suiteName, ...)`        |
-| `context`           | context string            | `withArgon2id(..., context, ...)`     |
-| `argon2MemoryKib`   | `argon2MemoryKib`         | `withArgon2id(..., memory, ...)`      |
-| `argon2Iterations`  | `argon2Iterations`        | `withArgon2id(..., iterations, ...)`  |
-| `argon2Parallelism` | `argon2Parallelism`       | `withArgon2id(..., parallelism, ...)` |
-
-### Correct client setup for a production server
-
-```java
-// Matches server config: P256_SHA256, context "my-app", Argon2id 65536/3/1
-OpaqueClientConfig config = OpaqueClientConfig.withArgon2id(
-    "P256_SHA256",
-    "my-app",   // must equal the server's 'context' field
-    65536,      // must equal the server's argon2MemoryKib
-    3,          // must equal the server's argon2Iterations
-    1           // must equal the server's argon2Parallelism
-);
-```
-
-### Correct client setup for the hofmann-testserver
-
-```java
-// Matches hofmann-testserver/config/config.yml
-OpaqueClientConfig config = OpaqueClientConfig.withArgon2id(
-    "P256_SHA256",
-    "hofmann-testserver",
-    65536,
-    3,
-    1
-);
-```
+| Server config field | `OpaqueClientConfig` factory argument |
+|---------------------|---------------------------------------|
+| `opaqueCipherSuite` | `withArgon2id(suiteName, ...)`        |
+| `context`           | `withArgon2id(..., context, ...)`     |
+| `argon2MemoryKib`   | `withArgon2id(..., memory, ...)`      |
+| `argon2Iterations`  | `withArgon2id(..., iterations, ...)`  |
+| `argon2Parallelism` | `withArgon2id(..., parallelism, ...)` |
 
 ### Test-only shortcut (identity KSF)
 
@@ -442,11 +469,13 @@ Plan for key rotation by:
 
 | Method   | Path                          | Auth required | Description                                                 |
 |----------|-------------------------------|---------------|-------------------------------------------------------------|
+| `GET`    | `/opaque/config`              | No            | Returns OPAQUE cipher suite, context, and Argon2id params   |
 | `POST`   | `/opaque/registration/start`  | No            | Begin OPAQUE registration (returns blinded OPRF evaluation) |
 | `POST`   | `/opaque/registration/finish` | No            | Complete registration (stores credential record)            |
 | `DELETE` | `/opaque/registration`        | Bearer token  | Delete a credential record                                  |
 | `POST`   | `/opaque/auth/start`          | No            | Begin OPAQUE authentication (KE1 → KE2)                     |
 | `POST`   | `/opaque/auth/finish`         | No            | Complete authentication (KE3 → JWT)                         |
+| `GET`    | `/oprf/config`                | No            | Returns OPRF cipher suite name                              |
 | `POST`   | `/oprf`                       | No            | Standalone OPRF evaluation                                  |
 
 The bundle also registers:
@@ -479,5 +508,9 @@ export JWT_SECRET_HEX=$(openssl rand -hex 32)
 docker compose up
 ```
 
-Clients connecting to the testserver must use `OpaqueClientConfig.withArgon2id(...)` as shown
-above.  `OpaqueClientConfig.forTesting(...)` will not work because it uses identity KSF.
+Clients connecting to the testserver can use `HofmannOpaqueClientManager(accessor)` without
+any manual config — the manager fetches the cipher suite, context, and Argon2id parameters
+automatically from `GET /opaque/config` on first use.  If you are constructing
+`OpaqueClientConfig` directly (e.g. for a CLI override), use `withArgon2id(...)` — not
+`forTesting(...)`, which uses the identity KSF and will fail against a server with Argon2
+enabled.
