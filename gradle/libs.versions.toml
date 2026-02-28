@@ -9,6 +9,7 @@ dropwizard = "5.0.1"
 spring-boot = "4.0.3"
 jackson = '2.21.1'
 jackson-annotations = '2.21'
+tools-jackson = '3.1.0'
 jakarta-rs-api = '4.0.0'
 junit-jupiter = "6.0.3"
 mockito = '5.22.0'
@@ -29,6 +30,8 @@ spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-star
 jackson-annotations = { module = "com.fasterxml.jackson.core:jackson-annotations", version.ref = "jackson-annotations" }
 jackson-core = { module = "com.fasterxml.jackson.core:jackson-core", version.ref = "jackson" }
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+tools-jackson-core = { module = "tools.jackson.core:jackson-core", version.ref = "tools-jackson" }
+tools-jackson-databind = { module = "tools.jackson.core:jackson-databind", version.ref = "tools-jackson" }
 jakarta-rs-api = { module = "jakarta.ws.rs:jakarta.ws.rs-api", version.ref = "jakarta-rs-api" }
 javax-inject = { module = "javax.inject:javax.inject", version = "1" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
