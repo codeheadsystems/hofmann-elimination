@@ -1,10 +1,13 @@
 /**
  * Hofmann OPAQUE demo — browser entry point.
  * Imported by demo.html via <script type="module">.
+ *
+ * All configuration (cipher suite, context, Argon2id parameters) is fetched
+ * from the server via OpaqueHttpClient.create() / OprfHttpClient.create().
+ * The config panel is populated on page load and refreshed via "Load Config".
  */
 import { OpaqueHttpClient } from './src/opaque/http.js';
 import { OprfHttpClient } from './src/oprf/http.js';
-import { argon2idKsf, identityKsf, type KSF } from './src/opaque/ksf.js';
 import { toHex } from './src/crypto/primitives.js';
 import { strToBytes } from './src/crypto/encoding.js';
 
@@ -16,6 +19,10 @@ function $<T extends HTMLElement>(id: string): T {
 
 function val(id: string): string {
   return ($<HTMLInputElement>(id)).value.trim();
+}
+
+function setVal(id: string, value: string): void {
+  ($<HTMLInputElement>(id)).value = value;
 }
 
 function setStatus(
@@ -56,27 +63,68 @@ function escHtml(s: string): string {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-// ── Config readers ────────────────────────────────────────────────────────────
+// ── Server config ─────────────────────────────────────────────────────────────
 
 function getServerUrl(): string {
   return val('serverUrl') || '';
 }
 
-function getKSF(): KSF {
-  const mem = parseInt(val('argon2Memory'), 10);
-  if (!mem) return identityKsf;
-  const iter  = parseInt(val('argon2Iterations'), 10) || 3;
-  const par   = parseInt(val('argon2Parallelism'), 10) || 1;
-  return argon2idKsf(mem, iter, par);
+/** Populate the config panel from a loaded OpaqueHttpClient. */
+function applyConfig(client: OpaqueHttpClient): void {
+  const cfg = client.configResponse!;
+  setVal('cipherSuite',       cfg.cipherSuite);
+  setVal('context',           cfg.context);
+  setVal('argon2Memory',      String(cfg.argon2MemoryKib));
+  setVal('argon2Iterations',  String(cfg.argon2Iterations));
+  setVal('argon2Parallelism', String(cfg.argon2Parallelism));
+
+  // Update the Protocol Reference card
+  const [curve, hash] = cipherSuiteLabel(cfg.cipherSuite);
+  $('protocolCurve').textContent = curve;
+  $('protocolHash').textContent  = hash;
+  const ksfLabel = cfg.argon2MemoryKib > 0
+    ? `Argon2id (${cfg.argon2MemoryKib} KiB, ${cfg.argon2Iterations} iter)`
+    : 'Identity (no stretching)';
+  $('protocolKsf').textContent = ksfLabel;
 }
 
-function getOpaqueClient(): OpaqueHttpClient {
-  const ctx = val('context');
-  const ksf = getKSF();
-  const mem = parseInt(val('argon2Memory'), 10);
-  log(`Context: "${ctx}" | KSF: ${mem ? `Argon2id(${mem}KiB, iter=${val('argon2Iterations')})` : 'identity'}`, 'data');
-  return new OpaqueHttpClient(getServerUrl(), { context: ctx, ksf });
+function cipherSuiteLabel(suite: string): [string, string] {
+  if (suite === 'P256_SHA256') return ['P-256', 'SHA-256'];
+  if (suite === 'P384_SHA384') return ['P-384', 'SHA-384'];
+  if (suite === 'P521_SHA512') return ['P-521', 'SHA-512'];
+  return [suite, '—'];
 }
+
+/** Fetch /opaque/config, populate form, return client. */
+async function loadServerConfig(): Promise<OpaqueHttpClient | null> {
+  setStatus('configStatus', 'running', 'Loading…');
+  log('── Loading server configuration…', 'step');
+  try {
+    const client = await OpaqueHttpClient.create(getServerUrl());
+    const cfg = client.configResponse!;
+    applyConfig(client);
+    setStatus('configStatus', 'ok', cfg.cipherSuite);
+    const ksf = cfg.argon2MemoryKib > 0 ? `Argon2id(${cfg.argon2MemoryKib}KiB)` : 'identity';
+    log(`Config: suite=${cfg.cipherSuite} ctx="${cfg.context}" KSF=${ksf}`, 'ok');
+    return client;
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    setStatus('configStatus', 'err', 'Failed');
+    log(`Failed to load server config: ${msg}`, 'err');
+    return null;
+  }
+}
+
+/** Create a fully configured OpaqueHttpClient from the server for each operation. */
+async function getOpaqueClient(): Promise<OpaqueHttpClient> {
+  const client = await OpaqueHttpClient.create(getServerUrl());
+  applyConfig(client);   // keep the UI in sync
+  return client;
+}
+
+// ── Config button ─────────────────────────────────────────────────────────────
+
+$('btnLoadConfig').addEventListener('click', () => { loadServerConfig(); });
 
 // ── OPAQUE Registration ───────────────────────────────────────────────────────
 
@@ -90,8 +138,8 @@ $('btnRegister').addEventListener('click', async () => {
   const t0 = Date.now();
 
   try {
-    const client = getOpaqueClient();
-    log('Sending KE1 (registration start)…', 'info');
+    const client = await getOpaqueClient();
+    log('Sending registration request (blinded password)…', 'info');
     await client.register(credId, password);
     const elapsed = Date.now() - t0;
     setStatus('regStatus', 'ok', `Done (${elapsed}ms)`);
@@ -117,7 +165,7 @@ $('btnAuth').addEventListener('click', async () => {
   const t0 = Date.now();
 
   try {
-    const client = getOpaqueClient();
+    const client = await getOpaqueClient();
     log('Generating KE1 (blinding password)…', 'info');
     const token = await client.authenticate(credId, password);
     const elapsed = Date.now() - t0;
@@ -186,7 +234,7 @@ $('btnDelete').addEventListener('click', async () => {
   const t0 = Date.now();
 
   try {
-    const client = getOpaqueClient();
+    const client = await getOpaqueClient();
     await client.deleteRegistration(credId, token);
     const elapsed = Date.now() - t0;
     setStatus('delStatus', 'ok', `Done (${elapsed}ms)`);
@@ -211,13 +259,16 @@ $('btnOprf').addEventListener('click', async () => {
   const t0 = Date.now();
 
   try {
-    const client = new OprfHttpClient(getServerUrl());
+    // create() fetches /oprf/config to resolve cipher suite automatically
+    const client = await OprfHttpClient.create(getServerUrl());
+    log(`Suite: ${client.cachedConfig?.cipherSuite ?? '?'}`, 'data');
     const result = await client.evaluate(strToBytes(input));
     const elapsed = Date.now() - t0;
     const hex = toHex(result);
     setStatus('oprfStatus', 'ok', `Done (${elapsed}ms)`);
     showResult('oprfResult', 'oprfResultText', hex);
-    log(`OPRF output: ${hex.substring(0, 20)}… (${elapsed}ms)`, 'ok');
+    $('oprfResultLabel').textContent = `OPRF Output (${result.length}-byte hex)`;
+    log(`OPRF output (${result.length} bytes): ${hex.substring(0, 20)}… (${elapsed}ms)`, 'ok');
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     setStatus('oprfStatus', 'err', 'Failed');
@@ -231,7 +282,8 @@ $('btnClearLog').addEventListener('click', () => {
   $('log').innerHTML = '';
 });
 
-// ── Initial greeting ──────────────────────────────────────────────────────────
+// ── Initial startup ──────────────────────────────────────────────────────────
 
 log('Hofmann OPAQUE demo loaded', 'ok');
-log(`Server: ${getServerUrl()}`, 'data');
+log(`Server: ${getServerUrl() || '(proxy → localhost:8080)'}`, 'data');
+loadServerConfig();  // auto-fetch server config on page load

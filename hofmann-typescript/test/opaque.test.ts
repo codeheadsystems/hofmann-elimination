@@ -12,6 +12,7 @@ import { hmac } from '@noble/hashes/hmac';
 import { OpaqueClient, deriveRandomizedPwd } from '../src/opaque/client.js';
 import { storeEnvelope, serializeEnvelope } from '../src/opaque/envelope.js';
 import { buildPreamble, derive3DHKeys } from '../src/opaque/ake.js';
+import { P256_SHA256, P384_SHA384, P521_SHA512, type CipherSuite } from '../src/oprf/suite.js';
 import { toHex, fromHex, concat } from '../src/crypto/primitives.js';
 import { strToBytes } from '../src/crypto/encoding.js';
 import { hkdfExpand, hkdfExtract, hkdfExpandLabel } from '../src/crypto/hkdf.js';
@@ -275,4 +276,109 @@ describe('OPAQUE Vector 1: Full AKE (no explicit identities)', () => {
     expect(toHex(authResult.sessionKey)).toBe(toHex(EXPECTED_SESSION_KEY));
     expect(toHex(authResult.exportKey)).toBe(toHex(EXPECTED_EXPORT_KEY));
   });
+});
+
+// ── Multi-suite round-trip tests ──────────────────────────────────────────────
+//
+// These do not use hardcoded RFC vectors — they verify end-to-end protocol
+// consistency for each cipher suite.  The test plays both client and server
+// using the same CipherSuite object throughout.
+
+async function opaqueRoundTrip(suite: CipherSuite): Promise<void> {
+  const password  = strToBytes('round-trip-password');
+  const credId    = strToBytes('round-trip-user');
+  const context   = strToBytes('round-trip-context');
+
+  // ── Server key material (deterministic from seed bytes) ──────────────────
+  const serverSkSeed = new Uint8Array(suite.Nsk).fill(0x11);
+  const serverSk     = suite.deriveKeyPair(serverSkSeed, strToBytes('server-lt-key'), suite.DERIVE_KEY_PAIR_DST);
+  const serverPk     = suite.getPublicKey(serverSk);
+
+  const oprfSeed = new Uint8Array(suite.Nsk).fill(0x22);
+
+  function deriveOprfKey(): bigint {
+    const info = concat(credId, strToBytes('OprfKey'));
+    const seed = suite.hkdfExpand(oprfSeed, info, suite.Nsk);
+    return suite.deriveKeyPair(seed, strToBytes('OPAQUE-DeriveKeyPair'), suite.DERIVE_KEY_PAIR_DST);
+  }
+
+  function serverEvaluate(blindedElement: Uint8Array): Uint8Array {
+    return suite.dhMultiply(blindedElement, deriveOprfKey());
+  }
+
+  // ── Registration ─────────────────────────────────────────────────────────
+  const client = new OpaqueClient(suite);
+
+  const regState = client.createRegistrationRequest(password);
+  expect(regState.blindedElement.length).toBe(suite.Npk);
+
+  const regResp = {
+    evaluatedElement: serverEvaluate(regState.blindedElement),
+    serverPublicKey:  serverPk,
+  };
+  const envelopeNonce = new Uint8Array(suite.Nn).fill(0x33); // fixed for determinism
+  const record = await client.finalizeRegistration(regState, regResp, null, null, envelopeNonce);
+
+  expect(record.clientPublicKey.length).toBe(suite.Npk);
+  expect(record.maskingKey.length).toBe(suite.Nh);
+  expect(record.envelope.nonce.length).toBe(suite.Nn);
+  expect(record.envelope.authTag.length).toBe(suite.Nh);
+
+  // ── Authentication ────────────────────────────────────────────────────────
+  const maskingNonce = new Uint8Array(suite.Nn).fill(0x44);
+  const serverNonce  = new Uint8Array(suite.Nn).fill(0x55);
+  const serverAkeSeedBytes = new Uint8Array(suite.Nn).fill(0x66);
+
+  const { state, ke1Bytes } = client.generateKE1(password);
+  expect(ke1Bytes.length).toBe(suite.Npk + suite.Nn + suite.Npk);
+
+  // Server builds masked credential response
+  const padInfo = concat(maskingNonce, strToBytes('CredentialResponsePad'));
+  const padLen  = suite.Npk + suite.Nn + suite.Nh;
+  const pad     = suite.hkdfExpand(record.maskingKey, padInfo, padLen);
+  const plaintext = concat(serverPk, record.envelope.nonce, record.envelope.authTag);
+  const maskedResponse = new Uint8Array(padLen);
+  for (let i = 0; i < padLen; i++) maskedResponse[i] = pad[i] ^ plaintext[i];
+
+  // Server builds AKE ephemeral key pair
+  const serverAkeSk = suite.deriveKeyPair(
+    serverAkeSeedBytes, strToBytes('OPAQUE-DeriveDiffieHellmanKeyPair'), suite.DERIVE_KEY_PAIR_DST,
+  );
+  const serverAkePk = suite.getPublicKey(serverAkeSk);
+
+  // Server builds preamble and 3DH
+  const evaluatedElement  = serverEvaluate(state.blindedElement);
+  const credResponseBytes = concat(evaluatedElement, maskingNonce, maskedResponse);
+  const clientId = record.clientPublicKey; // null identity → client public key
+  const serverId = serverPk;               // null identity → server public key
+
+  const preamble = buildPreamble(context, clientId, ke1Bytes, serverId, credResponseBytes, serverNonce, serverAkePk);
+
+  const dh1 = suite.dhMultiply(state.clientAkePublicKey, serverAkeSk);
+  const dh2 = suite.dhMultiply(state.clientAkePublicKey, serverSk);
+  const dh3 = suite.dhMultiply(record.clientPublicKey,   serverAkeSk);
+  const ikm  = concat(dh1, dh2, dh3);
+
+  const prk             = suite.hkdfExtract(undefined, ikm);
+  const preambleHash    = suite.hash(preamble);
+  const handshakeSecret = suite.hkdfExpandLabel(prk, 'HandshakeSecret', preambleHash, suite.Nh);
+  const km2             = suite.hkdfExpandLabel(handshakeSecret, 'ServerMAC', new Uint8Array(0), suite.Nh);
+  const serverMac       = suite.hmac(km2, preambleHash);
+
+  expect(serverMac.length).toBe(suite.Nh);
+
+  const ke2 = { evaluatedElement, maskingNonce, maskedResponse, serverNonce, serverAkePublicKey: serverAkePk, serverMac };
+
+  // Client processes KE2 → KE3
+  const authResult = await client.generateKE3(state, ke2, null, null, context);
+
+  expect(authResult.clientMac.length).toBe(suite.Nh);
+  expect(authResult.sessionKey.length).toBe(suite.Nh);
+  expect(authResult.exportKey.length).toBe(suite.Nh);
+}
+
+describe('OPAQUE multi-suite round-trips', () => {
+  it('P-256/SHA-256 end-to-end', async () => opaqueRoundTrip(P256_SHA256));
+  it('P-384/SHA-384 end-to-end', async () => opaqueRoundTrip(P384_SHA384));
+  it('P-521/SHA-512 end-to-end', async () => opaqueRoundTrip(P521_SHA512));
 });

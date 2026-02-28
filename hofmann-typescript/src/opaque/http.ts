@@ -1,10 +1,14 @@
 /**
  * HTTP client for OPAQUE protocol REST endpoints.
  * All /opaque/* endpoints use base64 encoding.
+ *
+ * The cipher suite is read from GET /opaque/config so the client
+ * automatically uses the same suite the server was configured with.
  */
 import { OpaqueClient } from './client.js';
 import { base64Encode, base64Decode, strToBytes } from '../crypto/encoding.js';
 import { type KSF, identityKsf, argon2idKsf } from './ksf.js';
+import { type CipherSuite, P256_SHA256, getCipherSuite } from '../oprf/suite.js';
 import type { KE2 } from './types.js';
 
 export interface OpaqueHttpClientOptions {
@@ -12,6 +16,8 @@ export interface OpaqueHttpClientOptions {
   context?: string;
   /** Key stretching function — must match the server's KSF configuration. Default: identity. */
   ksf?: KSF;
+  /** Cipher suite to use. Resolved automatically from server config when using create(). */
+  suite?: CipherSuite;
 }
 
 // ── Wire DTOs ──────────────────────────────────────────────────────────────
@@ -77,6 +83,9 @@ export interface OpaqueConfigResponseDto {
 
 /**
  * HTTP wrapper for the OPAQUE registration and authentication flow.
+ *
+ * Use the static `create()` factory to automatically resolve the cipher suite
+ * and KSF from the server's /opaque/config endpoint.
  */
 export class OpaqueHttpClient {
   private readonly opaque: OpaqueClient;
@@ -85,7 +94,8 @@ export class OpaqueHttpClient {
   configResponse: OpaqueConfigResponseDto | null = null;
 
   constructor(private readonly baseUrl: string, options?: OpaqueHttpClientOptions) {
-    this.opaque = new OpaqueClient();
+    const suite = options?.suite ?? P256_SHA256;
+    this.opaque = new OpaqueClient(suite);
     this.ctx = options?.context ? strToBytes(options.context) : new Uint8Array(0);
     this.ksf = options?.ksf ?? identityKsf;
   }
@@ -102,7 +112,11 @@ export class OpaqueHttpClient {
   }
 
   /**
-   * Factory that fetches server config and constructs a pre-configured client.
+   * Factory that fetches server config, resolves cipher suite + KSF, and returns
+   * a fully configured client. This is the recommended way to create a client.
+   *
+   * The cipherSuite field in the server response must be one of:
+   *   "P256_SHA256", "P384_SHA384", "P521_SHA512"
    */
   static async create(baseUrl: string): Promise<OpaqueHttpClient> {
     const r = await fetch(`${baseUrl}/opaque/config`);
@@ -110,10 +124,11 @@ export class OpaqueHttpClient {
       throw new Error(`Failed to fetch OPAQUE config: ${r.status} ${r.statusText}`);
     }
     const cfg = await r.json() as OpaqueConfigResponseDto;
+    const suite = getCipherSuite(cfg.cipherSuite);
     const ksf = cfg.argon2MemoryKib > 0
-        ? argon2idKsf(cfg.argon2MemoryKib, cfg.argon2Iterations, cfg.argon2Parallelism)
-        : identityKsf;
-    const client = new OpaqueHttpClient(baseUrl, { context: cfg.context, ksf });
+      ? argon2idKsf(cfg.argon2MemoryKib, cfg.argon2Iterations, cfg.argon2Parallelism)
+      : identityKsf;
+    const client = new OpaqueHttpClient(baseUrl, { context: cfg.context, ksf, suite });
     client.configResponse = cfg;
     return client;
   }
@@ -130,7 +145,7 @@ export class OpaqueHttpClient {
     credentialId: string,
     password: string,
     serverIdentity?: string,
-    clientIdentity?: string
+    clientIdentity?: string,
   ): Promise<void> {
     const passwordBytes = strToBytes(password);
     const credentialIdBytes = strToBytes(credentialId);
@@ -139,20 +154,19 @@ export class OpaqueHttpClient {
     const regState = this.opaque.createRegistrationRequest(passwordBytes);
 
     // Step 2: Send to server and get response
-    // credentialIdentifier is base64-encoded per server DTO contract
     const reqDto: RegistrationStartRequestDto = {
       credentialIdentifier: base64Encode(credentialIdBytes),
       blindedElement: base64Encode(regState.blindedElement),
     };
     const regResp = await this._post<RegistrationStartResponseDto>(
       `/opaque/registration/start`,
-      reqDto
+      reqDto,
     );
 
     // Step 3: Finalize registration
     const response = {
       evaluatedElement: base64Decode(regResp.evaluatedElement),
-      serverPublicKey: base64Decode(regResp.serverPublicKey),
+      serverPublicKey:  base64Decode(regResp.serverPublicKey),
     };
     const record = await this.opaque.finalizeRegistration(
       regState,
@@ -160,16 +174,16 @@ export class OpaqueHttpClient {
       serverIdentity ? strToBytes(serverIdentity) : null,
       clientIdentity ? strToBytes(clientIdentity) : null,
       undefined,
-      this.ksf
+      this.ksf,
     );
 
     // Step 4: Upload registration record
     const uploadDto: RegistrationFinishRequestDto = {
       credentialIdentifier: base64Encode(credentialIdBytes),
       clientPublicKey: base64Encode(record.clientPublicKey),
-      maskingKey: base64Encode(record.maskingKey),
-      envelopeNonce: base64Encode(record.envelope.nonce),
-      authTag: base64Encode(record.envelope.authTag),
+      maskingKey:      base64Encode(record.maskingKey),
+      envelopeNonce:   base64Encode(record.envelope.nonce),
+      authTag:         base64Encode(record.envelope.authTag),
     };
     await this._post<void>(`/opaque/registration/finish`, uploadDto);
   }
@@ -181,14 +195,13 @@ export class OpaqueHttpClient {
    * @param password        The user's password
    * @param serverIdentity  Optional explicit server identity
    * @param clientIdentity  Optional explicit client identity
-   * @param context         Optional application context
    * @returns               JWT bearer token from server
    */
   async authenticate(
     credentialId: string,
     password: string,
     serverIdentity?: string,
-    clientIdentity?: string
+    clientIdentity?: string,
   ): Promise<string> {
     const passwordBytes = strToBytes(password);
     const credentialIdBytes = strToBytes(credentialId);
@@ -198,15 +211,15 @@ export class OpaqueHttpClient {
 
     const authReqDto: AuthStartRequestDto = {
       credentialIdentifier: base64Encode(credentialIdBytes),
-      blindedElement: base64Encode(state.blindedElement),
-      clientNonce: base64Encode(state.clientNonce),
-      clientAkePublicKey: base64Encode(state.clientAkePublicKey),
+      blindedElement:       base64Encode(state.blindedElement),
+      clientNonce:          base64Encode(state.clientNonce),
+      clientAkePublicKey:   base64Encode(state.clientAkePublicKey),
     };
 
-    // Step 2: Send KE1 and get KE2 (server returns individual base64 fields, not a wire blob)
+    // Step 2: Send KE1 and get KE2 (server returns individual base64 fields)
     const authRespDto = await this._post<AuthStartResponseDto>(
       `/opaque/auth/start`,
-      authReqDto
+      authReqDto,
     );
 
     // Assemble KE2 from individual base64 fields
@@ -226,17 +239,17 @@ export class OpaqueHttpClient {
       clientIdentity ? strToBytes(clientIdentity) : null,
       serverIdentity ? strToBytes(serverIdentity) : null,
       this.ctx,
-      this.ksf
+      this.ksf,
     );
 
-    // Step 4: Send KE3 (clientMac), echoing back sessionToken so server can find its AKE state
+    // Step 4: Send KE3 (clientMac), echoing back sessionToken for server AKE state lookup
     const finalizeDto: AuthFinishRequestDto = {
       sessionToken: authRespDto.sessionToken,
-      clientMac: base64Encode(authResult.clientMac),
+      clientMac:    base64Encode(authResult.clientMac),
     };
     const finalizeResp = await this._post<AuthFinishResponseDto>(
       `/opaque/auth/finish`,
-      finalizeDto
+      finalizeDto,
     );
 
     return finalizeResp.token;

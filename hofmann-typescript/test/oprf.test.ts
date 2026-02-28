@@ -1,5 +1,7 @@
 /**
  * RFC 9497 OPRF test vectors — P-256/SHA-256 (Appendix A.1.1).
+ * Also covers: suite constants for P-384/P-521, getCipherSuite(), and
+ * per-suite OPRF round-trip consistency checks.
  *
  * Source: CFRG draft-irtf-cfrg-voprf, Appendix A.1.1
  * Seed = 0xa3a3...a3 (32 bytes), Info = "test key"
@@ -10,6 +12,11 @@ import {
   HASH_TO_GROUP_DST,
   HASH_TO_SCALAR_DST,
   DERIVE_KEY_PAIR_DST,
+  P256_SHA256,
+  P384_SHA384,
+  P521_SHA512,
+  getCipherSuite,
+  type CipherSuite,
 } from '../src/oprf/suite.js';
 import { blind, finalize, deriveKeyPair } from '../src/oprf/client.js';
 import { toHex, fromHex } from '../src/crypto/primitives.js';
@@ -123,4 +130,128 @@ describe('OPRF Test Vector 2 (RFC 9497 A.1.1)', () => {
       'c748ca6dd327f0ce85f4ae3a8cd6d4d5390bbb804c9e12dcf94f853fece3dcce'
     );
   });
+});
+
+// ── Multi-suite: constants ────────────────────────────────────────────────────
+
+describe('P-384/SHA-384 suite constants', () => {
+  it('contextString = "OPRFV1-\\x00-P384-SHA384"', () => {
+    // "OPRFV1-" + 0x00 + "-P384-SHA384"
+    expect(toHex(P384_SHA384.CONTEXT_STRING)).toBe('4f50524656312d002d503338342d534841333834');
+  });
+
+  it('HashToGroup DST has correct prefix', () => {
+    // "HashToGroup-" + contextString
+    const dst = toHex(P384_SHA384.HASH_TO_GROUP_DST);
+    expect(dst.startsWith('48617368546f47726f75702d')).toBe(true); // "HashToGroup-"
+    expect(dst.endsWith('4f50524656312d002d503338342d534841333834')).toBe(true);
+  });
+
+  it('DeriveKeyPair DST has no dash separator', () => {
+    // "DeriveKeyPair" + contextString (no dash)
+    const dst = toHex(P384_SHA384.DERIVE_KEY_PAIR_DST);
+    expect(dst.startsWith('4465726976654b657950616972')).toBe(true); // "DeriveKeyPair"
+  });
+
+  it('size constants: Nh=48, Npk=49, Nsk=48, Nn=32, Nm=48, L=72', () => {
+    expect(P384_SHA384.Nh).toBe(48);
+    expect(P384_SHA384.Npk).toBe(49);
+    expect(P384_SHA384.Nsk).toBe(48);
+    expect(P384_SHA384.Nn).toBe(32);
+    expect(P384_SHA384.Nm).toBe(48);
+    expect(P384_SHA384.L).toBe(72);
+  });
+});
+
+describe('P-521/SHA-512 suite constants', () => {
+  it('contextString = "OPRFV1-\\x00-P521-SHA512"', () => {
+    expect(toHex(P521_SHA512.CONTEXT_STRING)).toBe('4f50524656312d002d503532312d534841353132');
+  });
+
+  it('HashToGroup DST has correct prefix', () => {
+    const dst = toHex(P521_SHA512.HASH_TO_GROUP_DST);
+    expect(dst.startsWith('48617368546f47726f75702d')).toBe(true);
+    expect(dst.endsWith('4f50524656312d002d503532312d534841353132')).toBe(true);
+  });
+
+  it('size constants: Nh=64, Npk=67, Nsk=66, Nn=32, Nm=64, L=98', () => {
+    expect(P521_SHA512.Nh).toBe(64);
+    expect(P521_SHA512.Npk).toBe(67);
+    expect(P521_SHA512.Nsk).toBe(66);
+    expect(P521_SHA512.Nn).toBe(32);
+    expect(P521_SHA512.Nm).toBe(64);
+    expect(P521_SHA512.L).toBe(98);
+  });
+});
+
+// ── getCipherSuite() ─────────────────────────────────────────────────────────
+
+describe('getCipherSuite()', () => {
+  it('resolves P256_SHA256', () => {
+    expect(getCipherSuite('P256_SHA256')).toBe(P256_SHA256);
+  });
+
+  it('resolves P384_SHA384', () => {
+    expect(getCipherSuite('P384_SHA384')).toBe(P384_SHA384);
+  });
+
+  it('resolves P521_SHA512', () => {
+    expect(getCipherSuite('P521_SHA512')).toBe(P521_SHA512);
+  });
+
+  it('throws for unknown suite name', () => {
+    expect(() => getCipherSuite('P256_SHA512')).toThrow('Unknown cipher suite');
+    expect(() => getCipherSuite('')).toThrow('Unknown cipher suite');
+  });
+});
+
+// ── Per-suite OPRF round-trip consistency ────────────────────────────────────
+
+/**
+ * For each suite: blind → server-evaluate (scalar multiply) → finalize.
+ * Verifies output length, determinism, and that a different input yields a different output.
+ * Does not require hardcoded RFC vectors — just checks protocol consistency.
+ */
+function oprfRoundTrip(suite: CipherSuite): void {
+  const input  = strToBytes('test-password');
+  const input2 = strToBytes('different-password');
+
+  // Use a fixed blind scalar so blind step is deterministic
+  const blindScalar = suite.deriveKeyPair(
+    new Uint8Array(suite.Nsk).fill(0xa3),
+    strToBytes('test-blind'),
+    suite.DERIVE_KEY_PAIR_DST,
+  );
+  // Use a fixed server key
+  const serverSk = suite.deriveKeyPair(
+    new Uint8Array(suite.Nsk).fill(0x42),
+    strToBytes('test-server-key'),
+    suite.DERIVE_KEY_PAIR_DST,
+  );
+
+  const { blind: r, blindedElement } = suite.blind(input, blindScalar);
+  expect(blindedElement.length).toBe(suite.Npk);
+
+  // Server evaluates: serverSk * blindedElement
+  const evaluatedElement = suite.dhMultiply(blindedElement, serverSk);
+  expect(evaluatedElement.length).toBe(suite.Npk);
+
+  const output = suite.finalize(input, r, evaluatedElement);
+  expect(output.length).toBe(suite.Nh);
+
+  // Deterministic: same inputs → same output
+  const output2 = suite.finalize(input, r, evaluatedElement);
+  expect(toHex(output)).toBe(toHex(output2));
+
+  // Different input → different output
+  const { blind: r3, blindedElement: be3 } = suite.blind(input2, blindScalar);
+  const evaluated3 = suite.dhMultiply(be3, serverSk);
+  const output3 = suite.finalize(input2, r3, evaluated3);
+  expect(toHex(output3)).not.toBe(toHex(output));
+}
+
+describe('OPRF round-trip per suite', () => {
+  it('P-256/SHA-256', () => oprfRoundTrip(P256_SHA256));
+  it('P-384/SHA-384', () => oprfRoundTrip(P384_SHA384));
+  it('P-521/SHA-512', () => oprfRoundTrip(P521_SHA512));
 });

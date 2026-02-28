@@ -1,33 +1,46 @@
 /**
  * HTTP client for the OPRF server endpoint.
  * Handles the POST /oprf REST call.
+ * Reads the cipher suite from GET /oprf/config so the client uses the same
+ * suite the server was configured with.
  */
-import { blind, finalize } from './client.js';
 import { toHex, fromHex } from '../crypto/primitives.js';
+import { type CipherSuite, P256_SHA256, getCipherSuite } from './suite.js';
 
 export interface OprfRequest {
-  ecPoint: string;    // hex-encoded 33-byte compressed point (server API uses hex)
+  ecPoint: string;    // hex-encoded compressed point (server API uses hex)
   requestId: string;  // unique request identifier required by server
 }
 
 export interface OprfResponse {
-  ecPoint: string;  // hex-encoded 33-byte evaluated element
+  ecPoint: string;  // hex-encoded evaluated element
 }
 
 /**
  * Thin HTTP wrapper for the OPRF protocol.
+ * The cipher suite is resolved from the server's /oprf/config on construction.
  */
 export class OprfHttpClient {
   cachedConfig: { cipherSuite: string } | null = null;
 
-  constructor(private readonly baseUrl: string) {}
+  constructor(
+    private readonly baseUrl: string,
+    private readonly suite: CipherSuite = P256_SHA256,
+  ) {}
 
   /**
-   * Factory that fetches server config and constructs a pre-configured client.
+   * Factory that fetches server config, resolves the cipher suite, and returns
+   * a fully configured client.
    */
   static async create(baseUrl: string): Promise<OprfHttpClient> {
-    const client = new OprfHttpClient(baseUrl);
-    client.cachedConfig = await client.getConfig();
+    const r = await fetch(`${baseUrl}/oprf/config`);
+    if (!r.ok) {
+      throw new Error(`getConfig failed: ${r.status} ${r.statusText}`);
+    }
+    const cfg = await r.json() as { cipherSuite: string };
+    const suite = getCipherSuite(cfg.cipherSuite);
+    const client = new OprfHttpClient(baseUrl, suite);
+    client.cachedConfig = cfg;
     return client;
   }
 
@@ -44,12 +57,15 @@ export class OprfHttpClient {
 
   /**
    * Evaluate the OPRF for the given input.
-   * Returns the 32-byte OPRF output (finalized).
+   * Returns the Nh-byte OPRF output (finalized).
    */
   async evaluate(input: Uint8Array): Promise<Uint8Array> {
-    const { blind: r, blindedElement } = blind(input);
+    const { blind: r, blindedElement } = this.suite.blind(input);
 
-    const body: OprfRequest = { ecPoint: toHex(blindedElement), requestId: crypto.randomUUID() };
+    const body: OprfRequest = {
+      ecPoint: toHex(blindedElement),
+      requestId: crypto.randomUUID(),
+    };
     const response = await fetch(`${this.baseUrl}/oprf`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -62,6 +78,6 @@ export class OprfHttpClient {
 
     const json: OprfResponse = await response.json();
     const evaluatedElement = fromHex(json.ecPoint);
-    return finalize(input, r, evaluatedElement);
+    return this.suite.finalize(input, r, evaluatedElement);
   }
 }

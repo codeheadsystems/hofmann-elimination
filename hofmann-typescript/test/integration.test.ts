@@ -6,27 +6,35 @@
  *
  * Tests are skipped automatically when TEST_SERVER_URL is not set.
  *
- * The default options match hofmann-testserver/config/config.yml:
- *   context     = "hofmann-testserver"
- *   argon2id    memory=65536 KiB, iterations=3, parallelism=1
+ * The clients use OpaqueHttpClient.create() / OprfHttpClient.create() so that
+ * the cipher suite and Argon2id parameters are read from the server rather than
+ * being hardcoded here.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { OpaqueHttpClient } from '../src/opaque/http.js';
 import { OprfHttpClient } from '../src/oprf/http.js';
-import { argon2idKsf } from '../src/opaque/ksf.js';
 import { strToBytes } from '../src/crypto/encoding.js';
 
 const SERVER_URL = process.env['TEST_SERVER_URL'];
 const skip = !SERVER_URL;
 
-// KSF matching hofmann-testserver config.yml defaults
-const TESTSERVER_KSF = argon2idKsf(65536, 3, 1);
-
 describe.skipIf(skip)('OprfHttpClient integration', () => {
-  it('evaluates OPRF against live server', async () => {
-    const client = new OprfHttpClient(SERVER_URL!);
+  let client: OprfHttpClient;
+
+  beforeAll(async () => {
+    // create() fetches /oprf/config to resolve cipher suite automatically
+    client = await OprfHttpClient.create(SERVER_URL!);
+  });
+
+  it('resolves cipher suite from server config', () => {
+    expect(client.cachedConfig).not.toBeNull();
+    expect(client.cachedConfig!.cipherSuite).toMatch(/^P(256|384|521)_SHA(256|384|512)$/);
+  });
+
+  it('evaluates OPRF against live server (output length matches Nh)', async () => {
     const result = await client.evaluate(strToBytes('test-input'));
-    expect(result).toHaveLength(32);
+    // Nh depends on the suite the server is configured with
+    expect([32, 48, 64]).toContain(result.length);
   });
 });
 
@@ -36,11 +44,19 @@ describe.skipIf(skip)('OpaqueHttpClient integration', () => {
   let client: OpaqueHttpClient;
   let authToken: string;
 
-  beforeAll(() => {
-    client = new OpaqueHttpClient(SERVER_URL!, {
-      context: 'hofmann-testserver',
-      ksf: TESTSERVER_KSF,
-    });
+  beforeAll(async () => {
+    // create() fetches /opaque/config and configures cipher suite + Argon2id automatically
+    client = await OpaqueHttpClient.create(SERVER_URL!);
+  });
+
+  it('resolves cipher suite and Argon2id config from server', () => {
+    expect(client.configResponse).not.toBeNull();
+    const cfg = client.configResponse!;
+    expect(cfg.cipherSuite).toMatch(/^P(256|384|521)_SHA(256|384|512)$/);
+    // argon2MemoryKib ≥ 0 (0 means identity KSF / no stretching)
+    expect(cfg.argon2MemoryKib).toBeGreaterThanOrEqual(0);
+    expect(typeof cfg.argon2Iterations).toBe('number');
+    expect(typeof cfg.argon2Parallelism).toBe('number');
   });
 
   it('completes full registration flow', async () => {

@@ -219,11 +219,23 @@
     .token-box input { flex: 1; color: var(--success); }
 
     /* Config panel */
-    .config-section {
+    .config-row1 {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+      grid-template-columns: 2fr 1fr auto;
       gap: 10px;
       align-items: end;
+      margin-bottom: 10px;
+    }
+    .config-row2 {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1fr;
+      gap: 10px;
+      align-items: end;
+    }
+    .config-load-group {
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
     }
 
     /* OPRF result */
@@ -275,38 +287,49 @@
 <body>
   <div class="header">
     <h1>Hofmann <span>OPAQUE</span> Demo</h1>
-    <span class="subtitle">RFC 9497 (OPRF) · RFC 9807 (OPAQUE-3DH) · P-256/SHA-256</span>
+    <span class="subtitle">RFC 9497 (OPRF) · RFC 9807 (OPAQUE-3DH)</span>
   </div>
 
   <!-- Server Config -->
   <div class="card" style="margin-bottom:20px">
     <h2>Server Configuration</h2>
-    <div class="config-section">
+    <!-- Row 1: URL + cipher suite display + load button -->
+    <div class="config-row1">
       <div>
         <label>Server URL (leave blank = proxy)</label>
         <input type="url" id="serverUrl" value="" placeholder="(proxied to localhost:8080)" />
       </div>
       <div>
-        <label>OPAQUE Context</label>
-        <input type="text" id="context" value="hofmann-testserver" />
+        <label>Cipher Suite (from server)</label>
+        <input type="text" id="cipherSuite" readonly value="—" />
+      </div>
+      <div class="config-load-group">
+        <button class="btn-ghost" id="btnLoadConfig">↺ Load Config</button>
+        <span class="status-chip idle" id="configStatus"><span class="dot"></span> —</span>
+      </div>
+    </div>
+    <!-- Row 2: OPAQUE parameters (populated from server, display only) -->
+    <div class="config-row2">
+      <div>
+        <label>OPAQUE Context (from server)</label>
+        <input type="text" id="context" readonly value="—" />
       </div>
       <div>
-        <label>Argon2 Memory (KiB)</label>
-        <input type="number" id="argon2Memory" value="65536" min="0" />
+        <label>Argon2 Memory KiB</label>
+        <input type="number" id="argon2Memory" readonly value="0" min="0" />
       </div>
       <div>
         <label>Argon2 Iterations</label>
-        <input type="number" id="argon2Iterations" value="3" min="0" />
+        <input type="number" id="argon2Iterations" readonly value="0" min="0" />
       </div>
       <div>
         <label>Argon2 Parallelism</label>
-        <input type="number" id="argon2Parallelism" value="1" min="1" />
+        <input type="number" id="argon2Parallelism" readonly value="1" min="1" />
       </div>
     </div>
     <p style="margin-top:8px;font-size:11px;color:var(--muted)">
-      <strong style="color:var(--accent)">Proxy mode:</strong> Leave Server URL blank — <code>npm run demo</code> proxies <code>/opaque</code> and <code>/oprf</code> to <code>localhost:8080</code> automatically (no CORS issues).
-      Set Argon2 Memory to 0 to use Identity KSF (for server configs with <code>argon2MemoryKib: 0</code>).
-      All settings must match the server's config exactly.
+      <strong style="color:var(--accent)">Proxy mode:</strong> Leave Server URL blank — <code>npm run demo</code> proxies <code>/opaque</code> and <code>/oprf</code> to <code>localhost:8080</code> automatically.
+      Configuration is loaded automatically from the server's <code>/opaque/config</code> endpoint on page load and before each operation.
     </p>
   </div>
 
@@ -443,7 +466,7 @@
           </span>
         </div>
         <div class="result-box" id="oprfResult">
-          <label>OPRF Output (32-byte hex)</label>
+          <label id="oprfResultLabel">OPRF Output (hex)</label>
           <div class="result-value oprf-out" id="oprfResultText"></div>
         </div>
       </div>
@@ -476,11 +499,11 @@
           <p>C→S: KE3 (clientMac)</p>
           <p>S verifies clientMac → issues JWT</p>
           <div class="divider"></div>
-          <p style="color:var(--text);font-weight:600;margin-bottom:4px">Cipher Suite</p>
-          <p>Curve: P-256</p>
-          <p>Hash: SHA-256</p>
-          <p>KSF: Argon2id (or identity)</p>
-          <p>ECDH: 33-byte compressed SEC1</p>
+          <p style="color:var(--text);font-weight:600;margin-bottom:4px">Cipher Suite (from server)</p>
+          <p>Curve: <span id="protocolCurve">—</span></p>
+          <p>Hash: <span id="protocolHash">—</span></p>
+          <p>KSF: <span id="protocolKsf">—</span></p>
+          <p>ECDH: compressed SEC1</p>
         </div>
       </div>
     </div><!-- /.right -->
