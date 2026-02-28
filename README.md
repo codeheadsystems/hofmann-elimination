@@ -71,16 +71,16 @@ to keep private.
 
 This project implements three layered RFCs:
 
-- **[RFC 9380 — Hash-to-Curve](hofmann-rfc/HASH_TO_CURVE.md)**: Deterministically maps
+- **Hash-to-Curve** ([details](hofmann-rfc/HASH_TO_CURVE.md), [rfc 9380](https://www.rfc-editor.org/rfc/rfc9380.html)): Deterministically maps
   arbitrary input to an elliptic curve point using Simplified SWU and `expand_message_xmd`.
   Used internally by OPRF.
 
-- **[RFC 9497 — OPRF](hofmann-rfc/OPRF.md)**: Oblivious Pseudorandom Functions. The client
+- **OPRF** ([details](hofmann-rfc/OPRF.md), [rfc 9497](https://www.rfc-editor.org/rfc/rfc9497.html)): Oblivious Pseudorandom Functions. The client
   computes a pseudorandom function on private input using the server's secret key, without
   the server ever learning the input. Supports P-256/SHA-256, P-384/SHA-384, P-521/SHA-512,
-  and Ristretto255/SHA-512.
+  and soon Ristretto255/SHA-512.
 
-- **[RFC 9807 — OPAQUE](hofmann-rfc/OPAQUE.md)**: Augmented Password-Authenticated Key
+- **OPAQUE** ([details](hofmann-rfc/OPAQUE.md), [rfc 9807](https://www.rfc-editor.org/rfc/rfc9807.html)): Augmented Password-Authenticated Key
   Exchange. Password-based authentication where the password is never transmitted and a
   compromised server database does not expose passwords to offline dictionary attacks.
 
@@ -96,14 +96,6 @@ Initial RFC implementations were produced with the help of AI tooling and review
 against the RFC specifications by a human (Ned). AIs have also been used to search
 for direct and side-channel attack vectors, but this is not a substitute for a formal
 third-party audit.
-
-## RFC Implementation
-
-This project implements the following RFCs:
-
-- [RFC 9380](https://www.rfc-editor.org/rfc/rfc9380.html): Hashing to Elliptic Curves
-- [RFC 9497](https://www.rfc-editor.org/rfc/rfc9497.html): Oblivious Pseudorandom Functions (OPRFs)
-- [RFC 9807](https://www.rfc-editor.org/rfc/rfc9807.html): OPAQUE: An Asymmetric PAKE Protocol
 
 ## Related Projects
 
