@@ -11,20 +11,37 @@ from stolen credentials. Usable with standard frameworks like Dropwizard and Spr
 
 ![the Hofmann Elimination Build](https://github.com/wolpert/hofmann-elimination/actions/workflows/gradle.yml/badge.svg)
 
+### Java / Server-side (Maven artifacts)
+
 | -- Artifact ID       | Version                                                                                                                                                                                                                        | Description                                                                                                    |
 |----------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------|
 | `hofmann-rfc`        | [![Maven Central: hofmann-rfc](https://img.shields.io/maven-central/v/com.codeheadsystems/hofmann-rfc?label=hofmann-rfc)](https://central.sonatype.com/artifact/com.codeheadsystems/hofmann-rfc)                               | All RFC implementations: hash-to-curve (RFC 9380), OPRF (RFC 9497), OPAQUE (RFC 9807), plus shared model DTOs. |
 | `hofmann-client`     | [![Maven Central: hofmann-client](https://img.shields.io/maven-central/v/com.codeheadsystems/hofmann-client?label=hofmann-client)](https://central.sonatype.com/artifact/com.codeheadsystems/hofmann-client)                   | Client files needed for OPRF/OPAQUE integration.                                                               |
 | `hofmann-server`     | [![Maven Central: hofmann-server](https://img.shields.io/maven-central/v/com.codeheadsystems/hofmann-server?label=hofmann-server)](https://central.sonatype.com/artifact/com.codeheadsystems/hofmann-server)                   | Server files needed for OPRF/OPAQUE integration.                                                               |
 | `hofmann-dropwizard` | [![Maven Central: hofmann-dropwizard](https://img.shields.io/maven-central/v/com.codeheadsystems/hofmann-dropwizard?label=hofmann-dropwizard)](https://central.sonatype.com/artifact/com.codeheadsystems/hofmann-dropwizard)   | Integration files specific for Dropwizard.                                                                     |
-| `hofmann-springboot` | [![Maven Central: hofmann-springboot](https://img.shields.io/maven-central/v/com.codeheadsystems/hofmann-springboot?label=hofmann-springboot)](https://central.sonatype.com/artifact/com.codeheadsystems/hofmann-springboot)   | Integration files specific for Spring Boot.                                                                    | 
+| `hofmann-springboot` | [![Maven Central: hofmann-springboot](https://img.shields.io/maven-central/v/com.codeheadsystems/hofmann-springboot?label=hofmann-springboot)](https://central.sonatype.com/artifact/com.codeheadsystems/hofmann-springboot)   | Integration files specific for Spring Boot.                                                                    |
+
+### TypeScript / Browser client
+
+| Directory              | Description                                                                                              |
+|------------------------|----------------------------------------------------------------------------------------------------------|
+| [`hofmann-typescript`](hofmann-typescript/README.md) | Browser/Node TypeScript client — RFC 9497 OPRF + RFC 9807 OPAQUE-3DH. Built on `@noble/curves` and `@noble/hashes`. Includes a Vite-powered interactive demo page. |
 
 ### Building
 
-Requires Java 21.
+#### Java (requires Java 21)
 
 ```
 ./gradlew clean build test
+```
+
+#### TypeScript
+
+```
+cd hofmann-typescript
+npm install
+npm test
+npm run build
 ```
 
 ## Purpose

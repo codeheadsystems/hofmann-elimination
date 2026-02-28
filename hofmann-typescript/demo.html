@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hofmann OPRF / OPAQUE Demo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d27;
+      --border:    #2e3347;
+      --accent:    #5b8af0;
+      --accent2:   #a78bfa;
+      --success:   #34d399;
+      --error:     #f87171;
+      --warn:      #fbbf24;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --code-bg:   #0a0c14;
+      --radius:    8px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      color: #fff;
+    }
+    h1 span { color: var(--accent); }
+
+    h2 {
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    .header {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .header .subtitle { color: var(--muted); font-size: 13px; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .left { display: flex; flex-direction: column; gap: 20px; }
+    .right { display: flex; flex-direction: column; gap: 20px; }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+
+    .card-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .badge.alt { background: var(--accent2); }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .form-row.single { grid-template-columns: 1fr; }
+    .form-row.triple { grid-template-columns: 1fr 1fr 1fr; }
+
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+
+    input[type="text"],
+    input[type="password"],
+    input[type="number"],
+    input[type="url"],
+    textarea {
+      width: 100%;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 8px 10px;
+      font-size: 13px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus, textarea:focus { border-color: var(--accent); }
+    input[readonly] { color: var(--muted); cursor: default; }
+
+    textarea {
+      resize: vertical;
+      min-height: 60px;
+    }
+
+    button {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 18px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: opacity 0.15s, background 0.15s;
+    }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #4a79e0; }
+    .btn-danger  { background: #ef4444; color: #fff; }
+    .btn-danger:hover:not(:disabled) { background: #dc2626; }
+    .btn-ghost   { background: var(--border); color: var(--text); }
+    .btn-ghost:hover:not(:disabled) { background: #3a3f56; }
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+    .action-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .status-chip.idle    { background: #1e2235; color: var(--muted); }
+    .status-chip.running { background: #1e3250; color: #60a5fa; }
+    .status-chip.ok      { background: #052e16; color: var(--success); }
+    .status-chip.err     { background: #2d0f0f; color: var(--error); }
+
+    .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      flex-shrink: 0;
+    }
+    .dot.pulse { animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    .result-box {
+      margin-top: 12px;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      display: none;
+    }
+    .result-box.visible { display: block; }
+    .result-box label { margin-bottom: 2px; }
+    .result-value {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 11px;
+      color: var(--success);
+      word-break: break-all;
+      line-height: 1.5;
+    }
+    .result-value.err { color: var(--error); }
+
+    .token-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .token-box input { flex: 1; color: var(--success); }
+
+    /* Config panel */
+    .config-section {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+      gap: 10px;
+      align-items: end;
+    }
+
+    /* OPRF result */
+    .oprf-out { color: #a78bfa; }
+
+    /* Log */
+    #log {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0;
+      height: 280px;
+      overflow-y: auto;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 11px;
+    }
+    .log-entry {
+      display: flex;
+      gap: 10px;
+      padding: 6px 14px;
+      border-bottom: 1px solid #12141d;
+      line-height: 1.4;
+    }
+    .log-entry:last-child { border-bottom: none; }
+    .log-ts   { color: var(--muted); flex-shrink: 0; }
+    .log-msg  { flex: 1; word-break: break-all; }
+    .log-info { color: var(--text); }
+    .log-ok   { color: var(--success); }
+    .log-err  { color: var(--error); }
+    .log-step { color: var(--accent); }
+    .log-data { color: #94a3b8; font-size: 10px; }
+
+    .log-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    .log-header h2 { margin: 0; }
+
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 14px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Hofmann <span>OPAQUE</span> Demo</h1>
+    <span class="subtitle">RFC 9497 (OPRF) · RFC 9807 (OPAQUE-3DH) · P-256/SHA-256</span>
+  </div>
+
+  <!-- Server Config -->
+  <div class="card" style="margin-bottom:20px">
+    <h2>Server Configuration</h2>
+    <div class="config-section">
+      <div>
+        <label>Server URL (leave blank = proxy)</label>
+        <input type="url" id="serverUrl" value="" placeholder="(proxied to localhost:8080)" />
+      </div>
+      <div>
+        <label>OPAQUE Context</label>
+        <input type="text" id="context" value="hofmann-testserver" />
+      </div>
+      <div>
+        <label>Argon2 Memory (KiB)</label>
+        <input type="number" id="argon2Memory" value="65536" min="0" />
+      </div>
+      <div>
+        <label>Argon2 Iterations</label>
+        <input type="number" id="argon2Iterations" value="3" min="0" />
+      </div>
+      <div>
+        <label>Argon2 Parallelism</label>
+        <input type="number" id="argon2Parallelism" value="1" min="1" />
+      </div>
+    </div>
+    <p style="margin-top:8px;font-size:11px;color:var(--muted)">
+      <strong style="color:var(--accent)">Proxy mode:</strong> Leave Server URL blank — <code>npm run demo</code> proxies <code>/opaque</code> and <code>/oprf</code> to <code>localhost:8080</code> automatically (no CORS issues).
+      Set Argon2 Memory to 0 to use Identity KSF (for server configs with <code>argon2MemoryKib: 0</code>).
+      All settings must match the server's config exactly.
+    </p>
+  </div>
+
+  <div class="layout">
+    <div class="left">
+
+      <!-- OPAQUE Registration -->
+      <div class="card">
+        <div class="card-title">
+          <span class="badge">1</span>
+          <h2 style="margin:0">OPAQUE Registration</h2>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>Credential ID</label>
+            <input type="text" id="regCredId" value="alice@example.com" />
+          </div>
+          <div>
+            <label>Password</label>
+            <input type="password" id="regPassword" value="correct-horse-battery" />
+          </div>
+        </div>
+        <div class="action-row">
+          <button class="btn-primary" id="btnRegister">Register</button>
+          <span class="status-chip idle" id="regStatus">
+            <span class="dot"></span> Idle
+          </span>
+        </div>
+        <div class="result-box" id="regResult">
+          <label>Result</label>
+          <div class="result-value" id="regResultText"></div>
+        </div>
+      </div>
+
+      <!-- OPAQUE Authentication -->
+      <div class="card">
+        <div class="card-title">
+          <span class="badge">2</span>
+          <h2 style="margin:0">OPAQUE Authentication</h2>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>Credential ID</label>
+            <input type="text" id="authCredId" value="alice@example.com" />
+          </div>
+          <div>
+            <label>Password</label>
+            <input type="password" id="authPassword" value="correct-horse-battery" />
+          </div>
+        </div>
+        <div class="action-row">
+          <button class="btn-primary" id="btnAuth">Authenticate</button>
+          <span class="status-chip idle" id="authStatus">
+            <span class="dot"></span> Idle
+          </span>
+        </div>
+        <div class="result-box" id="authResult">
+          <label>JWT Token</label>
+          <div class="token-box">
+            <input type="text" id="authToken" readonly />
+            <button class="btn-ghost btn-sm" id="btnCopyToken">Copy</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Whoami -->
+      <div class="card">
+        <div class="card-title">
+          <span class="badge">3</span>
+          <h2 style="margin:0">Whoami <span style="font-size:10px;color:var(--muted);text-transform:none;letter-spacing:0">(testserver only)</span></h2>
+        </div>
+        <div class="form-row single">
+          <div>
+            <label>JWT Token (from step 2)</label>
+            <input type="text" id="whoamiToken" placeholder="Paste token here" />
+          </div>
+        </div>
+        <div class="action-row">
+          <button class="btn-primary" id="btnWhoami">GET /api/whoami</button>
+          <span class="status-chip idle" id="whoamiStatus">
+            <span class="dot"></span> Idle
+          </span>
+        </div>
+        <div class="result-box" id="whoamiResult">
+          <label>Response</label>
+          <div class="result-value" id="whoamiResultText"></div>
+        </div>
+      </div>
+
+      <!-- OPAQUE Delete -->
+      <div class="card">
+        <div class="card-title">
+          <span class="badge">4</span>
+          <h2 style="margin:0">Delete Registration</h2>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>Credential ID</label>
+            <input type="text" id="delCredId" value="alice@example.com" />
+          </div>
+          <div>
+            <label>JWT Token (from step 2)</label>
+            <input type="text" id="delToken" placeholder="Paste token here" />
+          </div>
+        </div>
+        <div class="action-row">
+          <button class="btn-danger" id="btnDelete">Delete</button>
+          <span class="status-chip idle" id="delStatus">
+            <span class="dot"></span> Idle
+          </span>
+        </div>
+        <div class="result-box" id="delResult">
+          <label>Result</label>
+          <div class="result-value" id="delResultText"></div>
+        </div>
+      </div>
+
+      <!-- OPRF -->
+      <div class="card">
+        <div class="card-title">
+          <span class="badge alt">◈</span>
+          <h2 style="margin:0">Standalone OPRF Evaluation</h2>
+        </div>
+        <div class="form-row single">
+          <div>
+            <label>Input (plaintext)</label>
+            <input type="text" id="oprfInput" value="my-secret-data" />
+          </div>
+        </div>
+        <div class="action-row">
+          <button class="btn-primary" id="btnOprf">Evaluate</button>
+          <span class="status-chip idle" id="oprfStatus">
+            <span class="dot"></span> Idle
+          </span>
+        </div>
+        <div class="result-box" id="oprfResult">
+          <label>OPRF Output (32-byte hex)</label>
+          <div class="result-value oprf-out" id="oprfResultText"></div>
+        </div>
+      </div>
+
+    </div><!-- /.left -->
+
+    <div class="right">
+      <!-- Activity Log -->
+      <div class="card" style="padding:0">
+        <div class="log-header">
+          <h2>Activity Log</h2>
+          <button class="btn-ghost btn-sm" id="btnClearLog">Clear</button>
+        </div>
+        <div id="log"></div>
+      </div>
+
+      <!-- Protocol Reference -->
+      <div class="card">
+        <h2>Protocol Flow</h2>
+        <div style="font-size:12px;color:var(--muted);line-height:1.8">
+          <p style="color:var(--text);font-weight:600;margin-bottom:4px">Registration</p>
+          <p>C→S: blindedElement</p>
+          <p>S→C: evaluatedElement, serverPublicKey</p>
+          <p>C→S: clientPublicKey, maskingKey, envelope</p>
+          <div class="divider"></div>
+          <p style="color:var(--text);font-weight:600;margin-bottom:4px">Authentication (OPAQUE-3DH)</p>
+          <p>C→S: KE1 (blindedEl, clientNonce, clientAkePk)</p>
+          <p>S→C: KE2 (evaluatedEl, maskedResponse, serverNonce, serverAkePk, serverMac)</p>
+          <p>C verifies serverMac</p>
+          <p>C→S: KE3 (clientMac)</p>
+          <p>S verifies clientMac → issues JWT</p>
+          <div class="divider"></div>
+          <p style="color:var(--text);font-weight:600;margin-bottom:4px">Cipher Suite</p>
+          <p>Curve: P-256</p>
+          <p>Hash: SHA-256</p>
+          <p>KSF: Argon2id (or identity)</p>
+          <p>ECDH: 33-byte compressed SEC1</p>
+        </div>
+      </div>
+    </div><!-- /.right -->
+  </div>
+
+  <script type="module" src="./demo.ts"></script>
+</body>
+</html>

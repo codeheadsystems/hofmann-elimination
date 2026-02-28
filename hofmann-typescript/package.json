@@ -1,0 +1,37 @@
+{
+  "name": "hofmann-typescript",
+  "version": "0.1.0",
+  "description": "RFC 9497 (OPRF) and RFC 9807 (OPAQUE-3DH) browser client",
+  "type": "module",
+  "main": "./dist/hofmann-typescript.umd.cjs",
+  "module": "./dist/hofmann-typescript.js",
+  "exports": {
+    ".": {
+      "import": "./dist/hofmann-typescript.js",
+      "require": "./dist/hofmann-typescript.umd.cjs"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "demo": "vite --config vite.demo.config.ts"
+  },
+  "dependencies": {
+    "@noble/curves": "^1.6.0",
+    "@noble/hashes": "^1.5.0",
+    "hash-wasm": "^4.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0",
+    "vite": "^5.2.0",
+    "vite-plugin-dts": "^3.9.0",
+    "vitest": "^1.5.0"
+  }
+}
