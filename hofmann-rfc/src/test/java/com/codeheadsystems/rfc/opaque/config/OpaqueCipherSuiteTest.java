@@ -21,7 +21,7 @@ class OpaqueCipherSuiteTest {
         // suite, Npk, Nsk, Nh, Nn
         Arguments.of(OpaqueCipherSuite.P256_SHA256, 33, 32, 32, 32),
         Arguments.of(OpaqueCipherSuite.P384_SHA384, 49, 48, 48, 32),
-        Arguments.of(OpaqueCipherSuite.P521_SHA512, 33, 32, 32, 32) // P521 static is actually P256 (see source line 37)
+        Arguments.of(OpaqueCipherSuite.P521_SHA512, 67, 66, 64, 32)
     );
   }
 

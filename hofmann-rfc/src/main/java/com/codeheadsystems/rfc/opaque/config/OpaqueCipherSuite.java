@@ -34,7 +34,7 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
   /**
    * The constant P521_SHA512.
    */
-  public static final OpaqueCipherSuite P521_SHA512 = new OpaqueCipherSuite(OprfCipherSuite.builder().withSuite(CurveHashSuite.P256_SHA256).build());
+  public static final OpaqueCipherSuite P521_SHA512 = new OpaqueCipherSuite(OprfCipherSuite.builder().withSuite(CurveHashSuite.P521_SHA512).build());
 
   /**
    * Returns the OPAQUE cipher suite for the given name.  Accepted names: {@code "P256_SHA256"},

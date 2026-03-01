@@ -82,6 +82,21 @@ public record OpaqueClientConfig(OpaqueConfig opaqueConfig) {
   }
 
   /**
+   * Creates a test-only config with identity KSF, the specified cipher suite, and the
+   * supplied context string.  Do not use in production.
+   *
+   * @param cipherSuiteName the cipher suite name (e.g. "P384_SHA384")
+   * @param context         the context string
+   * @return the opaque client config
+   */
+  public static OpaqueClientConfig forTesting(String cipherSuiteName, String context) {
+    OpaqueCipherSuite suite = OpaqueCipherSuite.fromName(cipherSuiteName);
+    return new OpaqueClientConfig(
+        new OpaqueConfig(suite, 0, 0, 0, context.getBytes(StandardCharsets.UTF_8),
+            new OpaqueConfig.IdentityKsf(), new RandomProvider()));
+  }
+
+  /**
    * Creates an {@link OpaqueClientConfig} from a server-supplied config response.
    * <p>
    * When {@code argon2MemoryKib == 0} the server is using the identity KSF (test/dev only),
@@ -93,7 +108,7 @@ public record OpaqueClientConfig(OpaqueConfig opaqueConfig) {
    */
   public static OpaqueClientConfig fromServerConfig(OpaqueClientConfigResponse cfg) {
     if (cfg.argon2MemoryKib() == 0) {
-      return forTesting(cfg.context());
+      return forTesting(cfg.cipherSuite(), cfg.context());
     }
     return withArgon2id(cfg.cipherSuite(), cfg.context(),
         cfg.argon2MemoryKib(), cfg.argon2Iterations(), cfg.argon2Parallelism());

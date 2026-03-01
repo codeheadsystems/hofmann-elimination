@@ -1,0 +1,12 @@
+hofmann:
+  context: "integration-test"
+  argon2-memory-kib: 0
+  argon2-iterations: 1
+  argon2-parallelism: 1
+  oprf-master-key-hex: "137564f38fb14059492bbab74f03624de228817bd877b74e6df5ac378878720e"
+  server-key-seed-hex: "71c35fd9647f464e7288c68fabe22a07a0a062a3423a9d402e55c55b07d1dae3"
+  oprf-seed-hex: "20aa81d9ea8bf9de0877e02bc9d6adf4ef9d6bd50bbb515c84d78d1f246f49a3"
+  jwt-secret-hex: "04fb50080c93c055a4195cb535c9311381975a94eaaac8aeef3df0776aca4f6d"
+  oprf-processor-id: "integration-processor"
+  jwt-ttl-seconds: 3600
+  jwt-issuer: "hofmann-integration"
