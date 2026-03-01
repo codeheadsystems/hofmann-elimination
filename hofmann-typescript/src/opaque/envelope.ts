@@ -3,11 +3,11 @@
  *
  * Envelope = { nonce (Nn=32 bytes), authTag (Nh bytes) }
  *
- * Key derivation (all from randomizedPwd via HKDF-Expand, output length = Nh):
+ * Key derivation (all from randomizedPwd via HKDF-Expand):
  *   maskingKey = Expand(randomizedPwd, "MaskingKey", Nh)
  *   authKey    = Expand(randomizedPwd, nonce || "AuthKey",    Nh)
  *   exportKey  = Expand(randomizedPwd, nonce || "ExportKey",  Nh)
- *   seed       = Expand(randomizedPwd, nonce || "PrivateKey", Nh)
+ *   seed       = Expand(randomizedPwd, nonce || "PrivateKey", Nseed=32)  [RFC 9807 §4.1.2]
  *   (sk, pk)   = DeriveKeyPair(seed, "OPAQUE-DeriveDiffieHellmanKeyPair")
  *
  * authTag = HMAC(authKey, nonce || cleartext)
@@ -78,11 +78,12 @@ export function storeEnvelope(
   nonce: Uint8Array,
   suite: CipherSuite = P256_SHA256,
 ): { envelope: Envelope; clientPublicKey: Uint8Array; maskingKey: Uint8Array; exportKey: Uint8Array } {
-  const { Nh } = suite;
+  const { Nh, Nn } = suite;
   const maskingKey = suite.hkdfExpand(randomizedPwd, strToBytes('MaskingKey'), Nh);
   const authKey    = suite.hkdfExpand(randomizedPwd, concat(nonce, strToBytes('AuthKey')),    Nh);
   const exportKey  = suite.hkdfExpand(randomizedPwd, concat(nonce, strToBytes('ExportKey')),  Nh);
-  const seed       = suite.hkdfExpand(randomizedPwd, concat(nonce, strToBytes('PrivateKey')), Nh);
+  // RFC 9807 §4.1.2: Nseed = 32 (= Nn), suite-independent constant
+  const seed       = suite.hkdfExpand(randomizedPwd, concat(nonce, strToBytes('PrivateKey')), Nn);
 
   const sk = suite.deriveKeyPair(seed, DERIVE_CLIENT_KEY_PAIR_INFO, suite.DERIVE_KEY_PAIR_DST);
   const clientPublicKey = suite.getPublicKey(sk); // Npk bytes compressed
@@ -116,12 +117,13 @@ export function recoverEnvelope(
   clientIdentity: Uint8Array | null,
   suite: CipherSuite = P256_SHA256,
 ): { clientSecretKey: bigint; clientPublicKey: Uint8Array; exportKey: Uint8Array } {
-  const { Nh } = suite;
+  const { Nh, Nn } = suite;
   const { nonce, authTag } = envelope;
 
   const authKey   = suite.hkdfExpand(randomizedPwd, concat(nonce, strToBytes('AuthKey')),    Nh);
   const exportKey = suite.hkdfExpand(randomizedPwd, concat(nonce, strToBytes('ExportKey')),  Nh);
-  const seed      = suite.hkdfExpand(randomizedPwd, concat(nonce, strToBytes('PrivateKey')), Nh);
+  // RFC 9807 §4.1.2: Nseed = 32 (= Nn), suite-independent constant
+  const seed      = suite.hkdfExpand(randomizedPwd, concat(nonce, strToBytes('PrivateKey')), Nn);
 
   const sk = suite.deriveKeyPair(seed, DERIVE_CLIENT_KEY_PAIR_INFO, suite.DERIVE_KEY_PAIR_DST);
   const clientPublicKey = suite.getPublicKey(sk);

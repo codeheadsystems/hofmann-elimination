@@ -8,7 +8,7 @@
 
 /**
  * A KSF receives the raw OPRF output and returns the stretched output.
- * Both input and output are 32-byte arrays for P-256/SHA-256.
+ * Output length depends on the cipher suite's Nh (32 for P-256, 48 for P-384, 64 for P-521).
  */
 export type KSF = (input: Uint8Array) => Promise<Uint8Array>;
 
@@ -29,8 +29,10 @@ export const identityKsf: KSF = (input) => Promise.resolve(input);
  * @param memoryKib   Memory cost in KiB
  * @param iterations  Time cost (number of passes)
  * @param parallelism Degree of parallelism
+ * @param hashLength  Output length in bytes (must match the cipher suite's Nh: 32/48/64).
+ *                    Defaults to 32 for backward compatibility with P-256/SHA-256.
  */
-export function argon2idKsf(memoryKib: number, iterations: number, parallelism: number): KSF {
+export function argon2idKsf(memoryKib: number, iterations: number, parallelism: number, hashLength = 32): KSF {
   return async (input: Uint8Array): Promise<Uint8Array> => {
     const { argon2id } = await import('hash-wasm');
     return argon2id({
@@ -39,7 +41,7 @@ export function argon2idKsf(memoryKib: number, iterations: number, parallelism: 
       iterations,
       parallelism,
       memorySize: memoryKib,
-      hashLength: 32,
+      hashLength,
       outputType: 'binary',
     });
   };

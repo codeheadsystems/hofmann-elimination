@@ -43,7 +43,8 @@ abstract class AbstractOpaqueIntegrationTest {
   @BeforeEach
   void setUp() {
     httpClient = HttpClient.newHttpClient();
-    OpaqueClientConfig config = OpaqueClientConfig.forTesting(cipherSuiteName(), "integration-test");
+    OpaqueClientConfig config = OpaqueClientConfig.withArgon2id(
+        cipherSuiteName(), "integration-test", 1024, 1, 1);
     Map<ServerIdentifier, ServerConnectionInfo> connections = Map.of(
         SERVER_ID, new ServerConnectionInfo(URI.create(baseUrl())));
     HofmannOpaqueAccessor accessor = new HofmannOpaqueAccessor(

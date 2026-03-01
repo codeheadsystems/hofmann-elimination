@@ -126,7 +126,7 @@ export class OpaqueHttpClient {
     const cfg = await r.json() as OpaqueConfigResponseDto;
     const suite = getCipherSuite(cfg.cipherSuite);
     const ksf = cfg.argon2MemoryKib > 0
-      ? argon2idKsf(cfg.argon2MemoryKib, cfg.argon2Iterations, cfg.argon2Parallelism)
+      ? argon2idKsf(cfg.argon2MemoryKib, cfg.argon2Iterations, cfg.argon2Parallelism, suite.Nh)
       : identityKsf;
     const client = new OpaqueHttpClient(baseUrl, { context: cfg.context, ksf, suite });
     client.configResponse = cfg;

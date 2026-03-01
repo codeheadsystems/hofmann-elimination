@@ -40,8 +40,9 @@ public class OpaqueEnvelope {
         ByteUtils.concat(envelopeNonce, "AuthKey".getBytes(StandardCharsets.US_ASCII)), config.Nh());
     byte[] exportKey = expand(suite, randomizedPwd,
         ByteUtils.concat(envelopeNonce, "ExportKey".getBytes(StandardCharsets.US_ASCII)), config.Nh());
+    // RFC 9807 §4.1.2: Nseed = 32 (= Nn), suite-independent constant
     byte[] seed = expand(suite, randomizedPwd,
-        ByteUtils.concat(envelopeNonce, "PrivateKey".getBytes(StandardCharsets.US_ASCII)), config.Nsk());
+        ByteUtils.concat(envelopeNonce, "PrivateKey".getBytes(StandardCharsets.US_ASCII)), OpaqueConfig.Nn);
 
     OpaqueCipherSuite.AkeKeyPair keyPair = suite.deriveAkeKeyPair(seed);
     byte[] clientPublicKey = keyPair.publicKeyBytes();
@@ -77,8 +78,9 @@ public class OpaqueEnvelope {
         ByteUtils.concat(nonce, "AuthKey".getBytes(StandardCharsets.US_ASCII)), config.Nh());
     byte[] exportKey = expand(suite, randomizedPwd,
         ByteUtils.concat(nonce, "ExportKey".getBytes(StandardCharsets.US_ASCII)), config.Nh());
+    // RFC 9807 §4.1.2: Nseed = 32 (= Nn), suite-independent constant
     byte[] seed = expand(suite, randomizedPwd,
-        ByteUtils.concat(nonce, "PrivateKey".getBytes(StandardCharsets.US_ASCII)), config.Nsk());
+        ByteUtils.concat(nonce, "PrivateKey".getBytes(StandardCharsets.US_ASCII)), OpaqueConfig.Nn);
 
     OpaqueCipherSuite.AkeKeyPair keyPair = suite.deriveAkeKeyPair(seed);
     BigInteger clientSk = keyPair.privateKey();

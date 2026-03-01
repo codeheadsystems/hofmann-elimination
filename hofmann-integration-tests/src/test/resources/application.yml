@@ -1,6 +1,8 @@
 hofmann:
   context: "integration-test"
-  argon2-memory-kib: 0
+  # Use real Argon2id with low memory for fast integration tests.
+  # 1024 KiB (1 MiB) is fast but exercises the full Argon2id code path.
+  argon2-memory-kib: 1024
   argon2-iterations: 1
   argon2-parallelism: 1
   oprf-master-key-hex: "137564f38fb14059492bbab74f03624de228817bd877b74e6df5ac378878720e"
