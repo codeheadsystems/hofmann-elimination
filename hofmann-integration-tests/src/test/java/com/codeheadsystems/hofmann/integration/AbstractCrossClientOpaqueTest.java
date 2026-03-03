@@ -58,6 +58,9 @@ abstract class AbstractCrossClientOpaqueTest {
     assumeThat(TypeScriptRunner.isTypeScriptAvailable())
         .as("TypeScript module must be built (npm install && npm run build in hofmann-typescript/)")
         .isTrue();
+    assumeThat(TypeScriptRunner.isTypeScriptSuiteSupported(cipherSuiteName()))
+        .as("TypeScript client must support cipher suite " + cipherSuiteName())
+        .isTrue();
 
     // Java client registers the user
     String credId = "java-reg-" + cipherSuiteName() + "@cross-client.test";
@@ -84,6 +87,9 @@ abstract class AbstractCrossClientOpaqueTest {
   void typeScriptRegisters_javaAuthenticates() throws Exception {
     assumeThat(TypeScriptRunner.isTypeScriptAvailable())
         .as("TypeScript module must be built (npm install && npm run build in hofmann-typescript/)")
+        .isTrue();
+    assumeThat(TypeScriptRunner.isTypeScriptSuiteSupported(cipherSuiteName()))
+        .as("TypeScript client must support cipher suite " + cipherSuiteName())
         .isTrue();
 
     String credId = "ts-reg-" + cipherSuiteName() + "@cross-client.test";

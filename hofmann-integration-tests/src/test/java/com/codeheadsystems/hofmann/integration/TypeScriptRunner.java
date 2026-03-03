@@ -6,6 +6,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +21,14 @@ final class TypeScriptRunner {
   private static final Logger log = LoggerFactory.getLogger(TypeScriptRunner.class);
   private static final long TIMEOUT_SECONDS = 120;
 
+  /**
+   * Cipher suites supported by the TypeScript client (hofmann-typescript).
+   * Cross-client tests are skipped for suites not in this set.
+   */
+  private static final Set<String> TS_SUPPORTED_SUITES = Set.of(
+      "P256_SHA256", "P384_SHA384", "P521_SHA512"
+  );
+
   private TypeScriptRunner() {
   }
 
@@ -32,6 +41,14 @@ final class TypeScriptRunner {
     return tsDir != null
         && Files.isDirectory(tsDir.resolve("node_modules"))
         && Files.isDirectory(tsDir.resolve("dist"));
+  }
+
+  /**
+   * Checks whether the TypeScript client supports the given cipher suite.
+   * Returns false for suites (like RISTRETTO255_SHA512) that have no TS implementation yet.
+   */
+  static boolean isTypeScriptSuiteSupported(String suiteName) {
+    return TS_SUPPORTED_SUITES.contains(suiteName);
   }
 
   /**

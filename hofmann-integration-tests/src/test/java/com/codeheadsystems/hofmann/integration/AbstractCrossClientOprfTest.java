@@ -57,6 +57,9 @@ abstract class AbstractCrossClientOprfTest {
     assumeThat(TypeScriptRunner.isTypeScriptAvailable())
         .as("TypeScript module must be built (npm install && npm run build in hofmann-typescript/)")
         .isTrue();
+    assumeThat(TypeScriptRunner.isTypeScriptSuiteSupported(cipherSuiteName()))
+        .as("TypeScript client must support cipher suite " + cipherSuiteName())
+        .isTrue();
 
     // Java client hashes the input
     HofmannHashResult javaResult = manager.performHash(CROSS_CLIENT_INPUT, SERVER_ID);
