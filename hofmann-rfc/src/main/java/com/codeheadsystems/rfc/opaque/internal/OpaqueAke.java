@@ -101,7 +101,7 @@ public class OpaqueAke {
                                             byte[] oprfSeed, KE1 ke1, byte[] clientIdentity,
                                             byte[] maskingNonce, byte[] serverAkeKeySeed) {
     byte[] resolvedSeed = (serverAkeKeySeed != null) ? serverAkeKeySeed
-        : config.randomProvider().randomBytes(config.Nsk());
+        : config.randomProvider().randomBytes(OpaqueConfig.Nn);
     byte[] serverNonce = config.randomProvider().randomBytes(OpaqueConfig.Nn);
     return generateKE2Deterministic(config, serverIdentity, serverPrivateKey, serverPublicKey,
         record, credentialIdentifier, oprfSeed, ke1, clientIdentity, maskingNonce, resolvedSeed, serverNonce);

@@ -69,7 +69,7 @@ public class Client {
    */
   public ClientAuthState generateKE1(byte[] password) {
     BigInteger blind = config.cipherSuite().oprfSuite().randomScalar();
-    byte[] seed = config.randomProvider().randomBytes(config.Nsk());
+    byte[] seed = config.randomProvider().randomBytes(OpaqueConfig.Nn);
     byte[] clientNonce = config.randomProvider().randomBytes(OpaqueConfig.Nn);
     return generateKE1Deterministic(password, blind, clientNonce, seed);
   }
