@@ -15,6 +15,7 @@ import {
   P256_SHA256,
   P384_SHA384,
   P521_SHA512,
+  RISTRETTO255_SHA512,
   getCipherSuite,
   type CipherSuite,
 } from '../src/oprf/suite.js';
@@ -254,4 +255,107 @@ describe('OPRF round-trip per suite', () => {
   it('P-256/SHA-256', () => oprfRoundTrip(P256_SHA256));
   it('P-384/SHA-384', () => oprfRoundTrip(P384_SHA384));
   it('P-521/SHA-512', () => oprfRoundTrip(P521_SHA512));
+  it('ristretto255-SHA512', () => oprfRoundTrip(RISTRETTO255_SHA512));
+});
+
+// ── ristretto255-SHA512 ─────────────────────────────────────────────────────
+
+import { bytesToNumberLE } from '@noble/curves/abstract/utils';
+
+describe('ristretto255-SHA512 suite constants', () => {
+  it('contextString = "OPRFV1-\\x00-ristretto255-SHA512"', () => {
+    expect(toHex(RISTRETTO255_SHA512.CONTEXT_STRING)).toBe(
+      '4f50524656312d002d72697374726574746f3235352d534841353132'
+    );
+  });
+
+  it('size constants: Nh=64, Npk=32, Nsk=32, Nn=32, Nm=64, L=64', () => {
+    expect(RISTRETTO255_SHA512.Nh).toBe(64);
+    expect(RISTRETTO255_SHA512.Npk).toBe(32);
+    expect(RISTRETTO255_SHA512.Nsk).toBe(32);
+    expect(RISTRETTO255_SHA512.Nn).toBe(32);
+    expect(RISTRETTO255_SHA512.Nm).toBe(64);
+    expect(RISTRETTO255_SHA512.L).toBe(64);
+  });
+});
+
+describe('getCipherSuite() resolves RISTRETTO255_SHA512', () => {
+  it('resolves RISTRETTO255_SHA512', () => {
+    expect(getCipherSuite('RISTRETTO255_SHA512')).toBe(RISTRETTO255_SHA512);
+  });
+});
+
+describe('ristretto255 deriveKeyPair', () => {
+  it('seed=0xa3x32, info="test key" → expected skSm (LE)', () => {
+    const seed = new Uint8Array(32).fill(0xa3);
+    const info = strToBytes('test key');
+    const sk = RISTRETTO255_SHA512.deriveKeyPair(seed, info);
+    // Serialize as little-endian hex and compare to CFRG vector
+    expect(toHex(RISTRETTO255_SHA512.bigintToBytes(sk))).toBe(
+      '5ebcea5ee37023ccb9fc2d2019f9d7737be85591ae8652ffa9ef0f4d37063b0e'
+    );
+  });
+});
+
+describe('ristretto255 OPRF Test Vector 1', () => {
+  const input = new Uint8Array([0x00]);
+  // Blind scalar from CFRG allVectors.json — little-endian hex
+  const blindScalar = bytesToNumberLE(fromHex(
+    '64d37aed22a27f5191de1c1d69fadb899d8862b58eb4220029e036ec4c1f6706'
+  ));
+  const SK_S = bytesToNumberLE(fromHex(
+    '5ebcea5ee37023ccb9fc2d2019f9d7737be85591ae8652ffa9ef0f4d37063b0e'
+  ));
+
+  it('blindedElement matches', () => {
+    const { blindedElement } = RISTRETTO255_SHA512.blind(input, blindScalar);
+    expect(toHex(blindedElement)).toBe(
+      '609a0ae68c15a3cf6903766461307e5c8bb2f95e7e6550e1ffa2dc99e412803c'
+    );
+  });
+
+  it('evaluatedElement matches', () => {
+    const { blindedElement } = RISTRETTO255_SHA512.blind(input, blindScalar);
+    const evaluated = RISTRETTO255_SHA512.dhMultiply(blindedElement, SK_S);
+    expect(toHex(evaluated)).toBe(
+      '7ec6578ae5120958eb2db1745758ff379e77cb64fe77b0b2d8cc917ea0869c7e'
+    );
+  });
+
+  it('finalize output matches', () => {
+    const { blind: r, blindedElement } = RISTRETTO255_SHA512.blind(input, blindScalar);
+    const evaluated = RISTRETTO255_SHA512.dhMultiply(blindedElement, SK_S);
+    const output = RISTRETTO255_SHA512.finalize(input, r, evaluated);
+    expect(toHex(output)).toBe(
+      '527759c3d9366f277d8c6020418d96bb393ba2afb20ff90df23fb7708264e2f3' +
+      'ab9135e3bd69955851de4b1f9fe8a0973396719b7912ba9ee8aa7d0b5e24bcf6'
+    );
+  });
+});
+
+describe('ristretto255 OPRF Test Vector 2', () => {
+  const input = new Uint8Array(17).fill(0x5a);
+  const blindScalar = bytesToNumberLE(fromHex(
+    '64d37aed22a27f5191de1c1d69fadb899d8862b58eb4220029e036ec4c1f6706'
+  ));
+  const SK_S = bytesToNumberLE(fromHex(
+    '5ebcea5ee37023ccb9fc2d2019f9d7737be85591ae8652ffa9ef0f4d37063b0e'
+  ));
+
+  it('blindedElement matches', () => {
+    const { blindedElement } = RISTRETTO255_SHA512.blind(input, blindScalar);
+    expect(toHex(blindedElement)).toBe(
+      'da27ef466870f5f15296299850aa088629945a17d1f5b7f5ff043f76b3c06418'
+    );
+  });
+
+  it('finalize output matches', () => {
+    const { blind: r, blindedElement } = RISTRETTO255_SHA512.blind(input, blindScalar);
+    const evaluated = RISTRETTO255_SHA512.dhMultiply(blindedElement, SK_S);
+    const output = RISTRETTO255_SHA512.finalize(input, r, evaluated);
+    expect(toHex(output)).toBe(
+      'f4a74c9c592497375e796aa837e907b1a045d34306a749db9f34221f7e750cb4' +
+      'f2a6413a6bf6fa5e19ba6348eb673934a722a7ede2e7621306d18951e7cf2c73'
+    );
+  });
 });

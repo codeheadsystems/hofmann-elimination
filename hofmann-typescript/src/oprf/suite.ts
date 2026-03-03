@@ -8,6 +8,8 @@
 import { p256, hashToCurve as p256HashToCurve } from '@noble/curves/p256';
 import { p384, hashToCurve as p384HashToCurve } from '@noble/curves/p384';
 import { p521, hashToCurve as p521HashToCurve } from '@noble/curves/p521';
+import { ristretto255, ristretto255_hasher } from '@noble/curves/ed25519';
+import { numberToBytesLE, bytesToNumberLE } from '@noble/curves/abstract/utils';
 import { sha256 } from '@noble/hashes/sha256';
 import { sha384, sha512 } from '@noble/hashes/sha512';
 import { hmac as nobleHmac } from '@noble/hashes/hmac';
@@ -275,16 +277,140 @@ export const P521_SHA512: CipherSuite = createSuite(
   p521, p521HashToCurve, sha512,
 );
 
+// ── Ristretto255 suite factory ────────────────────────────────────────────────
+
+function createRistrettoSuite(): CipherSuite {
+  const name = 'ristretto255-SHA512';
+  const nh = 64, npk = 32, nsk = 32, l = 64;
+  const hashFn = sha512;
+  const contextString = buildContextString(name);
+  const { HASH_TO_GROUP_DST, HASH_TO_SCALAR_DST, DERIVE_KEY_PAIR_DST } = buildDsts(contextString);
+  const ORDER: bigint = ristretto255.Point.Fn.ORDER;
+
+  function bigintToBytes(n: bigint): Uint8Array {
+    return numberToBytesLE(n, nsk);
+  }
+
+  function modInverse(a: bigint): bigint {
+    return modPow(a, ORDER - 2n, ORDER);
+  }
+
+  function hashToScalar(input: Uint8Array, dst: Uint8Array): bigint {
+    return ristretto255_hasher.hashToScalar(input, { DST: dst });
+  }
+
+  function hkdfExpandFn(prk: Uint8Array, info: Uint8Array, length: number): Uint8Array {
+    return expand(hashFn, prk, info, length);
+  }
+
+  const suite: CipherSuite = {
+    name,
+    Nh: nh, Npk: npk, Nsk: nsk, Nn: 32, Nm: nh, L: l,
+    CONTEXT_STRING: contextString,
+    HASH_TO_GROUP_DST,
+    HASH_TO_SCALAR_DST,
+    DERIVE_KEY_PAIR_DST,
+
+    randomScalar(): bigint {
+      const bytes = new Uint8Array(64);
+      crypto.getRandomValues(bytes);
+      return ristretto255.Point.Fn.create(bytesToNumberLE(bytes));
+    },
+
+    blind(input: Uint8Array, r?: bigint): { blind: bigint; blindedElement: Uint8Array } {
+      const scalar = r ?? suite.randomScalar();
+      // hashToCurve returns a RistrettoPoint at runtime (toBytes/multiply); H2CPoint typedef lacks these
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const P = ristretto255_hasher.hashToCurve(input, { DST: HASH_TO_GROUP_DST }) as any;
+      const blindedPoint = P.multiply(scalar);
+      return { blind: scalar, blindedElement: blindedPoint.toBytes() };
+    },
+
+    finalize(input: Uint8Array, blindScalar: bigint, evaluatedElement: Uint8Array): Uint8Array {
+      const Z = ristretto255.Point.fromHex(evaluatedElement);
+      const N = Z.multiply(modInverse(blindScalar));
+      const unblinded = N.toBytes();
+      const hashInput = concat(
+        i2osp(input.length, 2),
+        input,
+        i2osp(npk, 2),
+        unblinded,
+        strToBytes('Finalize'),
+      );
+      return hashFn(hashInput);
+    },
+
+    hashToScalar,
+
+    deriveKeyPair(seed: Uint8Array, info: Uint8Array, dst?: Uint8Array): bigint {
+      const deriveDst = dst ?? DERIVE_KEY_PAIR_DST;
+      const deriveInput = concat(seed, i2osp(info.length, 2), info);
+      for (let counter = 0; counter <= 255; counter++) {
+        const candidate = concat(deriveInput, i2osp(counter, 1));
+        const sk = hashToScalar(candidate, deriveDst);
+        if (sk !== 0n) return sk;
+      }
+      throw new Error('deriveKeyPair: no valid scalar after 256 iterations');
+    },
+
+    getPublicKey(sk: bigint): Uint8Array {
+      return ristretto255.Point.BASE.multiply(sk).toBytes();
+    },
+
+    dhMultiply(pointBytes: Uint8Array, scalar: bigint): Uint8Array {
+      return ristretto255.Point.fromHex(pointBytes).multiply(scalar).toBytes();
+    },
+
+    bigintToBytes,
+
+    hash(data: Uint8Array): Uint8Array {
+      return hashFn(data);
+    },
+
+    hmac(key: Uint8Array, data: Uint8Array): Uint8Array {
+      return nobleHmac(hashFn, key, data);
+    },
+
+    hkdfExtract(salt: Uint8Array | undefined, ikm: Uint8Array): Uint8Array {
+      return extract(hashFn, ikm, salt && salt.length > 0 ? salt : undefined);
+    },
+
+    hkdfExpand: hkdfExpandFn,
+
+    hkdfExpandLabel(secret: Uint8Array, label: string, context: Uint8Array, length: number): Uint8Array {
+      const labelBytes = strToBytes('OPAQUE-' + label);
+      const info = concat(
+        i2osp(length, 2),
+        i2osp(labelBytes.length, 1),
+        labelBytes,
+        i2osp(context.length, 1),
+        context,
+      );
+      return hkdfExpandFn(secret, info, length);
+    },
+  };
+
+  return suite;
+}
+
+/**
+ * ristretto255 / SHA-512 cipher suite (RFC 9497 §4.1).
+ * contextString = "OPRFV1-\x00-ristretto255-SHA512"
+ * L=64, Nh=64, Npk=32, Nsk=32
+ */
+export const RISTRETTO255_SHA512: CipherSuite = createRistrettoSuite();
+
 /**
  * Resolve a cipher suite by the name returned in server config responses.
- * Accepts "P256_SHA256", "P384_SHA384", or "P521_SHA512".
+ * Accepts "P256_SHA256", "P384_SHA384", "P521_SHA512", or "RISTRETTO255_SHA512".
  */
 export function getCipherSuite(name: string): CipherSuite {
   switch (name) {
     case 'P256_SHA256': return P256_SHA256;
     case 'P384_SHA384': return P384_SHA384;
     case 'P521_SHA512': return P521_SHA512;
-    default: throw new Error(`Unknown cipher suite: "${name}". Expected P256_SHA256, P384_SHA384, or P521_SHA512.`);
+    case 'RISTRETTO255_SHA512': return RISTRETTO255_SHA512;
+    default: throw new Error(`Unknown cipher suite: "${name}". Expected P256_SHA256, P384_SHA384, P521_SHA512, or RISTRETTO255_SHA512.`);
   }
 }
 

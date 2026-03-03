@@ -12,7 +12,7 @@ import { hmac } from '@noble/hashes/hmac';
 import { OpaqueClient, deriveRandomizedPwd } from '../src/opaque/client.js';
 import { storeEnvelope, serializeEnvelope } from '../src/opaque/envelope.js';
 import { buildPreamble, derive3DHKeys } from '../src/opaque/ake.js';
-import { P256_SHA256, P384_SHA384, P521_SHA512, type CipherSuite } from '../src/oprf/suite.js';
+import { P256_SHA256, P384_SHA384, P521_SHA512, RISTRETTO255_SHA512, type CipherSuite } from '../src/oprf/suite.js';
 import { toHex, fromHex, concat } from '../src/crypto/primitives.js';
 import { strToBytes } from '../src/crypto/encoding.js';
 import { hkdfExpand, hkdfExtract, hkdfExpandLabel } from '../src/crypto/hkdf.js';
@@ -381,4 +381,5 @@ describe('OPAQUE multi-suite round-trips', () => {
   it('P-256/SHA-256 end-to-end', async () => opaqueRoundTrip(P256_SHA256));
   it('P-384/SHA-384 end-to-end', async () => opaqueRoundTrip(P384_SHA384));
   it('P-521/SHA-512 end-to-end', async () => opaqueRoundTrip(P521_SHA512));
+  it('ristretto255-SHA512 end-to-end', async () => opaqueRoundTrip(RISTRETTO255_SHA512));
 });

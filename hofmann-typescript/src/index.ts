@@ -1,7 +1,7 @@
 /**
  * hofmann-typescript — RFC 9497 (OPRF) and RFC 9807 (OPAQUE-3DH) browser client.
  *
- * Supports P-256/SHA-256, P-384/SHA-384, and P-521/SHA-512 cipher suites.
+ * Supports P-256/SHA-256, P-384/SHA-384, P-521/SHA-512, and ristretto255-SHA512 cipher suites.
  * The cipher suite is negotiated automatically from the server's /opaque/config
  * or /oprf/config endpoint when using the HTTP client factories.
  */
@@ -17,6 +17,7 @@ export {
   P256_SHA256,
   P384_SHA384,
   P521_SHA512,
+  RISTRETTO255_SHA512,
   getCipherSuite,
   // Backward-compatible P-256 constant exports
   CONTEXT_STRING,

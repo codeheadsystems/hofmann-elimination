@@ -26,7 +26,7 @@ final class TypeScriptRunner {
    * Cross-client tests are skipped for suites not in this set.
    */
   private static final Set<String> TS_SUPPORTED_SUITES = Set.of(
-      "P256_SHA256", "P384_SHA384", "P521_SHA512"
+      "P256_SHA256", "P384_SHA384", "P521_SHA512", "RISTRETTO255_SHA512"
   );
 
   private TypeScriptRunner() {
