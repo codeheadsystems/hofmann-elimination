@@ -14,11 +14,14 @@ OPAQUE enables password-based authentication where:
 
 `OpaqueCipherSuite` wraps `OprfCipherSuite` and adds OPAQUE-specific size constants (`Npk`, `Nsk`, `Nh`, `Nm`, `Nn`):
 
-| Constant | OPRF Suite | Hash | Public Key Size |
-|---|---|---|---|
-| `OpaqueCipherSuite.P256_SHA256` | P-256 / SHA-256 | SHA-256 | 33 bytes |
-| `OpaqueCipherSuite.P384_SHA384` | P-384 / SHA-384 | SHA-384 | 49 bytes |
-| `OpaqueCipherSuite.P521_SHA512` | P-521 / SHA-512 | SHA-512 | 67 bytes |
+| Constant | OPRF Suite | Hash | Npk | Nsk | Nh |
+|---|---|---|---|---|---|
+| `OpaqueCipherSuite.P256_SHA256` | P-256 / SHA-256 | SHA-256 | 33 | 32 | 32 |
+| `OpaqueCipherSuite.P384_SHA384` | P-384 / SHA-384 | SHA-384 | 49 | 48 | 48 |
+| `OpaqueCipherSuite.P521_SHA512` | P-521 / SHA-512 | SHA-512 | 67 | 66 | 64 |
+| `OpaqueCipherSuite.RISTRETTO255_SHA512` | ristretto255 / SHA-512 | SHA-512 | 32 | 32 | 64 |
+
+Note that for ristretto255, `Npk == Nsk == 32` because both group elements and scalars are 32-byte little-endian encodings. For Weierstrass curves, `Npk > Nsk` because public keys are compressed SEC1 points (with a 1-byte prefix).
 
 ## Configuration
 
@@ -161,8 +164,8 @@ The fake masking key and client public key are derived deterministically from th
 | `OpaqueOprf` | OPRF blind/evaluate/finalize operations and per-credential OPRF key derivation |
 | `OpaqueCredentials` | Credential request/response lifecycle; credential masking/unmasking |
 | `OpaqueEnvelope` | Envelope store (registration) and recover (authentication) |
-| `OpaqueAke` | OPAQUE-3DH key exchange: preamble, 3DH, key derivation, MAC computation |
-| `OpaqueCrypto` | Low-level primitives: HKDF, HMAC, ECDH, point (de)serialization, key derivation |
+| `OpaqueAke` | OPAQUE-3DH key exchange: preamble, 3DH (via `GroupSpec.scalarMultiply`), key derivation, MAC computation |
+| `OpaqueCrypto` | Low-level primitives: HKDF, HMAC, key derivation |
 
 ## Wire Format
 
@@ -182,29 +185,33 @@ Where `Noe = Npk` (element and public key have the same size per curve).
 
 `KE2.deserialize()` requires `OpaqueConfig` because element sizes vary by cipher suite.
 
-### Size Constants (P-256 example)
+### Size Constants
 
-| Constant | Value | Meaning |
-|---|---|---|
-| `Npk` | 33 | Compressed public key / group element (bytes) |
-| `Nsk` | 32 | Scalar / private key (bytes) |
-| `Nh` | 32 | Hash output length (bytes) |
-| `Nm` | 32 | MAC output length = Nh |
-| `Nn` | 32 | Nonce length (suite-independent) |
-| `envelopeSize()` | 64 | Nn + Nm |
-| `maskedResponseSize()` | 97 | Npk + envelopeSize |
+| Constant | P-256 | P-384 | P-521 | ristretto255 | Meaning |
+|---|---|---|---|---|---|
+| `Npk` | 33 | 49 | 67 | 32 | Public key / group element (bytes) |
+| `Nsk` | 32 | 48 | 66 | 32 | Scalar / private key (bytes) |
+| `Nh` | 32 | 48 | 64 | 64 | Hash output length (bytes) |
+| `Nm` | 32 | 48 | 64 | 64 | MAC output length = Nh |
+| `Nn` | 32 | 32 | 32 | 32 | Nonce length (suite-independent) |
+| `envelopeSize()` | 64 | 80 | 96 | 96 | Nn + Nm |
+| `maskedResponseSize()` | 97 | 129 | 163 | 128 | Npk + envelopeSize |
 
 ## Critical Implementation Details
 
 ### DH Output Format
-`OpaqueCrypto.dhECDH()` returns a **33-byte compressed SEC1 point** via `result.getEncoded(true)`, not a 32-byte x-coordinate. This matches the RFC's definition of `SerializeElement`.
+`OpaqueAke` performs Diffie-Hellman via `GroupSpec.scalarMultiply()`, which returns a serialized group element. The output format depends on the suite:
+- **Weierstrass curves**: compressed SEC1 point (33/49/67 bytes) — not a raw x-coordinate
+- **ristretto255**: canonical ristretto255 encoding (32 bytes)
+
+This abstraction allows `OpaqueAke` to work with any `GroupSpec` without knowledge of the underlying curve type. The earlier coupling to BouncyCastle `ECPoint` has been removed.
 
 ### MAC Computation
 ```
-server_mac = HMAC(Km2, SHA256(preamble))
-client_mac = HMAC(Km3, SHA256(preamble || server_mac))
+server_mac = HMAC(Km2, Hash(preamble))
+client_mac = HMAC(Km3, Hash(preamble || server_mac))
 ```
-The client MAC hashes the **concatenation** of preamble and server MAC — not their hashes separately.
+Where `Hash` is the suite's hash function (SHA-256 for P-256, SHA-384 for P-384, SHA-512 for P-521 and ristretto255). The client MAC hashes the **concatenation** of preamble and server MAC — not their hashes separately.
 
 ### Constant-Time Comparisons
 MAC verification (`serverFinish` and AKE internally) uses `MessageDigest.isEqual()` to prevent timing-based oracle attacks.
@@ -225,14 +232,14 @@ server.generateFakeKE2Deterministic(..., fakeClientPublicKey, fakeMaskingKey, ..
 ## Dependencies
 
 - `oprf` — `OprfCipherSuite`, blinding, OPRF evaluation
-- `hash-to-curve` — elliptic curve math (via oprf)
-- BouncyCastle — EC arithmetic, HKDF, Argon2id
+- `hash-to-curve` — `GroupSpec` interface, elliptic curve math (via oprf)
+- BouncyCastle — HKDF, Argon2id, EC arithmetic for Weierstrass curves (ristretto255 uses pure `BigInteger` arithmetic)
 
 ## Tests
 
 | Test | Coverage |
 |---|---|
 | `OpaqueVectorsTest` | RFC 9807 test vectors (P-256 only, as specified in the RFC) |
-| `OpaqueRoundTripTest` | Full registration + auth parameterized over all cipher suites; correct/wrong password cases; with/without explicit identities |
+| `OpaqueRoundTripTest` | Full registration + auth parameterized over all four cipher suites (P-256, P-384, P-521, ristretto255); correct/wrong password cases; with/without explicit identities |
 
 Test vectors from [RFC 9807 Appendix C](https://www.rfc-editor.org/rfc/rfc9807.html#appendix-C).

@@ -36,7 +36,8 @@ public class RoundTripTest {
     return Stream.of(
         OprfCipherSuite.builder().withSuite(CurveHashSuite.P256_SHA256).build(),
         OprfCipherSuite.builder().withSuite(CurveHashSuite.P384_SHA384).build(),
-        OprfCipherSuite.builder().withSuite(CurveHashSuite.P521_SHA512).build()
+        OprfCipherSuite.builder().withSuite(CurveHashSuite.P521_SHA512).build(),
+        OprfCipherSuite.builder().withSuite(CurveHashSuite.RISTRETTO255_SHA512).build()
     );
   }
 

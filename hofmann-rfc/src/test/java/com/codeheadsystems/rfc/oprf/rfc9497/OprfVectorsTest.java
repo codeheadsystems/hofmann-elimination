@@ -2,6 +2,7 @@ package com.codeheadsystems.rfc.oprf.rfc9497;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.codeheadsystems.rfc.ellipticcurve.rfc9380.Ristretto255GroupSpec;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -317,6 +318,103 @@ public class OprfVectorsTest {
 
       assertThat(Hex.toHexString(output))
           .isEqualTo("ad1f76ef939042175e007738906ac0336bbd1d51e287ebaa66901abdd324ea3ffa40bfc5a68e7939c2845e0fd37a5a6e76dadb9907c6cc8579629757fd4d04ba");
+    }
+  }
+
+  // ─── RFC 9497 §4.4: ristretto255-SHA512 OPRF (mode 0) ────────────────────
+
+  /**
+   * The type Ristretto 255 sha 512.
+   */
+  @Nested
+  class Ristretto255Sha512 {
+
+    private static final OprfCipherSuite SUITE = OprfCipherSuite.builder().withSuite(CurveHashSuite.RISTRETTO255_SHA512).build();
+
+    // skSm from CFRG allVectors.json: little-endian hex
+    // 5ebcea5ee37023ccb9fc2d2019f9d7737be85591ae8652ffa9ef0f4d37063b0e
+    private static final BigInteger SK_S = decodeLittleEndianHex(
+        "5ebcea5ee37023ccb9fc2d2019f9d7737be85591ae8652ffa9ef0f4d37063b0e");
+
+    /**
+     * Test derive key pair.
+     */
+    @Test
+    void testDeriveKeyPair() {
+      byte[] seed = new byte[32];
+      Arrays.fill(seed, (byte) 0xa3);
+      byte[] info = "test key".getBytes(StandardCharsets.UTF_8);
+
+      BigInteger skS = SUITE.deriveKeyPair(seed, info);
+
+      // Serialize as LE and compare
+      byte[] skLE = SUITE.groupSpec().serializeScalar(skS);
+      assertThat(Hex.toHexString(skLE))
+          .isEqualTo("5ebcea5ee37023ccb9fc2d2019f9d7737be85591ae8652ffa9ef0f4d37063b0e");
+    }
+
+    /**
+     * Test vector 1.
+     */
+    @Test
+    void testVector1() {
+      byte[] input = new byte[]{0x00};
+      BigInteger blind = decodeLittleEndianHex(
+          "64d37aed22a27f5191de1c1d69fadb899d8862b58eb4220029e036ec4c1f6706");
+
+      byte[] P = SUITE.groupSpec().hashToGroup(input, SUITE.hashToGroupDst());
+      byte[] blindedElement = SUITE.groupSpec().scalarMultiply(blind, P);
+
+      assertThat(Hex.toHexString(blindedElement))
+          .as("blindedElement")
+          .isEqualTo("609a0ae68c15a3cf6903766461307e5c8bb2f95e7e6550e1ffa2dc99e412803c");
+
+      byte[] evaluatedElement = SUITE.groupSpec().scalarMultiply(SK_S, blindedElement);
+
+      assertThat(Hex.toHexString(evaluatedElement))
+          .as("evaluationElement")
+          .isEqualTo("7ec6578ae5120958eb2db1745758ff379e77cb64fe77b0b2d8cc917ea0869c7e");
+
+      byte[] output = SUITE.finalize(input, blind, evaluatedElement);
+
+      assertThat(Hex.toHexString(output))
+          .isEqualTo("527759c3d9366f277d8c6020418d96bb393ba2afb20ff90df23fb7708264e2f3"
+              + "ab9135e3bd69955851de4b1f9fe8a0973396719b7912ba9ee8aa7d0b5e24bcf6");
+    }
+
+    /**
+     * Test vector 2.
+     */
+    @Test
+    void testVector2() {
+      byte[] input = new byte[17];
+      Arrays.fill(input, (byte) 0x5a);
+      BigInteger blind = decodeLittleEndianHex(
+          "64d37aed22a27f5191de1c1d69fadb899d8862b58eb4220029e036ec4c1f6706");
+
+      byte[] P = SUITE.groupSpec().hashToGroup(input, SUITE.hashToGroupDst());
+      byte[] blindedElement = SUITE.groupSpec().scalarMultiply(blind, P);
+
+      assertThat(Hex.toHexString(blindedElement))
+          .as("blindedElement")
+          .isEqualTo("da27ef466870f5f15296299850aa088629945a17d1f5b7f5ff043f76b3c06418");
+
+      byte[] evaluatedElement = SUITE.groupSpec().scalarMultiply(SK_S, blindedElement);
+
+      assertThat(Hex.toHexString(evaluatedElement))
+          .as("evaluationElement")
+          .isEqualTo("b4cbf5a4f1eeda5a63ce7b77c7d23f461db3fcab0dd28e4e17cecb5c90d02c25");
+
+      byte[] output = SUITE.finalize(input, blind, evaluatedElement);
+
+      assertThat(Hex.toHexString(output))
+          .isEqualTo("f4a74c9c592497375e796aa837e907b1a045d34306a749db9f34221f7e750cb4"
+              + "f2a6413a6bf6fa5e19ba6348eb673934a722a7ede2e7621306d18951e7cf2c73");
+    }
+
+    /** Decode a hex string as a little-endian scalar. */
+    private static BigInteger decodeLittleEndianHex(String hex) {
+      return Ristretto255GroupSpec.decodeLittleEndian(Hex.decode(hex));
     }
   }
 }

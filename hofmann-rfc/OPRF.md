@@ -10,14 +10,16 @@ An OPRF lets a client compute a pseudorandom function of a private input using a
 
 ## Cipher Suites
 
-All four cipher suites are supported:
+All four cipher suites from RFC 9497 are supported:
 
-| Constant | Curve | Hash | Element Size |
-|---|---|---|---|
-| `OprfCipherSuite.P256_SHA256` | P-256 | SHA-256 | 33 bytes |
-| `OprfCipherSuite.P384_SHA384` | P-384 | SHA-384 | 49 bytes |
-| `OprfCipherSuite.P521_SHA512` | P-521 | SHA-512 | 67 bytes |
-| `OprfCipherSuite.RISTRETTO255_SHA512` | Ristretto255 | SHA-512 | 32 bytes |
+| Constant | Curve | Hash | Element Size | Scalar Encoding |
+|---|---|---|---|---|
+| `OprfCipherSuite.P256_SHA256` | P-256 | SHA-256 | 33 bytes | Big-endian |
+| `OprfCipherSuite.P384_SHA384` | P-384 | SHA-384 | 49 bytes | Big-endian |
+| `OprfCipherSuite.P521_SHA512` | P-521 | SHA-512 | 67 bytes | Big-endian |
+| `OprfCipherSuite.RISTRETTO255_SHA512` | ristretto255 | SHA-512 | 32 bytes | Little-endian |
+
+The first three suites use Weierstrass curves via BouncyCastle. The ristretto255 suite uses pure `BigInteger` Edwards25519 arithmetic with the ristretto255 group abstraction (RFC 9496). See `HASH_TO_CURVE.md` for details on how these differ.
 
 ## Protocol Flow
 
@@ -109,7 +111,7 @@ EvaluatedResponse response = server.process(blindedRequest);
 | `ServerProcessorDetail(masterKey, processorIdentifier)` | Server key material (provided via `Supplier`) |
 | `HashResult(hash, processIdentifier)` | Final OPRF output |
 
-All wire values (blinded/evaluated points) are hex-encoded.
+All wire values (blinded/evaluated points) are hex-encoded. For Weierstrass suites these are compressed SEC1 point encodings; for ristretto255 they are 32-byte canonical ristretto255 encodings.
 
 ## Server Key Derivation
 
@@ -134,8 +136,8 @@ This does not affect any deterministic operations (hash-to-curve, key derivation
 
 ## Dependencies
 
-- `hash-to-curve` — elliptic curve math, RFC 9380 `HashToCurve`, `ExpandMessageXmd`
-- BouncyCastle — underlying EC arithmetic
+- `hash-to-curve` — elliptic curve math, RFC 9380 `HashToCurve`, `ExpandMessageXmd`, `GroupSpec`
+- BouncyCastle — EC arithmetic for Weierstrass curves (not used by ristretto255)
 
 ## Tests
 

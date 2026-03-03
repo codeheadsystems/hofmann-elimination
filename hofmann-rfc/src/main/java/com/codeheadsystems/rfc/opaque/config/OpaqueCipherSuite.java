@@ -3,12 +3,10 @@ package com.codeheadsystems.rfc.opaque.config;
 import static com.codeheadsystems.rfc.common.ByteUtils.concat;
 
 import com.codeheadsystems.rfc.common.ByteUtils;
-import com.codeheadsystems.rfc.ellipticcurve.rfc9380.GroupSpec;
 import com.codeheadsystems.rfc.oprf.rfc9497.CurveHashSuite;
 import com.codeheadsystems.rfc.oprf.rfc9497.OprfCipherSuite;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
-import org.bouncycastle.math.ec.ECPoint;
 
 /**
  * OPAQUE-specific cipher suite wrapper over an OPRF cipher suite.
@@ -35,6 +33,10 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
    * The constant P521_SHA512.
    */
   public static final OpaqueCipherSuite P521_SHA512 = new OpaqueCipherSuite(OprfCipherSuite.builder().withSuite(CurveHashSuite.P521_SHA512).build());
+  /**
+   * The constant RISTRETTO255_SHA512.
+   */
+  public static final OpaqueCipherSuite RISTRETTO255_SHA512 = new OpaqueCipherSuite(OprfCipherSuite.builder().withSuite(CurveHashSuite.RISTRETTO255_SHA512).build());
 
   /**
    * Returns the OPAQUE cipher suite for the given name.  Accepted names: {@code "P256_SHA256"},
@@ -49,8 +51,9 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
       case "P256_SHA256" -> P256_SHA256;
       case "P384_SHA384" -> P384_SHA384;
       case "P521_SHA512" -> P521_SHA512;
+      case "RISTRETTO255_SHA512" -> RISTRETTO255_SHA512;
       default -> throw new IllegalArgumentException("Unknown OPAQUE cipher suite: " + name
-          + ". Valid values: P256_SHA256, P384_SHA384, P521_SHA512");
+          + ". Valid values: P256_SHA256, P384_SHA384, P521_SHA512, RISTRETTO255_SHA512");
     };
   }
 
@@ -226,19 +229,6 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
    */
   public byte[] hash(byte[] data) {
     return oprfSuite().hash(data);
-  }
-
-  /**
-   * Deserializes a compressed SEC1 byte array to an EC point using the suite's curve.
-   * Validates the point is on the curve and not the identity element to prevent
-   * invalid-curve and small-subgroup attacks on DH computations.
-   *
-   * @param bytes the bytes
-   * @return the ec point
-   */
-  public ECPoint deserializePoint(byte[] bytes) {
-    GroupSpec wgs = oprfSuite().groupSpec();
-    return wgs.deserializePoint(bytes);
   }
 
   /**

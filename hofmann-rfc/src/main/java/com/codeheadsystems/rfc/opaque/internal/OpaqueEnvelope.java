@@ -97,16 +97,7 @@ public class OpaqueEnvelope {
       throw new SecurityException("Authentication failed");
     }
 
-    // Return client private key as Nsk-byte big-endian
-    int nsk = config.Nsk();
-    byte[] clientSkBytes = clientSk.toByteArray();
-    byte[] clientSkFixed = new byte[nsk];
-    if (clientSkBytes.length > nsk) {
-      System.arraycopy(clientSkBytes, clientSkBytes.length - nsk, clientSkFixed, 0, nsk);
-    } else {
-      System.arraycopy(clientSkBytes, 0, clientSkFixed, nsk - clientSkBytes.length, clientSkBytes.length);
-    }
-    return new RecoverResult(clientSkFixed, clientPublicKey, cleartext, exportKey);
+    return new RecoverResult(clientSk, clientPublicKey, cleartext, exportKey);
   }
 
   private static byte[] expand(OpaqueCipherSuite suite, byte[] prk, byte[] info, int len) {
@@ -122,7 +113,7 @@ public class OpaqueEnvelope {
   /**
    * Result of the Recover operation.
    */
-  public record RecoverResult(byte[] clientPrivateKeyBytes, byte[] clientPublicKey,
+  public record RecoverResult(BigInteger clientPrivateKey, byte[] clientPublicKey,
                               CleartextCredentials cleartextCredentials, byte[] exportKey) {
   }
 }

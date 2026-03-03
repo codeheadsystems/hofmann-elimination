@@ -65,7 +65,8 @@ class OpaqueRoundTripTest {
     return Stream.of(
         OpaqueCipherSuite.P256_SHA256,
         OpaqueCipherSuite.P384_SHA384,
-        OpaqueCipherSuite.P521_SHA512
+        OpaqueCipherSuite.P521_SHA512,
+        OpaqueCipherSuite.RISTRETTO255_SHA512
     );
   }
 

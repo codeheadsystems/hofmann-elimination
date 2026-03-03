@@ -1,7 +1,6 @@
 package com.codeheadsystems.rfc.ellipticcurve.rfc9380;
 
 import java.math.BigInteger;
-import org.bouncycastle.math.ec.ECPoint;
 
 /**
  * Abstraction over a cryptographic group for use in RFC 9497 OPRF.
@@ -65,18 +64,11 @@ public interface GroupSpec {
   byte[] scalarMultiplyGenerator(BigInteger scalar);
 
   /**
-   * Serializes a scalar to a fixed-size big-endian byte array (Ns bytes).
+   * Serializes a scalar to a fixed-size byte array (Ns bytes).
+   * Encoding is suite-dependent (big-endian for Weierstrass, little-endian for ristretto255).
    *
    * @param k scalar value in [0, n-1]
-   * @return Ns-byte big-endian encoding
+   * @return Ns-byte encoding
    */
   byte[] serializeScalar(BigInteger k);
-
-  /**
-   * Deserializes a compressed SEC1 byte array to an EC point, with full validation.
-   *
-   * @param bytes the bytes
-   * @return the ec point
-   */
-  ECPoint deserializePoint(byte[] bytes);
 }

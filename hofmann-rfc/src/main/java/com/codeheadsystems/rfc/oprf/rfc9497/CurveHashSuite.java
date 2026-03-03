@@ -16,6 +16,10 @@ public enum CurveHashSuite {
   /**
    * P 521 sha 512 curve hash suite.
    */
-  P521_SHA512
+  P521_SHA512,
+  /**
+   * Ristretto255 sha 512 curve hash suite.
+   */
+  RISTRETTO255_SHA512
 
 }

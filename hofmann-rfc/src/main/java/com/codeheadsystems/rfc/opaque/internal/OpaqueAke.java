@@ -1,6 +1,7 @@
 package com.codeheadsystems.rfc.opaque.internal;
 
 import com.codeheadsystems.rfc.common.ByteUtils;
+import com.codeheadsystems.rfc.ellipticcurve.rfc9380.GroupSpec;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
 import com.codeheadsystems.rfc.opaque.internal.OpaqueEnvelope.RecoverResult;
@@ -17,7 +18,6 @@ import com.codeheadsystems.rfc.opaque.model.ServerKE2Result;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import org.bouncycastle.math.ec.ECPoint;
 
 /**
  * OPAQUE-3DH Authenticated Key Exchange implementation.
@@ -147,11 +147,10 @@ public class OpaqueAke {
     byte[] preamble = buildPreamble(config.context(), cId, ke1, sId, credResponse, serverNonce, serverAkePk);
     byte[] preambleHash = suite.hash(preamble);
 
-    ECPoint clientAkePk = suite.deserializePoint(ke1.clientAkePublicKey());
-    ECPoint clientLongTermPk = suite.deserializePoint(record.clientPublicKey());
-    byte[] dh1 = ByteUtils.dhECDH(serverAkeSk, clientAkePk);
-    byte[] dh2 = ByteUtils.dhECDH(serverPrivateKey, clientAkePk);
-    byte[] dh3 = ByteUtils.dhECDH(serverAkeSk, clientLongTermPk);
+    GroupSpec gs = suite.oprfSuite().groupSpec();
+    byte[] dh1 = gs.scalarMultiply(serverAkeSk, ke1.clientAkePublicKey());
+    byte[] dh2 = gs.scalarMultiply(serverPrivateKey, ke1.clientAkePublicKey());
+    byte[] dh3 = gs.scalarMultiply(serverAkeSk, record.clientPublicKey());
     byte[] ikm = ByteUtils.concat(dh1, dh2, dh3);
 
     DerivedKeys keys = deriveKeys(config, ikm, preamble);
@@ -192,15 +191,12 @@ public class OpaqueAke {
         ke2.credentialResponse(), ke2.serverNonce(), ke2.serverAkePublicKey());
     byte[] preambleHash = suite.hash(preamble);
 
-    ECPoint serverLongTermPk = suite.deserializePoint(
-        recovered.cleartextCredentials().serverPublicKey());
-    ECPoint serverAkePk = suite.deserializePoint(ke2.serverAkePublicKey());
+    GroupSpec gs = suite.oprfSuite().groupSpec();
+    BigInteger clientSk = recovered.clientPrivateKey();
 
-    BigInteger clientSk = new BigInteger(1, recovered.clientPrivateKeyBytes());
-
-    byte[] dh1 = ByteUtils.dhECDH(state.clientAkePrivateKey(), serverAkePk);
-    byte[] dh2 = ByteUtils.dhECDH(state.clientAkePrivateKey(), serverLongTermPk);
-    byte[] dh3 = ByteUtils.dhECDH(clientSk, serverAkePk);
+    byte[] dh1 = gs.scalarMultiply(state.clientAkePrivateKey(), ke2.serverAkePublicKey());
+    byte[] dh2 = gs.scalarMultiply(state.clientAkePrivateKey(), recovered.cleartextCredentials().serverPublicKey());
+    byte[] dh3 = gs.scalarMultiply(clientSk, ke2.serverAkePublicKey());
     byte[] ikm = ByteUtils.concat(dh1, dh2, dh3);
 
     DerivedKeys keys = deriveKeys(config, ikm, preamble);

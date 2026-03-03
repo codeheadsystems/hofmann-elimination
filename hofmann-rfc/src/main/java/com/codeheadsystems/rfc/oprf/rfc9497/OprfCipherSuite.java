@@ -1,9 +1,10 @@
 package com.codeheadsystems.rfc.oprf.rfc9497;
 
 import com.codeheadsystems.rfc.common.ByteUtils;
-import com.codeheadsystems.rfc.ellipticcurve.rfc9380.GroupSpec;
-import com.codeheadsystems.rfc.ellipticcurve.rfc9380.WeierstrassGroupSpecImpl;
 import com.codeheadsystems.rfc.common.RandomProvider;
+import com.codeheadsystems.rfc.ellipticcurve.rfc9380.GroupSpec;
+import com.codeheadsystems.rfc.ellipticcurve.rfc9380.Ristretto255GroupSpec;
+import com.codeheadsystems.rfc.ellipticcurve.rfc9380.WeierstrassGroupSpecImpl;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -397,6 +398,14 @@ public class OprfCipherSuite {
             "P521-SHA512",
             "P521-SHA512",
             WeierstrassGroupSpecImpl.P521_SHA512,
+            "SHA-512",
+            64,
+            random
+        );
+        case RISTRETTO255_SHA512 -> new OprfCipherSuite(
+            "ristretto255-SHA512",
+            "ristretto255-SHA512",
+            Ristretto255GroupSpec.INSTANCE,
             "SHA-512",
             64,
             random

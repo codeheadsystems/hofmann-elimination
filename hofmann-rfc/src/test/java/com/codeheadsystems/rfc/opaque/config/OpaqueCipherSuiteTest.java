@@ -147,16 +147,6 @@ class OpaqueCipherSuiteTest {
     assertThat(result).hasSize(s.Nh());
   }
 
-  // --- deserializePoint ---
-
-  @Test
-  void deserializePoint_validGenerator_succeeds() {
-    OpaqueCipherSuite s = OpaqueCipherSuite.P256_SHA256;
-    byte[] gen = s.oprfSuite().groupSpec().scalarMultiplyGenerator(BigInteger.ONE);
-    assertThat(s.deserializePoint(gen)).isNotNull();
-    assertThat(s.deserializePoint(gen).isInfinity()).isFalse();
-  }
-
   // --- deriveAkeKeyPair ---
 
   @Test
