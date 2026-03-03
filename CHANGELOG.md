@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] - 2026-03-02
+
+### Added
+
+#### Ristretto255/SHA-512 cipher suite
+
+- **Java**: `Ristretto255GroupSpec` — pure Edwards25519 arithmetic (extended coordinates)
+  with ristretto255 encode/decode per RFC 9496; `RISTRETTO255_SHA512` constant added to
+  `OprfCipherSuite` and `OpaqueCipherSuite`
+- **TypeScript**: `RISTRETTO255_SHA512` suite using `@noble/curves/ed25519`
+  (`ristretto255_hasher`); `getCipherSuite("RISTRETTO255_SHA512")` factory support
+- RFC 9497 test vectors for ristretto255/SHA-512 (`OprfVectorsTest.Ristretto255Sha512`)
+- `hashToGroup`: expand_message_xmd to 64 bytes, two 32-byte halves decoded as little-endian
+  mod p; `hashToScalar`: 64 bytes decoded as little-endian mod L; scalars serialized as
+  32-byte little-endian (unlike Weierstrass big-endian)
+
+#### TypeScript multi-cipher-suite support
+
+- `CipherSuite` interface in `src/oprf/suite.ts` encapsulating all suite-specific operations
+- P-384/SHA-384 and P-521/SHA-512 suites (`P384_SHA384`, `P521_SHA512`) alongside existing
+  P-256/SHA-256; factory: `getCipherSuite("P384_SHA384")`
+- `OpaqueClient(suite?)` and `OprfHttpClient(url, suite?)` accept optional suite parameter
+- `OpaqueHttpClient.create(url)` and `OprfHttpClient.create(url)` auto-fetch server config
+  and wire the correct cipher suite automatically
+- Backward-compatible flat exports default to P-256/SHA-256; existing imports unchanged
+
+#### Integration test module (`hofmann-integration-tests`)
+
+- Cross-cipher-suite tests for OPRF and OPAQUE over P-256/SHA-256, P-384/SHA-384,
+  P-521/SHA-512; abstract base class + 3 concrete subclasses per protocol
+- Argon2id KSF enabled (1024 KiB, 1 iteration, 1 parallelism) in integration tests
+- Cross-client tests: Java server ↔ TypeScript client via `TypeScriptRunner` (ProcessBuilder
+  → vitest); driven by `TEST_SERVER_URL` + `TEST_OUTPUT_DIR` env vars; skipped when
+  `node_modules/dist` is absent
+
+### Fixed
+
+- **RFC 9807 §4.1.2 — AKE ephemeral key seed size**: `Client.generateKE1()` and
+  `OpaqueAke.generateKE2()` were generating AKE key seeds with `Nsk` bytes (32/48/66,
+  suite-dependent) instead of the spec-mandated `Nseed = 32 = Nn` (suite-independent).
+  Affected P-384 (was 48, now 32) and P-521 (was 66, now 32). P-256 was unaffected
+  (Nsk = Nn = 32). Seeds are not transmitted, so no interoperability breakage; existing
+  P-256 registrations and sessions are unaffected.
+- **RFC 9807 §4.1.2 — envelope PrivateKey seed length**: `OpaqueEnvelope` was deriving the
+  client private key seed with `Nsk` bytes instead of `Nseed = 32`. Fixed for P-384 and
+  P-521 (breaking change for existing P-384/P-521 OPAQUE registrations; P-256 unaffected).
+- **`OpaqueCipherSuite.P521_SHA512`** was incorrectly referencing `CurveHashSuite.P256_SHA256`
+  internally; corrected to `CurveHashSuite.P521_SHA512`.
+- **`OpaqueClientConfig.fromServerConfig()`** ignored the cipher suite when
+  `argon2MemoryKib == 0` (identity KSF path); now correctly forwards the suite name.
+- **TypeScript argon2id `hashLength`**: was hardcoded to 32 bytes regardless of suite; now
+  parameterized as `suite.Nh` (32/48/64), ensuring correct stretched output length for
+  P-384 and P-521.
+
+---
+
 ## [1.1.0] - 2026-02-28
 
 ### Added
@@ -155,5 +211,6 @@ First stable release.
 
 ---
 
-[1.1.0]: https://github.com/codeheadsystems/hofmann-elimination/compare/v1.0.0...HEAD
+[1.2.0]: https://github.com/codeheadsystems/hofmann-elimination/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/codeheadsystems/hofmann-elimination/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/codeheadsystems/hofmann-elimination/releases/tag/v1.0.0
