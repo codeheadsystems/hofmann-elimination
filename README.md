@@ -91,7 +91,7 @@ This project implements three layered RFCs:
 - **OPRF** ([details](hofmann-rfc/OPRF.md), [rfc 9497](https://www.rfc-editor.org/rfc/rfc9497.html)): Oblivious Pseudorandom Functions. The client
   computes a pseudorandom function on private input using the server's secret key, without
   the server ever learning the input. Supports P-256/SHA-256, P-384/SHA-384, P-521/SHA-512,
-  and soon Ristretto255/SHA-512.
+  and Ristretto255/SHA-512.
 
 - **OPAQUE** ([details](hofmann-rfc/OPAQUE.md), [rfc 9807](https://www.rfc-editor.org/rfc/rfc9807.html)): Augmented Password-Authenticated Key
   Exchange. Password-based authentication where the password is never transmitted and a
@@ -136,9 +136,8 @@ of pure Java, final RFC compliance, P-256/SHA-256, and framework integration.
 
 - **URL**: https://github.com/bytemare/opaque
 - **Language**: Go
-- **Protocols**: RFC 9497 OPRF + RFC 9807 OPAQUE (written by an RFC co-author; most compliant
-  implementation found)
-- **Cipher suites**: P256-SHA256, P384-SHA512, P521-SHA512, Ristretto255-SHA512
+- **Protocols**: RFC 9497 OPRF + RFC 9807 OPAQUE
+- **Cipher suites**: P256-SHA256, P384-SHA384, P521-SHA512, Ristretto255-SHA512
 - **Status**: Actively maintained; no Java bindings
 
 ### oprf4j (pvriel/oprf4j)
@@ -153,8 +152,9 @@ of pure Java, final RFC compliance, P-256/SHA-256, and framework integration.
 
 - **URL**: https://github.com/facebook/opaque-ke
 - **Language**: Rust
-- **Protocols**: Pre-RFC OPAQUE draft; Ristretto255 only
-- **Status**: Actively maintained; no Java bindings
+- **Protocols**: RFC 9807 OPAQUE; audited by NCC Group (sponsored by WhatsApp)
+- **Cipher suites**: Ristretto255, P-256, P-384, P-521 (via feature flags)
+- **Status**: Actively maintained (v4.1.0-pre.1, November 2025); no Java bindings
 
 ### cloudflare/opaque-ts (TypeScript)
 
@@ -196,11 +196,13 @@ of pure Java, final RFC compliance, P-256/SHA-256, and framework integration.
 | @cloudflare/opaque-ts | TypeScript | No (draft) | No (draft) | P-256, P-384, P-521 | N/A | None | No |
 | @cloudflare/opaque-ea | Go | No (draft) | No (draft) | — | N/A | None | No |
 | @serenity-kit/opaque | JS/WASM (Rust core) | Yes | Yes | Ristretto255, P-256 | N/A | None | Yes (7ASecurity) |
+| facebook/opaque-ke | Rust | Yes | Yes | Ristretto255, P-256, P-384, P-521 | N/A | None | Yes (NCC Group) |
 
-The closest equivalent in terms of RFC compliance and P-256 support is `bytemare/opaque` (Go)
-and `@serenity-kit/opaque` (JavaScript/WASM). This project is the only known pure-Java,
-RFC-compliant (9380 + 9497 + 9807) implementation supporting multiple cipher suites that is
-distributable as a standard Maven artifact with framework integrations.
+The closest equivalents in terms of RFC compliance and multi-suite support are `bytemare/opaque`
+(Go), `facebook/opaque-ke` (Rust), and `@serenity-kit/opaque` (JavaScript/WASM). This project
+is the only known pure-Java, RFC-compliant (9380 + 9497 + 9807) implementation supporting
+multiple cipher suites that is distributable as a standard Maven artifact with framework
+integrations.
 
 ## License
 
