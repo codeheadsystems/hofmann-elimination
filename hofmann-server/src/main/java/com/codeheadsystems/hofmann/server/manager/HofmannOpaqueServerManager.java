@@ -9,6 +9,10 @@ import com.codeheadsystems.hofmann.model.opaque.RegistrationFinishRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartResponse;
 import com.codeheadsystems.hofmann.server.auth.JwtManager;
+import com.codeheadsystems.hofmann.server.ratelimit.InMemoryRateLimiter;
+import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfig;
+import com.codeheadsystems.hofmann.server.ratelimit.RateLimitExceededException;
+import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
 import com.codeheadsystems.rfc.opaque.Server;
 import com.codeheadsystems.rfc.opaque.model.KE1;
@@ -60,6 +64,8 @@ public class HofmannOpaqueServerManager {
   private final Server server;
   private final CredentialStore credentialStore;
   private final JwtManager jwtManager;
+  private final RateLimiter authRateLimiter;
+  private final RateLimiter registrationRateLimiter;
 
   private final ConcurrentHashMap<String, TimestampedAuthState> pendingSessions =
       new ConcurrentHashMap<>();
@@ -72,16 +78,34 @@ public class HofmannOpaqueServerManager {
       });
 
   /**
-   * Instantiates a new Hofmann opaque server manager.
+   * Instantiates a new Hofmann opaque server manager with default rate limiters.
    *
    * @param server          the server
    * @param credentialStore the credential store
    * @param jwtManager      the jwt manager
    */
   public HofmannOpaqueServerManager(Server server, CredentialStore credentialStore, JwtManager jwtManager) {
+    this(server, credentialStore, jwtManager,
+        new InMemoryRateLimiter(RateLimitConfig.authDefault()),
+        new InMemoryRateLimiter(RateLimitConfig.registrationDefault()));
+  }
+
+  /**
+   * Instantiates a new Hofmann opaque server manager with custom rate limiters.
+   *
+   * @param server                  the server
+   * @param credentialStore         the credential store
+   * @param jwtManager              the jwt manager
+   * @param authRateLimiter         rate limiter for authentication endpoints (keyed by credential)
+   * @param registrationRateLimiter rate limiter for registration endpoints (keyed by credential)
+   */
+  public HofmannOpaqueServerManager(Server server, CredentialStore credentialStore, JwtManager jwtManager,
+                                    RateLimiter authRateLimiter, RateLimiter registrationRateLimiter) {
     this.server = server;
     this.credentialStore = credentialStore;
     this.jwtManager = jwtManager;
+    this.authRateLimiter = authRateLimiter;
+    this.registrationRateLimiter = registrationRateLimiter;
     sessionReaper.scheduleAtFixedRate(
         () -> {
           Instant cutoff = Instant.now().minusSeconds(SESSION_TTL_SECONDS);
@@ -98,6 +122,8 @@ public class HofmannOpaqueServerManager {
    */
   public void shutdown() {
     sessionReaper.shutdown();
+    authRateLimiter.shutdown();
+    registrationRateLimiter.shutdown();
   }
 
   // ── Registration ─────────────────────────────────────────────────────────
@@ -112,6 +138,9 @@ public class HofmannOpaqueServerManager {
    */
   public RegistrationStartResponse registrationStart(RegistrationStartRequest req) {
     log.debug("registrationStart()");
+    if (!registrationRateLimiter.tryConsume(req.credentialIdentifierBase64())) {
+      throw new RateLimitExceededException();
+    }
     return new RegistrationStartResponse(
         server.createRegistrationResponse(req.registrationRequest(), req.credentialIdentifier()));
   }
@@ -170,6 +199,9 @@ public class HofmannOpaqueServerManager {
    */
   public AuthStartResponse authStart(AuthStartRequest req) {
     log.debug("authStart()");
+    if (!authRateLimiter.tryConsume(req.credentialIdentifierBase64())) {
+      throw new RateLimitExceededException();
+    }
     byte[] credentialIdentifier = req.credentialIdentifier();
     KE1 ke1 = req.ke1();
 

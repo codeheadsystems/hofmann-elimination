@@ -5,7 +5,11 @@ import com.codeheadsystems.hofmann.model.opaque.OpaqueClientConfigResponse;
 import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
 import com.codeheadsystems.hofmann.server.auth.JwtManager;
 import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
+import com.codeheadsystems.hofmann.server.ratelimit.InMemoryRateLimiter;
+import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfig;
+import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
+import org.springframework.beans.factory.annotation.Qualifier;
 import com.codeheadsystems.hofmann.server.store.InMemoryCredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemorySessionStore;
 import com.codeheadsystems.hofmann.server.store.SessionStore;
@@ -173,18 +177,59 @@ public class HofmannAutoConfiguration {
   }
 
   /**
+   * Rate limiter for OPAQUE authentication endpoints (keyed by credential identifier).
+   * Override this bean to supply a custom implementation (e.g. Redis-backed).
+   *
+   * @return the auth rate limiter
+   */
+  @Bean(destroyMethod = "shutdown")
+  @ConditionalOnMissingBean(name = "authRateLimiter")
+  public RateLimiter authRateLimiter() {
+    return new InMemoryRateLimiter(RateLimitConfig.authDefault());
+  }
+
+  /**
+   * Rate limiter for OPAQUE registration endpoints (keyed by credential identifier).
+   * Override this bean to supply a custom implementation (e.g. Redis-backed).
+   *
+   * @return the registration rate limiter
+   */
+  @Bean(destroyMethod = "shutdown")
+  @ConditionalOnMissingBean(name = "registrationRateLimiter")
+  public RateLimiter registrationRateLimiter() {
+    return new InMemoryRateLimiter(RateLimitConfig.registrationDefault());
+  }
+
+  /**
+   * Rate limiter for the standalone OPRF endpoint (keyed by client IP).
+   * Override this bean to supply a custom implementation (e.g. Redis-backed).
+   *
+   * @return the oprf rate limiter
+   */
+  @Bean(destroyMethod = "shutdown")
+  @ConditionalOnMissingBean(name = "oprfRateLimiter")
+  public RateLimiter oprfRateLimiter() {
+    return new InMemoryRateLimiter(RateLimitConfig.oprfDefault());
+  }
+
+  /**
    * Opaque server manager hofmann opaque server manager.
    *
-   * @param server          the server
-   * @param credentialStore the credential store
-   * @param jwtManager      the jwt manager
+   * @param server                  the server
+   * @param credentialStore         the credential store
+   * @param jwtManager              the jwt manager
+   * @param authRateLimiter         the auth rate limiter
+   * @param registrationRateLimiter the registration rate limiter
    * @return the hofmann opaque server manager
    */
   @Bean(destroyMethod = "shutdown")
   @ConditionalOnMissingBean
   public HofmannOpaqueServerManager opaqueServerManager(Server server, CredentialStore credentialStore,
-                                                        JwtManager jwtManager) {
-    return new HofmannOpaqueServerManager(server, credentialStore, jwtManager);
+                                                        JwtManager jwtManager,
+                                                        @Qualifier("authRateLimiter") RateLimiter authRateLimiter,
+                                                        @Qualifier("registrationRateLimiter") RateLimiter registrationRateLimiter) {
+    return new HofmannOpaqueServerManager(server, credentialStore, jwtManager,
+        authRateLimiter, registrationRateLimiter);
   }
 
   /**

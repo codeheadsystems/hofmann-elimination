@@ -90,11 +90,17 @@ addressed; the rest are listed by priority.
       key material is zeroed before throwing. `BigInteger` scalars remain immutable
       and cannot be zeroed at the Java level.
 
+- [x] **Add rate limiting** — Added `RateLimiter` interface with `InMemoryRateLimiter`
+      (token-bucket) default implementation. OPAQUE endpoints rate-limit by credential
+      identifier (`/auth/start`: 10 req/min, `/registration/start`: 5 req/min). OPRF
+      endpoint rate-limits by client IP (30 req/min). All limits configurable; users can
+      override with custom `RateLimiter` implementations (e.g. Redis-backed). Spring Boot:
+      `@ConditionalOnMissingBean` beans with `@Qualifier`. Dropwizard: created in
+      `HofmannBundle.run()` with managed shutdown lifecycle.
+
 ## P1: Important — Security hardening
 
-- [ ] **Add rate limiting** — No rate limiting on any endpoint. Add per-IP or
-      per-credential rate limits, especially on `/auth/start` and the OPRF
-      endpoint (to limit oracle calls against the server's OPRF key).
+(All P1 items completed.)
 
 ## P2: Recommended — Defense in depth
 

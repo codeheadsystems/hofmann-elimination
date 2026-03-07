@@ -8,6 +8,9 @@ import com.codeheadsystems.hofmann.model.opaque.OpaqueClientConfigResponse;
 import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
 import com.codeheadsystems.hofmann.server.auth.JwtManager;
 import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
+import com.codeheadsystems.hofmann.server.ratelimit.InMemoryRateLimiter;
+import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfig;
+import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
 import com.codeheadsystems.hofmann.server.resource.OpaqueResource;
 import com.codeheadsystems.hofmann.server.resource.OprfResource;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
@@ -170,17 +173,10 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
         configuration.getArgon2Iterations(),
         configuration.getArgon2Parallelism());
 
-    HofmannOpaqueServerManager hofmannOpaqueServerManager = new HofmannOpaqueServerManager(server, credentialStore, jwtManager);
-    environment.lifecycle().manage(new io.dropwizard.lifecycle.Managed() {
-      @Override
-      public void start() {
-      }
-
-      @Override
-      public void stop() {
-        hofmannOpaqueServerManager.shutdown();
-      }
-    });
+    RateLimiter authRateLimiter = new InMemoryRateLimiter(RateLimitConfig.authDefault());
+    RateLimiter registrationRateLimiter = new InMemoryRateLimiter(RateLimitConfig.registrationDefault());
+    HofmannOpaqueServerManager hofmannOpaqueServerManager = new HofmannOpaqueServerManager(
+        server, credentialStore, jwtManager, authRateLimiter, registrationRateLimiter);
     environment.jersey().register(new OpaqueResource(hofmannOpaqueServerManager, opaqueClientConfig));
     environment.healthChecks().register("opaque-server", new OpaqueServerHealthCheck(server));
 
@@ -207,7 +203,21 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     OprfClientConfigResponse oprfClientConfig = new OprfClientConfigResponse(
         configuration.getOprfCipherSuite());
     OprfServerManager oprfServerManager = new OprfServerManager(oprfSuite, oprfSupplier);
-    environment.jersey().register(new OprfResource(oprfServerManager, oprfClientConfig));
+    RateLimiter oprfRateLimiter = new InMemoryRateLimiter(RateLimitConfig.oprfDefault());
+    environment.jersey().register(new OprfResource(oprfServerManager, oprfClientConfig, oprfRateLimiter));
+
+    // Shutdown lifecycle for manager and rate limiters
+    environment.lifecycle().manage(new io.dropwizard.lifecycle.Managed() {
+      @Override
+      public void start() {
+      }
+
+      @Override
+      public void stop() {
+        hofmannOpaqueServerManager.shutdown();
+        oprfRateLimiter.shutdown();
+      }
+    });
   }
 
   private void registerSizeLimitFilter(C configuration, Environment environment) {

@@ -3,9 +3,12 @@ package com.codeheadsystems.hofmann.springboot.controller;
 import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
 import com.codeheadsystems.hofmann.model.oprf.OprfRequest;
 import com.codeheadsystems.hofmann.model.oprf.OprfResponse;
+import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
 import com.codeheadsystems.rfc.oprf.manager.OprfServerManager;
+import org.springframework.beans.factory.annotation.Qualifier;
 import com.codeheadsystems.rfc.oprf.model.BlindedRequest;
 import com.codeheadsystems.rfc.oprf.model.EvaluatedResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,17 +26,21 @@ public class OprfController {
 
   private final OprfServerManager oprfServerManager;
   private final OprfClientConfigResponse clientConfig;
+  private final RateLimiter rateLimiter;
 
   /**
    * Instantiates a new Oprf controller.
    *
    * @param oprfServerManager the oprf server manager
    * @param clientConfig      the client config response to expose via GET /oprf/config
+   * @param rateLimiter       rate limiter for the OPRF evaluate endpoint (keyed by client IP)
    */
   public OprfController(OprfServerManager oprfServerManager,
-                        OprfClientConfigResponse clientConfig) {
+                        OprfClientConfigResponse clientConfig,
+                        @Qualifier("oprfRateLimiter") RateLimiter rateLimiter) {
     this.oprfServerManager = oprfServerManager;
     this.clientConfig = clientConfig;
+    this.rateLimiter = rateLimiter;
   }
 
   /**
@@ -53,7 +60,11 @@ public class OprfController {
    * @return the oprf response
    */
   @PostMapping
-  public OprfResponse evaluate(@RequestBody OprfRequest request) {
+  public OprfResponse evaluate(@RequestBody OprfRequest request, HttpServletRequest httpRequest) {
+    String clientIp = extractClientIp(httpRequest);
+    if (!rateLimiter.tryConsume(clientIp)) {
+      throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Rate limit exceeded");
+    }
     if (request.ecPoint() == null || request.ecPoint().isBlank()) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing required field: ecPoint");
     }
@@ -67,5 +78,13 @@ public class OprfController {
     } catch (IllegalArgumentException e) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid EC point data");
     }
+  }
+
+  private static String extractClientIp(HttpServletRequest request) {
+    String forwarded = request.getHeader("X-Forwarded-For");
+    if (forwarded != null && !forwarded.isBlank()) {
+      return forwarded.split(",")[0].trim();
+    }
+    return request.getRemoteAddr();
   }
 }

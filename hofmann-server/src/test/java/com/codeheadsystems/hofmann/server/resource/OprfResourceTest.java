@@ -10,9 +10,11 @@ import static org.mockito.Mockito.when;
 import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
 import com.codeheadsystems.hofmann.model.oprf.OprfRequest;
 import com.codeheadsystems.hofmann.model.oprf.OprfResponse;
+import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
 import com.codeheadsystems.rfc.oprf.manager.OprfServerManager;
 import com.codeheadsystems.rfc.oprf.model.EvaluatedResponse;
 import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.RuntimeDelegate;
 import org.junit.jupiter.api.AfterAll;
@@ -35,6 +37,8 @@ class OprfResourceTest {
   private static final String PROCESS_ID = "proc-xyz";
   private static final String EVALUATED_POINT = "02fedcba0987654321";
   @Mock private OprfServerManager oprfServerManager;
+  @Mock private RateLimiter rateLimiter;
+  @Mock private ContainerRequestContext ctx;
   private OprfResource resource;
 
   /**
@@ -70,7 +74,8 @@ class OprfResourceTest {
    */
   @BeforeEach
   void setUp() {
-    resource = new OprfResource(oprfServerManager, new OprfClientConfigResponse("P256_SHA256"));
+    when(rateLimiter.tryConsume(anyString())).thenReturn(true);
+    resource = new OprfResource(oprfServerManager, new OprfClientConfigResponse("P256_SHA256"), rateLimiter);
   }
 
   /**
@@ -82,7 +87,7 @@ class OprfResourceTest {
     EvaluatedResponse evaluatedResponse = new EvaluatedResponse(EVALUATED_POINT, PROCESS_ID);
     when(oprfServerManager.process(request.blindedRequest())).thenReturn(evaluatedResponse);
 
-    OprfResponse response = resource.evaluate(request);
+    OprfResponse response = resource.evaluate(request, ctx);
 
     assertThat(response.ecPoint()).isEqualTo(EVALUATED_POINT);
     assertThat(response.processIdentifier()).isEqualTo(PROCESS_ID);
@@ -95,7 +100,7 @@ class OprfResourceTest {
   void evaluate_nullEcPoint_throwsBadRequest() {
     OprfRequest request = new OprfRequest(null, REQUEST_ID);
 
-    assertThatThrownBy(() -> resource.evaluate(request))
+    assertThatThrownBy(() -> resource.evaluate(request, ctx))
         .isInstanceOf(WebApplicationException.class)
         .satisfies(e -> assertThat(((WebApplicationException) e).getResponse().getStatus())
             .isEqualTo(Response.Status.BAD_REQUEST.getStatusCode()));
@@ -108,7 +113,7 @@ class OprfResourceTest {
   void evaluate_blankEcPoint_throwsBadRequest() {
     OprfRequest request = new OprfRequest("   ", REQUEST_ID);
 
-    assertThatThrownBy(() -> resource.evaluate(request))
+    assertThatThrownBy(() -> resource.evaluate(request, ctx))
         .isInstanceOf(WebApplicationException.class)
         .satisfies(e -> assertThat(((WebApplicationException) e).getResponse().getStatus())
             .isEqualTo(Response.Status.BAD_REQUEST.getStatusCode()));
@@ -121,7 +126,7 @@ class OprfResourceTest {
   void evaluate_nullRequestId_throwsBadRequest() {
     OprfRequest request = new OprfRequest(EC_POINT, null);
 
-    assertThatThrownBy(() -> resource.evaluate(request))
+    assertThatThrownBy(() -> resource.evaluate(request, ctx))
         .isInstanceOf(WebApplicationException.class)
         .satisfies(e -> assertThat(((WebApplicationException) e).getResponse().getStatus())
             .isEqualTo(Response.Status.BAD_REQUEST.getStatusCode()));
@@ -134,7 +139,7 @@ class OprfResourceTest {
   void evaluate_blankRequestId_throwsBadRequest() {
     OprfRequest request = new OprfRequest(EC_POINT, "  ");
 
-    assertThatThrownBy(() -> resource.evaluate(request))
+    assertThatThrownBy(() -> resource.evaluate(request, ctx))
         .isInstanceOf(WebApplicationException.class)
         .satisfies(e -> assertThat(((WebApplicationException) e).getResponse().getStatus())
             .isEqualTo(Response.Status.BAD_REQUEST.getStatusCode()));
@@ -149,7 +154,7 @@ class OprfResourceTest {
     when(oprfServerManager.process(request.blindedRequest()))
         .thenThrow(new IllegalArgumentException("bad point"));
 
-    assertThatThrownBy(() -> resource.evaluate(request))
+    assertThatThrownBy(() -> resource.evaluate(request, ctx))
         .isInstanceOf(WebApplicationException.class)
         .satisfies(e -> assertThat(((WebApplicationException) e).getResponse().getStatus())
             .isEqualTo(Response.Status.BAD_REQUEST.getStatusCode()));

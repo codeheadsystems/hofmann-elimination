@@ -10,6 +10,7 @@ import com.codeheadsystems.hofmann.model.opaque.RegistrationFinishRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartResponse;
 import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
+import com.codeheadsystems.hofmann.server.ratelimit.RateLimitExceededException;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
@@ -81,6 +82,9 @@ public class OpaqueResource {
     log.trace("registrationStart()");
     try {
       return manager.registrationStart(req);
+    } catch (RateLimitExceededException e) {
+      throw new WebApplicationException(Response.status(429)
+          .header("Retry-After", "60").entity("Rate limit exceeded").build());
     } catch (IllegalArgumentException e) {
       log.debug("registrationStart bad request: {}", e.getMessage());
       throw new WebApplicationException("Invalid request", Response.Status.BAD_REQUEST);
@@ -149,6 +153,9 @@ public class OpaqueResource {
     log.trace("authStart()");
     try {
       return manager.authStart(req);
+    } catch (RateLimitExceededException e) {
+      throw new WebApplicationException(Response.status(429)
+          .header("Retry-After", "60").entity("Rate limit exceeded").build());
     } catch (IllegalArgumentException e) {
       log.debug("authStart bad request: {}", e.getMessage());
       throw new WebApplicationException("Invalid request", Response.Status.BAD_REQUEST);

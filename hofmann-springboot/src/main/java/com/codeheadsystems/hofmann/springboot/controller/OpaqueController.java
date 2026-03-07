@@ -10,6 +10,7 @@ import com.codeheadsystems.hofmann.model.opaque.RegistrationFinishRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartResponse;
 import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
+import com.codeheadsystems.hofmann.server.ratelimit.RateLimitExceededException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -77,6 +78,8 @@ public class OpaqueController {
     log.trace("registrationStart()");
     try {
       return manager.registrationStart(req);
+    } catch (RateLimitExceededException e) {
+      throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Rate limit exceeded");
     } catch (IllegalArgumentException e) {
       log.debug("registrationStart bad request: {}", e.getMessage());
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid request");
@@ -143,6 +146,8 @@ public class OpaqueController {
     log.trace("authStart()");
     try {
       return manager.authStart(req);
+    } catch (RateLimitExceededException e) {
+      throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Rate limit exceeded");
     } catch (IllegalArgumentException e) {
       log.debug("authStart bad request: {}", e.getMessage());
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid request");
