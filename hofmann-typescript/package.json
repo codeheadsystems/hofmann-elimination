@@ -1,7 +1,15 @@
 {
-  "name": "hofmann-typescript",
+  "name": "@codeheadsystems/hofmann-typescript",
   "version": "0.1.0",
   "description": "RFC 9497 (OPRF) and RFC 9807 (OPAQUE-3DH) browser client",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/codeheadsystems/hofmann-elimination.git",
+    "directory": "hofmann-typescript"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/hofmann-typescript.umd.cjs",
   "module": "./dist/hofmann-typescript.js",

@@ -33,6 +33,7 @@ All cryptography is built on [`@noble/curves`](https://github.com/paulmillr/nobl
   - [OprfHttpClient](#oprfhttpclient)
   - [OpaqueClient (low-level)](#opaqueclient-low-level)
   - [Key Stretching Functions (KSF)](#key-stretching-functions-ksf)
+- [Publishing to npm](#publishing-to-npm)
 - [Interactive Demo](#interactive-demo)
 - [Running Tests](#running-tests)
 - [Building](#building)
@@ -43,7 +44,7 @@ All cryptography is built on [`@noble/curves`](https://github.com/paulmillr/nobl
 ## Installation
 
 ```bash
-npm install hofmann-typescript
+npm install @codeheadsystems/hofmann-typescript
 ```
 
 Dependencies pulled in automatically:
@@ -63,7 +64,7 @@ Dependencies pulled in automatically:
 The recommended way to create a client is via `OpaqueHttpClient.create()`. It fetches the server's `/opaque/config` endpoint and automatically configures the cipher suite, protocol context, and Argon2id parameters — no manual configuration needed:
 
 ```typescript
-import { OpaqueHttpClient } from 'hofmann-typescript';
+import { OpaqueHttpClient } from '@codeheadsystems/hofmann-typescript';
 
 // Fetches /opaque/config → resolves cipher suite (P-256/P-384/P-521),
 // context string, and Argon2id parameters automatically.
@@ -83,8 +84,8 @@ await client.deleteRegistration('alice@example.com', token);
 ### Standalone OPRF evaluation
 
 ```typescript
-import { OprfHttpClient } from 'hofmann-typescript';
-import { strToBytes } from 'hofmann-typescript';
+import { OprfHttpClient } from '@codeheadsystems/hofmann-typescript';
+import { strToBytes } from '@codeheadsystems/hofmann-typescript';
 
 // Fetches /oprf/config → resolves cipher suite automatically.
 const client = await OprfHttpClient.create('https://your-server.example.com');
@@ -100,8 +101,8 @@ const result = await client.evaluate(strToBytes('my-secret-input'));
 A `CipherSuite` encapsulates all curve-specific operations (hash-to-curve, scalar arithmetic, hash/MAC/HKDF with the appropriate hash function) and the RFC 9497 domain-separation strings.
 
 ```typescript
-import { P256_SHA256, P384_SHA384, P521_SHA512, getCipherSuite } from 'hofmann-typescript';
-import type { CipherSuite } from 'hofmann-typescript';
+import { P256_SHA256, P384_SHA384, P521_SHA512, getCipherSuite } from '@codeheadsystems/hofmann-typescript';
+import type { CipherSuite } from '@codeheadsystems/hofmann-typescript';
 ```
 
 ### Named suite constants
@@ -119,7 +120,7 @@ import type { CipherSuite } from 'hofmann-typescript';
 Resolves a suite by the name string returned in server config responses:
 
 ```typescript
-import { getCipherSuite } from 'hofmann-typescript';
+import { getCipherSuite } from '@codeheadsystems/hofmann-typescript';
 
 const suite = getCipherSuite('P384_SHA384'); // returns P384_SHA384
 ```
@@ -169,7 +170,7 @@ console.log(client.configResponse);
 If you need to construct the client manually (e.g., to pin a specific cipher suite or supply a custom KSF):
 
 ```typescript
-import { OpaqueHttpClient, P384_SHA384, argon2idKsf } from 'hofmann-typescript';
+import { OpaqueHttpClient, P384_SHA384, argon2idKsf } from '@codeheadsystems/hofmann-typescript';
 
 const client = new OpaqueHttpClient('http://localhost:8080', {
   suite:   P384_SHA384,
@@ -196,7 +197,7 @@ argon2Parallelism: 1
 If the server has `argon2MemoryKib: 0` (identity KSF, no Argon2), the `create()` factory handles this automatically. When constructing manually, omit `ksf` or pass `identityKsf`:
 
 ```typescript
-import { OpaqueHttpClient, identityKsf } from 'hofmann-typescript';
+import { OpaqueHttpClient, identityKsf } from '@codeheadsystems/hofmann-typescript';
 
 const client = new OpaqueHttpClient('http://localhost:8080', {
   context: 'my-test-context',
@@ -315,8 +316,8 @@ console.log(output.length); // 32, 48, or 64 depending on server suite
 The `OpaqueClient` class implements OPAQUE cryptographic operations without any HTTP transport. Pass a `CipherSuite` to the constructor to select the suite; defaults to `P256_SHA256`.
 
 ```typescript
-import { OpaqueClient, P384_SHA384, identityKsf, argon2idKsf } from 'hofmann-typescript';
-import type { KSF, CipherSuite } from 'hofmann-typescript';
+import { OpaqueClient, P384_SHA384, identityKsf, argon2idKsf } from '@codeheadsystems/hofmann-typescript';
+import type { KSF, CipherSuite } from '@codeheadsystems/hofmann-typescript';
 
 const suite: CipherSuite = P384_SHA384;
 const client = new OpaqueClient(suite);
@@ -381,7 +382,7 @@ const { state } = client.generateKE1Deterministic(
 The KSF is applied to the raw OPRF output before HKDF derives `randomizedPwd`. The client and server must use the same KSF and parameters at all times — changing them after registration invalidates all existing credentials.
 
 ```typescript
-import { identityKsf, argon2idKsf, type KSF } from 'hofmann-typescript';
+import { identityKsf, argon2idKsf, type KSF } from '@codeheadsystems/hofmann-typescript';
 ```
 
 #### `identityKsf`
@@ -408,6 +409,62 @@ const myKsf: KSF = async (input) => {
   return stretchedOutput; // custom key stretching
 };
 ```
+
+---
+
+## Publishing to npm
+
+This package is published to the public [npm registry](https://www.npmjs.com/) under the `@codeheadsystems` scope.
+
+### Prerequisites (one-time setup)
+
+1. **Create an npm account** at https://www.npmjs.com/signup if you don't have one.
+
+2. **Create the `@codeheadsystems` organization** on npm (if it doesn't exist yet):
+   - Go to https://www.npmjs.com/org/create
+   - Name: `codeheadsystems`
+   - Choose the free/public tier
+
+3. **Log in to npm from your terminal:**
+
+   ```bash
+   npm login
+   ```
+
+### First publish
+
+```bash
+cd hofmann-typescript
+npm run build
+npm publish --access public
+```
+
+The `--access public` flag is required on the first publish of a scoped package. After the first publish, the `"access": "public"` setting in `publishConfig` makes it automatic.
+
+### Subsequent publishes
+
+1. **Bump the version.** npm will not allow you to republish the same version number.
+
+   ```bash
+   npm version patch   # 0.1.0 → 0.1.1  (bug fixes, minor changes)
+   npm version minor   # 0.1.1 → 0.2.0  (new features, backward compatible)
+   npm version major   # 0.2.0 → 1.0.0  (breaking changes)
+   ```
+
+   This updates `package.json` and creates a git tag (e.g., `v0.1.1`).
+
+2. **Build and publish:**
+
+   ```bash
+   npm run build
+   npm publish
+   ```
+
+3. **Push the version commit and tag:**
+
+   ```bash
+   git push && git push --tags
+   ```
 
 ---
 
