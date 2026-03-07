@@ -30,6 +30,6 @@ public class OpaqueServerHealthCheck extends HealthCheck {
     if (pk[0] != 0x02 && pk[0] != 0x03) {
       return Result.unhealthy("Server public key does not appear to be a compressed SEC1 point");
     }
-    return Result.healthy("public key length=%d", pk.length);
+    return Result.healthy("OPAQUE server initialized");
   }
 }

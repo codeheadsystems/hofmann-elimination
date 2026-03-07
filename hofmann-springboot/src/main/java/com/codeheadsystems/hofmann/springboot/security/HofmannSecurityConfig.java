@@ -1,6 +1,7 @@
 package com.codeheadsystems.hofmann.springboot.security;
 
 import com.codeheadsystems.hofmann.server.auth.JwtManager;
+import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -10,6 +11,9 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 /**
  * The type Hofmann security config.
@@ -42,6 +46,7 @@ public class HofmannSecurityConfig {
                                                  JwtAuthenticationFilter jwtFilter) throws Exception {
     http
         .csrf(csrf -> csrf.disable())
+        .cors(cors -> cors.configurationSource(corsConfigurationSource()))
         .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .headers(headers -> headers
             .frameOptions(frame -> frame.deny())
@@ -51,11 +56,42 @@ public class HofmannSecurityConfig {
                 .maxAgeInSeconds(31536000))
             .cacheControl(cache -> {}))
         .authorizeHttpRequests(auth -> auth
-            .requestMatchers("/opaque/**", "/oprf/**", "/actuator/health").permitAll()
+            .requestMatchers("/opaque/**", "/oprf/**").permitAll()
             .anyRequest().authenticated())
         .exceptionHandling(ex -> ex
             .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
         .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
     return http.build();
+  }
+
+  /**
+   * CORS configuration that blocks all cross-origin requests by default.
+   * Override this bean in your application context to allow specific origins:
+   * <pre>{@code
+   *   @Bean
+   *   public CorsConfigurationSource corsConfigurationSource() {
+   *     CorsConfiguration config = new CorsConfiguration();
+   *     config.setAllowedOrigins(List.of("https://app.example.com"));
+   *     config.setAllowedMethods(List.of("GET", "POST", "DELETE"));
+   *     config.setAllowedHeaders(List.of("Content-Type", "Authorization"));
+   *     UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+   *     source.registerCorsConfiguration("/**", config);
+   *     return source;
+   *   }
+   * }**</pre>
+   *
+   * @return the cors configuration source
+   */
+  @Bean
+  public CorsConfigurationSource corsConfigurationSource() {
+    CorsConfiguration config = new CorsConfiguration();
+    // No allowed origins by default — all cross-origin requests are blocked.
+    // Override this bean to permit specific origins for your deployment.
+    config.setAllowedOrigins(List.of());
+    config.setAllowedMethods(List.of("GET", "POST", "DELETE"));
+    config.setAllowedHeaders(List.of("Content-Type", "Authorization"));
+    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+    source.registerCorsConfiguration("/**", config);
+    return source;
   }
 }

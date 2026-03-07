@@ -37,6 +37,7 @@ import jakarta.ws.rs.core.Response;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
@@ -156,6 +157,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
         .addMapping("/api-docs", "/api-docs/*");
 
     environment.jersey().register(new SecurityHeadersFilter());
+    environment.jersey().register(new CorsFilter(new HashSet<>(configuration.getCorsAllowedOrigins())));
     registerSizeLimitFilter(configuration, environment);
     OpaqueConfig opaqueConfig = buildOpaqueConfig(configuration);
     Server server = buildServer(configuration, opaqueConfig);

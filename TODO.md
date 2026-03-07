@@ -71,6 +71,18 @@ addressed; the rest are listed by priority.
       includeSubDomains), and `Cache-Control: no-store`. Dropwizard: added
       `SecurityHeadersFilter` (JAX-RS `ContainerResponseFilter`) registered in
       `HofmannBundle.run()` setting the same four headers.
+- [x] **Add CORS configuration** — Spring Boot: added explicit `.cors()` DSL to
+      `HofmannSecurityConfig` with a `CorsConfigurationSource` bean that blocks all
+      cross-origin requests by default (empty allowed-origins list). Override the
+      `corsConfigurationSource` bean to permit specific origins. Dropwizard: added
+      `CorsFilter` (JAX-RS `ContainerResponseFilter`) registered in `HofmannBundle`,
+      configured via `corsAllowedOrigins` in YAML. Both restrict methods to
+      GET/POST/DELETE and headers to Content-Type/Authorization.
+- [x] **Restrict actuator health endpoint** — Removed `/actuator/health` from the
+      `permitAll()` list in `HofmannSecurityConfig`; it now requires authentication
+      like all other non-OPAQUE/OPRF endpoints. Removed public key length detail from
+      both `OpaqueServerHealthIndicator` (Spring Boot) and `OpaqueServerHealthCheck`
+      (Dropwizard) health responses.
 
 ## P1: Important — Security hardening
 
@@ -80,16 +92,7 @@ addressed; the rest are listed by priority.
 
 ## P2: Recommended — Defense in depth
 
-- [ ] **Add CORS configuration** — No explicit CORS policy exists. Spring Security
-      defaults to blocking cross-origin requests, but this is implicit and fragile.
-      Add an explicit CORS configuration that restricts allowed origins, methods,
-      and headers. In Dropwizard, add a `CrossOriginFilter` via the `FilterRegistration`.
-
-- [ ] **Restrict actuator health endpoint** — `/actuator/health` is listed in
-      `HofmannSecurityConfig.java:47` as `permitAll()`. The health check exposes
-      server public key length via `OpaqueServerHealthIndicator`. Consider restricting
-      to authenticated users or internal IPs, or removing the public key detail from
-      the health response.
+(All P2 items completed.)
 
 ## P3: Good to have
 

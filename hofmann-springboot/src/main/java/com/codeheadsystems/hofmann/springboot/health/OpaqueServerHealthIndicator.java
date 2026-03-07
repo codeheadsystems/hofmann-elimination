@@ -33,6 +33,6 @@ public class OpaqueServerHealthIndicator implements HealthIndicator {
           .withDetail("reason", "Server public key does not appear to be a compressed SEC1 point")
           .build();
     }
-    return Health.up().withDetail("publicKeyLength", pk.length).build();
+    return Health.up().build();
   }
 }

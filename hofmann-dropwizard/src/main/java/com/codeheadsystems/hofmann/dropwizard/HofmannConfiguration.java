@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import io.dropwizard.core.Configuration;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotEmpty;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Dropwizard configuration for the Hofmann OPAQUE and OPRF server.
@@ -103,6 +105,14 @@ public class HofmannConfiguration extends Configuration {
    */
   @Min(1)
   private int argon2Parallelism = 1;
+
+  /**
+   * Allowed CORS origins.  When empty (the default), no CORS headers are added and
+   * all cross-origin requests are blocked by the browser's same-origin policy.
+   * Set to specific origins (e.g. {@code ["https://app.example.com"]}) to allow
+   * cross-origin requests from those origins.
+   */
+  private List<String> corsAllowedOrigins = Collections.emptyList();
 
   /**
    * Maximum allowed request body size in bytes.  Requests with a {@code Content-Length}
@@ -391,5 +401,25 @@ public class HofmannConfiguration extends Configuration {
   @JsonProperty
   public void setMaxRequestBodyBytes(long maxRequestBodyBytes) {
     this.maxRequestBodyBytes = maxRequestBodyBytes;
+  }
+
+  /**
+   * Gets cors allowed origins.
+   *
+   * @return the cors allowed origins
+   */
+  @JsonProperty
+  public List<String> getCorsAllowedOrigins() {
+    return corsAllowedOrigins;
+  }
+
+  /**
+   * Sets cors allowed origins.
+   *
+   * @param corsAllowedOrigins the cors allowed origins
+   */
+  @JsonProperty
+  public void setCorsAllowedOrigins(List<String> corsAllowedOrigins) {
+    this.corsAllowedOrigins = corsAllowedOrigins;
   }
 }
