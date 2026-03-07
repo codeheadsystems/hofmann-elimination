@@ -155,6 +155,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
             "/META-INF/resources/api-docs", "/api-docs", "index.html", StandardCharsets.UTF_8))
         .addMapping("/api-docs", "/api-docs/*");
 
+    environment.jersey().register(new SecurityHeadersFilter());
     registerSizeLimitFilter(configuration, environment);
     OpaqueConfig opaqueConfig = buildOpaqueConfig(configuration);
     Server server = buildServer(configuration, opaqueConfig);

@@ -65,16 +65,14 @@ addressed; the rest are listed by priority.
       data-dependent branching on `BigInteger.toByteArray()` length. Replaced all
       four call sites: `Server.java`, `HofmannBundle.java`,
       `HofmannAutoConfiguration.java`, `WeierstrassGroupSpecImpl.serializeScalar()`.
+- [x] **Add HTTP security headers** — Spring Boot: added `.headers()` DSL to
+      `HofmannSecurityConfig` configuring `X-Frame-Options: DENY`,
+      `X-Content-Type-Options: nosniff`, `Strict-Transport-Security` (1 year,
+      includeSubDomains), and `Cache-Control: no-store`. Dropwizard: added
+      `SecurityHeadersFilter` (JAX-RS `ContainerResponseFilter`) registered in
+      `HofmannBundle.run()` setting the same four headers.
 
 ## P1: Important — Security hardening
-
-- [ ] **Add HTTP security headers** — Neither Dropwizard (`HofmannBundle`) nor
-      Spring Boot (`HofmannSecurityConfig`) configures security response headers.
-      Missing: `Strict-Transport-Security` (HSTS), `X-Content-Type-Options: nosniff`,
-      `X-Frame-Options: DENY`, `Cache-Control: no-store` on auth responses.
-
-      In Spring, add `.headers(h -> h.frameOptions(...).contentTypeOptions(...))`.
-      In Dropwizard, register a `ContainerResponseFilter` that sets the headers.
 
 - [ ] **Add rate limiting** — No rate limiting on any endpoint. Add per-IP or
       per-credential rate limits, especially on `/auth/start` and the OPRF

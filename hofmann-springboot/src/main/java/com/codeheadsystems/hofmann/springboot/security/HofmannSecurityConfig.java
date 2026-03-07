@@ -43,6 +43,13 @@ public class HofmannSecurityConfig {
     http
         .csrf(csrf -> csrf.disable())
         .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+        .headers(headers -> headers
+            .frameOptions(frame -> frame.deny())
+            .contentTypeOptions(content -> {})
+            .httpStrictTransportSecurity(hsts -> hsts
+                .includeSubDomains(true)
+                .maxAgeInSeconds(31536000))
+            .cacheControl(cache -> {}))
         .authorizeHttpRequests(auth -> auth
             .requestMatchers("/opaque/**", "/oprf/**", "/actuator/health").permitAll()
             .anyRequest().authenticated())
