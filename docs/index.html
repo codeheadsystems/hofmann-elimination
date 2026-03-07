@@ -341,19 +341,19 @@
       <div class="protocol-diagram">
         <h3>Registration (one-time, per user)</h3>
         <pre>
-Client                                  Server
-  |                                       |
-  |  blind = hash_to_curve(pwd) * r       |
+Client                                   Server
+  |                                        |
+  |  blind = hash_to_curve(pwd) * r        |
   |---- blindedElement, credentialId ----->|
-  |                                       |  eval = blind * oprfKey
-  |<---- evaluatedElement, serverPubKey --|
-  |                                       |
-  |  oprfOutput = eval * r^-1             |
-  |  randomizedPwd = KSF(oprfOutput)      |
-  |  derive client keys + seal envelope   |
-  |                                       |
-  |---- clientPubKey, envelope ---------->|  store credential record
-  |<---- 204 OK -------------------------|</pre>
+  |                                        |  eval = blind * oprfKey
+  |<---- evaluatedElement, serverPubKey ---|
+  |                                        |
+  |  oprfOutput = eval * r^-1              |
+  |  randomizedPwd = KSF(oprfOutput)       |
+  |  derive client keys + seal envelope    |
+  |                                        |
+  |---- clientPubKey, envelope ----------->|  store credential record
+  |<------ 204 OK -------------------------|</pre>
       </div>
 
       <div class="protocol-diagram">
@@ -366,14 +366,14 @@ Client                                  Server
   |                                       |  eval = blind * oprfKey
   |                                       |  mask envelope with one-time pad
   |                                       |  compute server MAC
-  |<---- KE2 (eval + masked env + MAC) --|
+  |<---- KE2 (eval + masked env + MAC) ---|
   |                                       |
   |  oprfOutput = eval * r^-1             |
   |  unseal envelope, recover keys        |
   |  verify server MAC                    |
   |  compute client MAC                   |
   |                                       |
-  |---- KE3 (client MAC) --------------->|  verify client MAC
+  |---- KE3 (client MAC) ---------------->|  verify client MAC
   |<---- session key + JWT ---------------|  mutual auth complete</pre>
       </div>
 
