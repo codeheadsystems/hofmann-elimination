@@ -406,6 +406,85 @@ openssl rand -hex 32
 
 All four must be set for a stable production deployment.  Omitting any one causes either `IllegalStateException` on startup (seed pair) or non-deterministic output across restarts (OPRF master key, JWT secret).
 
+**Never commit secrets to source control.** Use one of the patterns below to inject
+them at runtime.
+
+### Injecting secrets from environment variables
+
+Both Spring Boot and Dropwizard support environment variable substitution in their
+config files natively. This is the simplest approach and works with any secret
+management system that can set environment variables (Docker, Kubernetes, systemd,
+CI/CD pipelines).
+
+**Spring Boot (`application.yml`):**
+
+```yaml
+hofmann:
+  server-key-seed-hex: ${SERVER_KEY_SEED_HEX}
+  oprf-seed-hex: ${OPRF_SEED_HEX}
+  oprf-master-key-hex: ${OPRF_MASTER_KEY_HEX}
+  jwt-secret-hex: ${JWT_SECRET_HEX}
+```
+
+**Dropwizard (`config.yml`):**
+
+Dropwizard uses the `${ENV_VAR}` syntax with the
+[EnvironmentVariableSubstitutor](https://www.dropwizard.io/en/latest/manual/core.html#environment-variables):
+
+```yaml
+serverKeySeedHex: ${SERVER_KEY_SEED_HEX}
+oprfSeedHex: ${OPRF_SEED_HEX}
+oprfMasterKeyHex: ${OPRF_MASTER_KEY_HEX}
+jwtSecretHex: ${JWT_SECRET_HEX}
+```
+
+**Docker / Docker Compose:**
+
+```yaml
+services:
+  app:
+    environment:
+      SERVER_KEY_SEED_HEX: ${SERVER_KEY_SEED_HEX}
+      OPRF_SEED_HEX: ${OPRF_SEED_HEX}
+      OPRF_MASTER_KEY_HEX: ${OPRF_MASTER_KEY_HEX}
+      JWT_SECRET_HEX: ${JWT_SECRET_HEX}
+```
+
+Populate from a `.env` file (not committed), a CI/CD secret store, or a secrets
+manager sidecar.
+
+**Kubernetes:**
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hofmann-secrets
+type: Opaque
+stringData:
+  SERVER_KEY_SEED_HEX: "<value>"
+  OPRF_SEED_HEX: "<value>"
+  OPRF_MASTER_KEY_HEX: "<value>"
+  JWT_SECRET_HEX: "<value>"
+---
+apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          envFrom:
+            - secretRef:
+                name: hofmann-secrets
+```
+
+For managed secret stores (AWS Secrets Manager, HashiCorp Vault, GCP Secret Manager),
+use your platform's sidecar or init container to populate environment variables before
+the application starts. The Hofmann library itself does not integrate with any specific
+secrets manager — it reads hex strings from configuration, and the injection mechanism
+is an infrastructure concern.
+
 ### Credential identifier
 
 The credential identifier names the user inside your `CredentialStore`.  Choose a value that is:
