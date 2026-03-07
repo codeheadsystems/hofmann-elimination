@@ -27,6 +27,7 @@ import io.dropwizard.auth.oauth.OAuthCredentialAuthFilter;
 import io.dropwizard.core.ConfiguredBundle;
 import io.dropwizard.core.setup.Bootstrap;
 import io.dropwizard.core.setup.Environment;
+import io.dropwizard.servlets.assets.AssetServlet;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import jakarta.ws.rs.container.ContainerRequestContext;
@@ -147,6 +148,12 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
 
   @Override
   public void run(C configuration, Environment environment) {
+    // Serve OpenAPI specs and Swagger UI at /api-docs/
+    environment.servlets()
+        .addServlet("api-docs", new AssetServlet(
+            "/META-INF/resources/api-docs", "/api-docs", "index.html", StandardCharsets.UTF_8))
+        .addMapping("/api-docs", "/api-docs/*");
+
     registerSizeLimitFilter(configuration, environment);
     OpaqueConfig opaqueConfig = buildOpaqueConfig(configuration);
     Server server = buildServer(configuration, opaqueConfig);

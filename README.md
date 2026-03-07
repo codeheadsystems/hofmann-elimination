@@ -33,6 +33,14 @@ from stolen credentials. Usable with standard frameworks like Dropwizard and Spr
 |------------------------|----------------------------------------------------------------------------------------------------------|
 | [`hofmann-demo`](hofmann-demo/README.md) | Docker Compose environment running the Dropwizard server and the TypeScript demo UI behind HAProxy with TLS 1.3. Self-signed P-256 cert generated via `make certs`. Run with `make up`. |
 
+### API Documentation
+
+Interactive API docs are available in three ways:
+
+- **Online (GitHub Pages):** [Browse the API docs](https://codeheadsystems.github.io/hofmann-elimination/) — no server required
+- **At runtime:** Start your Dropwizard or Spring Boot server and visit `/api-docs/` for embedded Swagger UI
+- **Raw OpenAPI specs:** [OPRF API](docs/oprf-api.yaml) | [OPAQUE API](docs/opaque-api.yaml) — paste into [editor.swagger.io](https://editor.swagger.io) to explore
+
 ### Building
 
 #### Java (requires Java 21)

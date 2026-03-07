@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
  *   <li>P256_SHA256 — P-256 / SHA-256 (RFC 9807 reference suite)</li>
  *   <li>P384_SHA384 — P-384 / SHA-384</li>
  *   <li>P521_SHA512 — P-521 / SHA-512</li>
+ *   <li>RISTRETTO255_SHA512 — ristretto255 / SHA-512</li>
  * </ul>
  */
 public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
@@ -40,7 +41,7 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
 
   /**
    * Returns the OPAQUE cipher suite for the given name.  Accepted names: {@code "P256_SHA256"},
-   * {@code "P384_SHA384"}, {@code "P521_SHA512"}.
+   * {@code "P384_SHA384"}, {@code "P521_SHA512"}, {@code "RISTRETTO255_SHA512"}.
    *
    * @param name the name
    * @return the opaque cipher suite

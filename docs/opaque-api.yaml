@@ -383,7 +383,7 @@ components:
           type: string
           description: |
             The OPAQUE cipher suite the server is using.  Clients must configure the same suite.
-          enum: [P256_SHA256, P384_SHA384, P521_SHA512]
+          enum: [P256_SHA256, P384_SHA384, P521_SHA512, RISTRETTO255_SHA512]
           example: P256_SHA256
         context:
           type: string

@@ -6,6 +6,13 @@ plugins {
 
 description = "Hofmann server implementation"
 
+tasks.processResources {
+    from(rootDir.resolve("docs")) {
+        include("*.yaml", "*.html")
+        into("META-INF/resources/api-docs")
+    }
+}
+
 dependencies {
     api(project(":hofmann-rfc"))
 
