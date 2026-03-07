@@ -33,13 +33,16 @@ from stolen credentials. Usable with standard frameworks like Dropwizard and Spr
 |------------------------|----------------------------------------------------------------------------------------------------------|
 | [`hofmann-demo`](hofmann-demo/README.md) | Docker Compose environment running the Dropwizard server and the TypeScript demo UI behind HAProxy with TLS 1.3. Self-signed P-256 cert generated via `make certs`. Run with `make up`. |
 
-### API Documentation
+### Example Application
 
-Interactive API docs are available in three ways:
+See [hofmann-elimination-example](https://github.com/codeheadsystems/hofmann-elimination-example) for a complete working application demonstrating OPAQUE integration end-to-end.
 
-- **Online (GitHub Pages):** [Browse the API docs](https://codeheadsystems.github.io/hofmann-elimination/) — no server required
+### Documentation
+
+- **[Project landing page](https://codeheadsystems.github.io/hofmann-elimination/)** — overview, protocol diagrams, quick start guides
+- **[Interactive API docs](https://codeheadsystems.github.io/hofmann-elimination/api-docs.html)** — Swagger UI for OPAQUE and OPRF endpoints
 - **At runtime:** Start your Dropwizard or Spring Boot server and visit `/api-docs/` for embedded Swagger UI
-- **Raw OpenAPI specs:** [OPRF API](docs/oprf-api.yaml) | [OPAQUE API](docs/opaque-api.yaml) — paste into [editor.swagger.io](https://editor.swagger.io) to explore
+- **Raw OpenAPI specs:** [OPRF API](docs/oprf-api.yaml) | [OPAQUE API](docs/opaque-api.yaml)
 
 ### Building
 

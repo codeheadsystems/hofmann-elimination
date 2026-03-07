@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hofmann Elimination - API Documentation</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <style>
+    body { margin: 0; padding: 0; }
+    #api-selector {
+      display: flex;
+      gap: 12px;
+      padding: 12px 24px;
+      background: #1b1b1b;
+      align-items: center;
+    }
+    #api-selector label {
+      color: #fff;
+      font-family: sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    #api-selector select {
+      padding: 6px 12px;
+      font-size: 14px;
+      border-radius: 4px;
+      border: 1px solid #555;
+    }
+    #api-selector a {
+      color: #89b4fa;
+      font-family: sans-serif;
+      font-size: 14px;
+      margin-left: auto;
+      text-decoration: none;
+    }
+    #api-selector a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div id="api-selector">
+    <label for="spec-select">API Spec:</label>
+    <select id="spec-select" onchange="loadSpec(this.value)">
+      <option value="./opaque-api.yaml">OPAQUE (RFC 9807) - Authentication</option>
+      <option value="./oprf-api.yaml">OPRF (RFC 9497) - Pseudorandom Function</option>
+    </select>
+    <a href="./">Back to overview</a>
+  </div>
+  <div id="swagger-ui"></div>
+
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>
+    function loadSpec(url) {
+      SwaggerUIBundle({
+        url: url,
+        dom_id: '#swagger-ui',
+        presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
+        layout: 'BaseLayout',
+        deepLinking: true,
+      });
+    }
+    loadSpec(document.getElementById('spec-select').value);
+  </script>
+</body>
+</html>
