@@ -1,5 +1,6 @@
 package com.codeheadsystems.hofmann.springboot.config;
 
+import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.hofmann.model.opaque.OpaqueClientConfigResponse;
 import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
 import com.codeheadsystems.hofmann.server.auth.JwtManager;
@@ -141,14 +142,7 @@ public class HofmannAutoConfiguration {
     BigInteger sk = keyPair.privateKey();
     byte[] pk = keyPair.publicKeyBytes();
 
-    int nsk = opaqueConfig.Nsk();
-    byte[] skBytes = sk.toByteArray();
-    byte[] skFixed = new byte[nsk];
-    if (skBytes.length > nsk) {
-      System.arraycopy(skBytes, skBytes.length - nsk, skFixed, 0, nsk);
-    } else {
-      System.arraycopy(skBytes, 0, skFixed, nsk - skBytes.length, skBytes.length);
-    }
+    byte[] skFixed = ByteUtils.scalarToFixedBytes(sk, opaqueConfig.Nsk());
 
     return new Server(skFixed, pk, oprfSeed, opaqueConfig);
   }

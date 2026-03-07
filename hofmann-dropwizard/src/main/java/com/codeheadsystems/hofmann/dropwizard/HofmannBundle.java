@@ -1,5 +1,6 @@
 package com.codeheadsystems.hofmann.dropwizard;
 
+import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.hofmann.dropwizard.auth.HofmannAuthenticator;
 import com.codeheadsystems.hofmann.dropwizard.auth.HofmannPrincipal;
 import com.codeheadsystems.hofmann.dropwizard.health.OpaqueServerHealthCheck;
@@ -279,14 +280,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     BigInteger sk = keyPair.privateKey();
     byte[] pk = keyPair.publicKeyBytes();
 
-    int nsk = opaqueConfig.Nsk();
-    byte[] skBytes = sk.toByteArray();
-    byte[] skFixed = new byte[nsk];
-    if (skBytes.length > nsk) {
-      System.arraycopy(skBytes, skBytes.length - nsk, skFixed, 0, nsk);
-    } else {
-      System.arraycopy(skBytes, 0, skFixed, nsk - skBytes.length, skBytes.length);
-    }
+    byte[] skFixed = ByteUtils.scalarToFixedBytes(sk, opaqueConfig.Nsk());
 
     return new Server(skFixed, pk, oprfSeed, opaqueConfig);
   }

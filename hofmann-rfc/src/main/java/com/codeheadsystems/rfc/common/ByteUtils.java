@@ -64,6 +64,26 @@ public class ByteUtils {
   }
 
   /**
+   * Converts a non-negative BigInteger to a fixed-length big-endian byte array
+   * without data-dependent branching. BigInteger.toByteArray() returns variable-length
+   * output (adds a 0x00 sign byte when the high bit is set); this method normalizes
+   * the result to exactly {@code length} bytes by always routing through a zero-padded
+   * intermediate buffer, avoiding any branch on the scalar's value.
+   *
+   * @param scalar the non-negative scalar to serialize
+   * @param length the desired output length in bytes
+   * @return fixed-length big-endian byte array
+   */
+  public static byte[] scalarToFixedBytes(BigInteger scalar, int length) {
+    byte[] padded = new byte[length + 1];
+    byte[] raw = scalar.toByteArray();
+    System.arraycopy(raw, 0, padded, padded.length - raw.length, raw.length);
+    byte[] result = new byte[length];
+    System.arraycopy(padded, 1, result, 0, length);
+    return result;
+  }
+
+  /**
    * XOR two byte arrays of equal length.
    *
    * @param a the a

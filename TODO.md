@@ -60,18 +60,13 @@ addressed; the rest are listed by priority.
 - [x] **Document secrets management** — Documented in `USAGE.md` under
       "Injecting secrets from environment variables" with examples for Spring Boot,
       Dropwizard, Docker Compose, and Kubernetes.
+- [x] **Constant-time scalar serialization** — Extracted `ByteUtils.scalarToFixedBytes()`
+      that always routes through a zero-padded intermediate buffer, eliminating
+      data-dependent branching on `BigInteger.toByteArray()` length. Replaced all
+      four call sites: `Server.java`, `HofmannBundle.java`,
+      `HofmannAutoConfiguration.java`, `WeierstrassGroupSpecImpl.serializeScalar()`.
 
 ## P1: Important — Security hardening
-
-- [ ] **Constant-time scalar serialization** — `BigInteger.toByteArray()` returns
-      variable-length output (adds a leading zero byte when the high bit is set).
-      Code at `Server.java:60-65`, `HofmannBundle.java:283-288`, and
-      `HofmannAutoConfiguration.java:144-150` branches on `skBytes.length > nsk`,
-      which is data-dependent and could leak ~1 bit of timing information about
-      the scalar value.
-
-      Fix: extract a shared `scalarToFixedBytes(BigInteger, int)` helper that
-      always copies `nsk` bytes from a zero-padded buffer without branching.
 
 - [ ] **Add HTTP security headers** — Neither Dropwizard (`HofmannBundle`) nor
       Spring Boot (`HofmannSecurityConfig`) configures security response headers.

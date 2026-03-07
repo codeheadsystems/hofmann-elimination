@@ -1,5 +1,6 @@
 package com.codeheadsystems.rfc.ellipticcurve.rfc9380;
 
+import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.ellipticcurve.curve.Curve;
 import java.math.BigInteger;
 import org.bouncycastle.math.ec.ECPoint;
@@ -114,20 +115,7 @@ public record WeierstrassGroupSpecImpl(
       throw new IllegalArgumentException("Scalar out of range [0, n-1]");
     }
     int ns = (curve.n().bitLength() + 7) / 8;
-    byte[] raw = k.toByteArray();
-    if (raw.length == ns) {
-      return raw.clone();
-    }
-    if (raw.length > ns) {
-      // Strip BigInteger sign byte (leading zero for non-negative with high bit set).
-      byte[] trimmed = new byte[ns];
-      System.arraycopy(raw, raw.length - ns, trimmed, 0, ns);
-      return trimmed;
-    }
-    // Pad with leading zeros.
-    byte[] padded = new byte[ns];
-    System.arraycopy(raw, 0, padded, ns - raw.length, raw.length);
-    return padded;
+    return ByteUtils.scalarToFixedBytes(k, ns);
   }
 
   /**

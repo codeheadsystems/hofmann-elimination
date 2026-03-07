@@ -56,14 +56,7 @@ public class Server {
     byte[] pk = config.cipherSuite().oprfSuite().groupSpec().scalarMultiplyGenerator(sk);
     byte[] seed = config.randomProvider().randomBytes(config.Nok());
 
-    int nsk = config.Nsk();
-    byte[] skBytes = sk.toByteArray();
-    byte[] skFixed = new byte[nsk];
-    if (skBytes.length > nsk) {
-      System.arraycopy(skBytes, skBytes.length - nsk, skFixed, 0, nsk);
-    } else {
-      System.arraycopy(skBytes, 0, skFixed, nsk - skBytes.length, skBytes.length);
-    }
+    byte[] skFixed = ByteUtils.scalarToFixedBytes(sk, config.Nsk());
     return new Server(skFixed, pk, seed, config);
   }
 
