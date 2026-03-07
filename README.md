@@ -40,6 +40,8 @@ See [hofmann-elimination-example](https://github.com/codeheadsystems/hofmann-eli
 ### Documentation
 
 - **[Project landing page](https://codeheadsystems.github.io/hofmann-elimination/)** — overview, protocol diagrams, quick start guides
+- **[Migration guide](MIGRATION.md)** — how to migrate an existing site from traditional password auth to OPAQUE
+- **[Configuration guide](USAGE.md)** — server configuration, key management, credential store implementation
 - **[Interactive API docs](https://codeheadsystems.github.io/hofmann-elimination/api-docs.html)** — Swagger UI for OPAQUE and OPRF endpoints
 - **At runtime:** Start your Dropwizard or Spring Boot server and visit `/api-docs/` for embedded Swagger UI
 - **Raw OpenAPI specs:** [OPRF API](docs/oprf-api.yaml) | [OPAQUE API](docs/opaque-api.yaml)
