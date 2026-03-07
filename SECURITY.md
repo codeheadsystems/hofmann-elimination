@@ -96,3 +96,89 @@ server must be configured with matching Argon2id parameters. See [USAGE.md](USAG
 
 MAC comparisons in the OPAQUE AKE (`serverFinish`, internal AKE verification) use
 `MessageDigest.isEqual()` to prevent timing-based oracle attacks.
+
+---
+
+## Known Concerns with the OPAQUE Protocol
+
+The following are known limitations and criticisms of the OPAQUE protocol itself (not
+specific to this implementation). They are documented here so that adopters can make
+informed decisions.
+
+### No quantum resistance
+
+OPAQUE relies on elliptic curve discrete log hardness (ECDH) for both the OPRF and
+the 3DH authenticated key exchange. A sufficiently powerful quantum computer running
+Shor's algorithm would break these primitives. Post-quantum PAKE protocols are an
+active research area but none have been standardized. If quantum resistance is a
+requirement today, OPAQUE is not the right choice.
+
+### OPRF key is a high-value target
+
+If the server's OPRF key is compromised *alongside* the credential database, offline
+dictionary attacks become possible again. OPAQUE does not eliminate the need to protect
+server secrets — it changes *what* needs protecting. The improvement over traditional
+hashing is that the OPRF key and the credential records can be stored separately (e.g.,
+the key in an HSM, the records in a database), whereas traditional password hashes are
+self-contained attack targets. This separation requires operational discipline.
+
+### No protection against online brute force
+
+OPAQUE prevents *offline* dictionary attacks from a stolen credential database. An
+attacker with network access can still try passwords one at a time through the live
+protocol. Rate limiting on authentication endpoints is still essential.
+
+### Limited phishing resistance
+
+OPAQUE provides mutual authentication — both client and server prove their identity
+during the handshake. However, it does not protect against real-time phishing proxies
+that relay the full protocol between the victim and the legitimate server.
+FIDO2/WebAuthn provides stronger phishing resistance through cryptographic origin
+binding. OPAQUE and WebAuthn solve different problems and can be complementary.
+
+### Browser trust model undermines some guarantees
+
+For browser-based clients, the JavaScript performing the OPAQUE protocol is served by
+the server itself. A compromised server could serve malicious code that exfiltrates the
+password before blinding it. This "trust the server to serve honest code" problem
+affects all browser-based cryptography and is not specific to OPAQUE, but it means
+OPAQUE's strongest guarantees (password never leaves the client) only hold fully for
+native or pre-installed clients.
+
+### Client-side computation cost
+
+OPAQUE requires the client to perform elliptic curve scalar multiplications and
+(typically) Argon2id key stretching. On resource-constrained mobile devices or low-end
+browsers, production-grade Argon2id parameters (64+ MiB memory, 3 iterations) can cause
+noticeable latency or memory pressure. Tuning KSF parameters is a trade-off between
+security and user experience.
+
+### No traditional password recovery
+
+Since the server never sees the password, traditional "forgot password" flows that
+verify the old credential are not possible. Password reset requires re-registration,
+which destroys the previous credential record. This is a security feature (the server
+*cannot* leak what it does not have) but an operational consideration that affects UX
+design. See the [Migration Guide](MIGRATION.md) for strategies.
+
+### Migration requires re-registration
+
+Existing bcrypt, scrypt, or Argon2id password hashes cannot be converted to OPAQUE
+credentials. Every user must re-register, either via a forced reset or opportunistic
+migration on next login. See the [Migration Guide](MIGRATION.md) for detailed
+strategies.
+
+### Increased protocol complexity
+
+OPAQUE involves multiple rounds, multiple cryptographic primitives (OPRF, HKDF, HMAC,
+Diffie-Hellman AKE), and subtle security invariants. More complexity means more surface
+area for implementation bugs compared to "hash and compare." Fewer implementations have
+been battle-tested or formally audited compared to bcrypt or Argon2id.
+
+### Small ecosystem
+
+Compared to traditional authentication (bcrypt, OAuth 2.0, OpenID Connect), the OPAQUE
+ecosystem has far fewer implementations, fewer independent security audits, and less
+accumulated operational experience across the industry. See the
+[Related Projects](https://codeheadsystems.github.io/hofmann-elimination/) section for
+a comparison of available implementations.

@@ -425,6 +425,13 @@ Client                                  Server
              are useless. Each server's OPRF key makes its credential space unique.</p>
         </div>
       </div>
+      <p>
+        OPAQUE is not a silver bullet. It does not protect against online brute force,
+        real-time phishing proxies, or quantum computers. Browser-based clients inherit
+        the "trust the server to serve honest code" limitation of all browser cryptography.
+        For a full discussion of known concerns and trade-offs, see
+        <a href="https://github.com/codeheadsystems/hofmann-elimination/blob/main/SECURITY.md">SECURITY.md</a>.
+      </p>
     </div>
   </section>
 
@@ -626,6 +633,148 @@ cd hofmann-elimination-example
             </tr>
           </tbody>
         </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Related Projects -->
+  <section>
+    <div class="container">
+      <h2>Related Projects</h2>
+      <p>
+        Several projects implement OPRF or OPAQUE. The table below compares RFC compliance,
+        cipher suite support, and key features. Hofmann Elimination is the only pure-Java,
+        RFC-compliant implementation with framework integrations.
+      </p>
+      <div style="overflow-x:auto; margin:24px 0;">
+        <table style="width:100%; border-collapse:collapse; font-size:0.85em;">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border); text-align:left;">
+              <th style="padding:10px 12px; color:var(--text);">Project</th>
+              <th style="padding:10px 12px; color:var(--text);">Language</th>
+              <th style="padding:10px 12px; color:var(--text);">RFC 9497</th>
+              <th style="padding:10px 12px; color:var(--text);">RFC 9807</th>
+              <th style="padding:10px 12px; color:var(--text);">Cipher suites</th>
+              <th style="padding:10px 12px; color:var(--text);">Audit</th>
+            </tr>
+          </thead>
+          <tbody style="color:var(--muted);">
+            <tr style="border-bottom:1px solid var(--border); background:rgba(108,140,255,0.06);">
+              <td style="padding:10px 12px;"><strong style="color:var(--text);">Hofmann Elimination</strong></td>
+              <td style="padding:10px 12px;">Pure Java + TS</td>
+              <td style="padding:10px 12px; color:var(--green);">Yes</td>
+              <td style="padding:10px 12px; color:var(--green);">Yes</td>
+              <td style="padding:10px 12px;">P-256, P-384, P-521, Ristretto255</td>
+              <td style="padding:10px 12px;">No</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:10px 12px;"><a href="https://github.com/facebook/opaque-ke">facebook/opaque-ke</a></td>
+              <td style="padding:10px 12px;">Rust</td>
+              <td style="padding:10px 12px; color:var(--green);">Yes</td>
+              <td style="padding:10px 12px; color:var(--green);">Yes</td>
+              <td style="padding:10px 12px;">Ristretto255, P-256, P-384, P-521</td>
+              <td style="padding:10px 12px; color:var(--green);">NCC Group</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:10px 12px;"><a href="https://github.com/bytemare/opaque">bytemare/opaque</a></td>
+              <td style="padding:10px 12px;">Go</td>
+              <td style="padding:10px 12px; color:var(--green);">Yes</td>
+              <td style="padding:10px 12px; color:var(--green);">Yes</td>
+              <td style="padding:10px 12px;">P-256, P-384, P-521, Ristretto255</td>
+              <td style="padding:10px 12px;">No</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:10px 12px;"><a href="https://github.com/serenity-kit/opaque">@serenity-kit/opaque</a></td>
+              <td style="padding:10px 12px;">JS/WASM (Rust)</td>
+              <td style="padding:10px 12px; color:var(--green);">Yes</td>
+              <td style="padding:10px 12px; color:var(--green);">Yes</td>
+              <td style="padding:10px 12px;">Ristretto255, P-256</td>
+              <td style="padding:10px 12px; color:var(--green);">7ASecurity</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:10px 12px;"><a href="https://github.com/cloudflare/opaque-ts">@cloudflare/opaque-ts</a></td>
+              <td style="padding:10px 12px;">TypeScript</td>
+              <td style="padding:10px 12px; color:var(--red);">Draft</td>
+              <td style="padding:10px 12px; color:var(--red);">Draft</td>
+              <td style="padding:10px 12px;">P-256, P-384, P-521</td>
+              <td style="padding:10px 12px;">No</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:10px 12px;"><a href="https://github.com/aldenml/ecc">aldenml/ecc</a></td>
+              <td style="padding:10px 12px;">Java/JNI over C</td>
+              <td style="padding:10px 12px; color:var(--red);">Draft</td>
+              <td style="padding:10px 12px; color:var(--red);">Draft</td>
+              <td style="padding:10px 12px;">Ristretto255</td>
+              <td style="padding:10px 12px;">No</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:10px 12px;"><a href="https://github.com/stef/libopaque">stef/libopaque</a></td>
+              <td style="padding:10px 12px;">C + Java JNI</td>
+              <td style="padding:10px 12px; color:var(--red);">Draft</td>
+              <td style="padding:10px 12px; color:var(--red);">Draft</td>
+              <td style="padding:10px 12px;">Ristretto25519</td>
+              <td style="padding:10px 12px;">No</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 12px;"><a href="https://github.com/cloudflare/opaque-ea">cloudflare/opaque-ea</a></td>
+              <td style="padding:10px 12px;">Go</td>
+              <td style="padding:10px 12px; color:var(--red);">Draft</td>
+              <td style="padding:10px 12px; color:var(--red);">Draft</td>
+              <td style="padding:10px 12px;">—</td>
+              <td style="padding:10px 12px;">No</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Project Details</h3>
+      <div class="features">
+        <div class="feature">
+          <h4><a href="https://github.com/facebook/opaque-ke">facebook/opaque-ke</a></h4>
+          <p>Rust implementation of RFC 9807. Audited by NCC Group (sponsored by WhatsApp
+             for end-to-end encrypted backups). Supports multiple cipher suites via feature
+             flags. v4.1.0-pre.1. No Java bindings.</p>
+        </div>
+        <div class="feature">
+          <h4><a href="https://github.com/bytemare/opaque">bytemare/opaque</a></h4>
+          <p>Go implementation of RFC 9497 OPRF + RFC 9807 OPAQUE. Actively maintained
+             with full multi-suite support. No Java bindings.</p>
+        </div>
+        <div class="feature">
+          <h4><a href="https://github.com/serenity-kit/opaque">@serenity-kit/opaque</a></h4>
+          <p>JavaScript/WASM library with a Rust core. Implements final RFC 9807,
+             audited by 7ASecurity via OTF Red Team Lab. Published as
+             <a href="https://opaque-auth.com/">opaque-auth.com</a> with Next.js,
+             Vite, and password reset examples. JS/WASM only.</p>
+        </div>
+        <div class="feature">
+          <h4><a href="https://github.com/cloudflare/opaque-ts">@cloudflare/opaque-ts</a></h4>
+          <p>TypeScript library from Cloudflare. Implements draft-irtf-cfrg-opaque-07
+             (not final RFC 9807). Last npm release v0.7.5, February 2022. Receives
+             only dependabot updates.</p>
+        </div>
+        <div class="feature">
+          <h4><a href="https://github.com/aldenml/ecc">aldenml/ecc</a></h4>
+          <p>Java bindings over a C core (JNI). Implements pre-RFC OPRF and OPAQUE drafts.
+             Ristretto255 only. Last release v1.1.0, October 2023. Has not tracked
+             final RFCs.</p>
+        </div>
+        <div class="feature">
+          <h4><a href="https://github.com/stef/libopaque">stef/libopaque</a></h4>
+          <p>C implementation with Java JNI bindings. Pre-RFC OPAQUE draft with
+             Ristretto25519 and Argon2id via libsodium. Requires native compilation —
+             cannot be distributed as a self-contained JAR. v1.0.1, February 2025.</p>
+        </div>
+        <div class="feature">
+          <h4><a href="https://github.com/cloudflare/opaque-ea">cloudflare/opaque-ea</a></h4>
+          <p>Go proof-of-concept combining OPAQUE with TLS Exported Authenticators.
+             4 commits total. Explicitly marked "DO NOT use in production systems."</p>
+        </div>
+        <div class="feature">
+          <h4><a href="https://github.com/pvriel/oprf4j">pvriel/oprf4j</a></h4>
+          <p>Pure Java OPRF research artifact implementing KISS17/KALES19 variants for
+             private set intersection — not the IETF standard. Archived May 2025.</p>
+        </div>
       </div>
     </div>
   </section>
