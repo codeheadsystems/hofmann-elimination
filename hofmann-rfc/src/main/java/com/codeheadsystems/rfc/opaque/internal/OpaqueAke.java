@@ -18,6 +18,7 @@ import com.codeheadsystems.rfc.opaque.model.ServerKE2Result;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Arrays;
 
 /**
  * OPAQUE-3DH Authenticated Key Exchange implementation.
@@ -70,11 +71,13 @@ public class OpaqueAke {
         "HandshakeSecret".getBytes(StandardCharsets.US_ASCII), preambleHash, config.Nx());
     byte[] sessionKey = suite.hkdfExpandLabel(prk,
         "SessionKey".getBytes(StandardCharsets.US_ASCII), preambleHash, config.Nx());
+    Arrays.fill(prk, (byte) 0);
 
     byte[] km2 = suite.hkdfExpandLabel(handshakeSecret,
         "ServerMAC".getBytes(StandardCharsets.US_ASCII), new byte[0], config.Nm());
     byte[] km3 = suite.hkdfExpandLabel(handshakeSecret,
         "ClientMAC".getBytes(StandardCharsets.US_ASCII), new byte[0], config.Nm());
+    Arrays.fill(handshakeSecret, (byte) 0);
 
     return new DerivedKeys(km2, km3, sessionKey);
   }
@@ -152,11 +155,17 @@ public class OpaqueAke {
     byte[] dh2 = gs.scalarMultiply(serverPrivateKey, ke1.clientAkePublicKey());
     byte[] dh3 = gs.scalarMultiply(serverAkeSk, record.clientPublicKey());
     byte[] ikm = ByteUtils.concat(dh1, dh2, dh3);
+    Arrays.fill(dh1, (byte) 0);
+    Arrays.fill(dh2, (byte) 0);
+    Arrays.fill(dh3, (byte) 0);
 
     DerivedKeys keys = deriveKeys(config, ikm, preamble);
+    Arrays.fill(ikm, (byte) 0);
     byte[] serverMac = suite.hmac(keys.km2(), preambleHash);
     byte[] expectedClientMac = suite.hmac(keys.km3(),
         suite.hash(ByteUtils.concat(preamble, serverMac)));
+    Arrays.fill(keys.km2(), (byte) 0);
+    Arrays.fill(keys.km3(), (byte) 0);
 
     ServerAuthState authState = new ServerAuthState(expectedClientMac, keys.sessionKey());
     KE2 ke2 = new KE2(credResponse, serverNonce, serverAkePk, serverMac);
@@ -198,17 +207,27 @@ public class OpaqueAke {
     byte[] dh2 = gs.scalarMultiply(state.clientAkePrivateKey(), recovered.cleartextCredentials().serverPublicKey());
     byte[] dh3 = gs.scalarMultiply(clientSk, ke2.serverAkePublicKey());
     byte[] ikm = ByteUtils.concat(dh1, dh2, dh3);
+    Arrays.fill(dh1, (byte) 0);
+    Arrays.fill(dh2, (byte) 0);
+    Arrays.fill(dh3, (byte) 0);
 
     DerivedKeys keys = deriveKeys(config, ikm, preamble);
+    Arrays.fill(ikm, (byte) 0);
 
     byte[] expectedServerMac = suite.hmac(keys.km2(), preambleHash);
+    Arrays.fill(keys.km2(), (byte) 0);
     // Security: constant-time comparison prevents timing side-channel attacks on MAC verification
     if (!MessageDigest.isEqual(expectedServerMac, ke2.serverMac())) {
+      Arrays.fill(expectedServerMac, (byte) 0);
+      Arrays.fill(keys.km3(), (byte) 0);
+      Arrays.fill(keys.sessionKey(), (byte) 0);
       throw new SecurityException("Authentication failed");
     }
+    Arrays.fill(expectedServerMac, (byte) 0);
 
     byte[] clientMac = suite.hmac(keys.km3(),
         suite.hash(ByteUtils.concat(preamble, ke2.serverMac())));
+    Arrays.fill(keys.km3(), (byte) 0);
 
     return new AuthResult(new KE3(clientMac), keys.sessionKey(), recovered.exportKey());
   }

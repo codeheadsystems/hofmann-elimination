@@ -156,21 +156,51 @@ of pure Java, final RFC compliance, P-256/SHA-256, and framework integration.
 - **Protocols**: Pre-RFC OPAQUE draft; Ristretto255 only
 - **Status**: Actively maintained; no Java bindings
 
+### cloudflare/opaque-ts (TypeScript)
+
+- **URL**: https://github.com/cloudflare/opaque-ts
+- **Language**: TypeScript (browser/Node)
+- **Protocols**: Pre-RFC OPAQUE draft (draft-irtf-cfrg-opaque-07); uses `@cloudflare/voprf-ts` for OPRF
+- **Cipher suites**: P-256, P-384, P-521
+- **Status**: Last npm release v0.7.5 in February 2022; repo receives only dependabot updates.
+  README still references draft-07 — has not been updated for final RFC 9807
+
+### cloudflare/opaque-ea (Go)
+
+- **URL**: https://github.com/cloudflare/opaque-ea
+- **Language**: Go
+- **Protocols**: Proof-of-concept combining OPAQUE with TLS Exported Authenticators
+  (draft-sullivan-tls-opaque-00, draft-krawczyk-cfrg-opaque-06)
+- **Status**: Reference implementation only — 4 commits total, explicitly marked
+  "DO NOT use in production systems"
+
+### serenity-kit/opaque (JavaScript/WASM)
+
+- **URL**: https://github.com/serenity-kit/opaque
+- **Website**: https://opaque-auth.com/
+- **Language**: JavaScript/TypeScript with Rust/WASM core
+- **Protocols**: RFC 9807 OPAQUE (final RFC); security-audited by 7ASecurity via OTF Red Team Lab
+- **Cipher suites**: Ristretto255/SHA-512 (`@serenity-kit/opaque`), P-256/SHA-256 (`@serenity-kit/opaque-p256`)
+- **Status**: Actively maintained (v1.1.0, 454+ commits); includes examples for Next.js,
+  Vite, Webpack, and password reset flows. The most complete JavaScript OPAQUE implementation
+  available — but JavaScript/WASM only, no server-side Java support
+
 ### How This Project Differs
 
-| Property               | This project                                    | aldenml/ecc        | stef/libopaque     | bytemare/opaque       |
-|------------------------|-------------------------------------------------|--------------------|--------------------|-----------------------|
-| Language               | Pure Java                                       | Java/JNI over C    | Java/JNI over C    | Go                    |
-| RFC 9497 OPRF          | Yes                                             | No (pre-RFC draft) | No (pre-RFC draft) | Yes                   |
-| RFC 9807 OPAQUE        | Yes                                             | No (pre-RFC draft) | No (pre-RFC draft) | Yes                   |
-| Cipher suite           | P-256/SHA-256, P-384/SHA-384, P-521/SHA-512     | Ristretto255       | Ristretto25519     | Multiple incl. P-256  |
-| Self-contained JAR     | Yes                                             | Yes (JNI)          | No (native deps)   | N/A                   |
-| Maven/Gradle artifact  | Yes (planned)                                   | Yes                | No                 | N/A                   |
-| Framework integrations | Dropwizard, Spring Boot                         | None               | None               | None                  |
+| Project | Language | RFC 9497 | RFC 9807 | Cipher suites | Self-contained | Framework integrations | Security audit |
+|---|---|---|---|---|---|---|---|
+| **This project** | Pure Java + TS client | Yes | Yes | P-256, P-384, P-521, Ristretto255 | Yes (JAR) | Dropwizard, Spring Boot | No |
+| aldenml/ecc | Java/JNI over C | No (draft) | No (draft) | Ristretto255 | Yes (JNI) | None | No |
+| stef/libopaque | Java/JNI over C | No (draft) | No (draft) | Ristretto25519 | No (native deps) | None | No |
+| bytemare/opaque | Go | Yes | Yes | P-256, P-384, P-521, Ristretto255 | N/A | None | No |
+| @cloudflare/opaque-ts | TypeScript | No (draft) | No (draft) | P-256, P-384, P-521 | N/A | None | No |
+| @cloudflare/opaque-ea | Go | No (draft) | No (draft) | — | N/A | None | No |
+| @serenity-kit/opaque | JS/WASM (Rust core) | Yes | Yes | Ristretto255, P-256 | N/A | None | Yes (7ASecurity) |
 
-The closest equivalent in terms of RFC compliance and P-256 support is `bytemare/opaque`,
-but it targets Go. This project is the only known pure-Java, RFC-compliant (9380 + 9497 + 9807)
-implementation using P-256/SHA-256 that is distributable as a standard Maven artifact.
+The closest equivalent in terms of RFC compliance and P-256 support is `bytemare/opaque` (Go)
+and `@serenity-kit/opaque` (JavaScript/WASM). This project is the only known pure-Java,
+RFC-compliant (9380 + 9497 + 9807) implementation supporting multiple cipher suites that is
+distributable as a standard Maven artifact with framework integrations.
 
 ## License
 

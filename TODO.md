@@ -83,6 +83,12 @@ addressed; the rest are listed by priority.
       like all other non-OPAQUE/OPRF endpoints. Removed public key length detail from
       both `OpaqueServerHealthIndicator` (Spring Boot) and `OpaqueServerHealthCheck`
       (Dropwizard) health responses.
+- [x] **Zero intermediate key material** — `OpaqueAke.java` now explicitly zeros
+      `dh1`, `dh2`, `dh3`, `ikm`, `prk`, `handshakeSecret`, `km2`, `km3`, and
+      `expectedServerMac` via `Arrays.fill(..., (byte) 0)` immediately after each
+      value is consumed. On authentication failure in `generateKE3`, all remaining
+      key material is zeroed before throwing. `BigInteger` scalars remain immutable
+      and cannot be zeroed at the Java level.
 
 ## P1: Important — Security hardening
 
@@ -99,9 +105,3 @@ addressed; the rest are listed by priority.
 - [ ] **Production KSF enforcement** — The identity KSF is correctly flagged for
       test use only. Consider adding a runtime check that rejects identity KSF
       in non-test configurations to prevent accidental production deployment.
-
-- [ ] **Zero intermediate key material** — Derived keys in `OpaqueAke.java`
-      (`dh1`, `dh2`, `dh3`, `ikm`, `handshakeSecret`, `DerivedKeys` record)
-      remain in memory after use. While Java GC makes deterministic zeroing
-      difficult, explicitly zeroing byte arrays after they are consumed would
-      reduce the window for memory-dump attacks.
