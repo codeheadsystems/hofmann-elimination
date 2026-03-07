@@ -1,22 +1,21 @@
 package com.codeheadsystems.hofmann.springboot.config;
 
-import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.hofmann.model.opaque.OpaqueClientConfigResponse;
 import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
-import com.codeheadsystems.hofmann.server.auth.JwtManager;
 import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
+import com.codeheadsystems.hofmann.server.manager.JwtManager;
 import com.codeheadsystems.hofmann.server.ratelimit.InMemoryRateLimiter;
-import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfig;
+import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfigSupplier;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
-import org.springframework.beans.factory.annotation.Qualifier;
 import com.codeheadsystems.hofmann.server.store.InMemoryCredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemorySessionStore;
 import com.codeheadsystems.hofmann.server.store.SessionStore;
+import com.codeheadsystems.rfc.common.ByteUtils;
+import com.codeheadsystems.rfc.common.RandomProvider;
 import com.codeheadsystems.rfc.opaque.Server;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
-import com.codeheadsystems.rfc.common.RandomProvider;
 import com.codeheadsystems.rfc.oprf.manager.OprfServerManager;
 import com.codeheadsystems.rfc.oprf.model.ServerProcessorDetail;
 import com.codeheadsystems.rfc.oprf.rfc9497.OprfCipherSuite;
@@ -27,6 +26,7 @@ import java.util.HexFormat;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -177,6 +177,18 @@ public class HofmannAutoConfiguration {
   }
 
   /**
+   * Default rate limit config supplier that returns static configs from HofmannProperties.
+   * Override this bean to implement dynamic config updates (e.g. from a database or config server).
+   *
+   * @return the rate limit config supplier
+   */
+  @Bean
+  @ConditionalOnMissingBean(name = "rateLimitConfigSupplier")
+  public RateLimitConfigSupplier rateLimiterConfigSupplier() {
+    return new RateLimitConfigSupplier.DefaultRateLimitConfigSupplier();
+  }
+
+  /**
    * Rate limiter for OPAQUE authentication endpoints (keyed by credential identifier).
    * Override this bean to supply a custom implementation (e.g. Redis-backed).
    *
@@ -184,8 +196,8 @@ public class HofmannAutoConfiguration {
    */
   @Bean(destroyMethod = "shutdown")
   @ConditionalOnMissingBean(name = "authRateLimiter")
-  public RateLimiter authRateLimiter() {
-    return new InMemoryRateLimiter(RateLimitConfig.authDefault());
+  public RateLimiter authRateLimiter(RateLimitConfigSupplier rateLimitConfigSupplier) {
+    return new InMemoryRateLimiter(rateLimitConfigSupplier.authRateLimitConfig());
   }
 
   /**
@@ -196,8 +208,8 @@ public class HofmannAutoConfiguration {
    */
   @Bean(destroyMethod = "shutdown")
   @ConditionalOnMissingBean(name = "registrationRateLimiter")
-  public RateLimiter registrationRateLimiter() {
-    return new InMemoryRateLimiter(RateLimitConfig.registrationDefault());
+  public RateLimiter registrationRateLimiter(RateLimitConfigSupplier rateLimitConfigSupplier) {
+    return new InMemoryRateLimiter(rateLimitConfigSupplier.registrationRateLimitConfig());
   }
 
   /**
@@ -208,8 +220,8 @@ public class HofmannAutoConfiguration {
    */
   @Bean(destroyMethod = "shutdown")
   @ConditionalOnMissingBean(name = "oprfRateLimiter")
-  public RateLimiter oprfRateLimiter() {
-    return new InMemoryRateLimiter(RateLimitConfig.oprfDefault());
+  public RateLimiter oprfRateLimiter(RateLimitConfigSupplier rateLimitConfigSupplier) {
+    return new InMemoryRateLimiter(rateLimitConfigSupplier.oprfRateLimitConfig());
   }
 
   /**

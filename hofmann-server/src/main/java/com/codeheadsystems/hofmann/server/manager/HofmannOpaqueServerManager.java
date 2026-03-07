@@ -8,9 +8,8 @@ import com.codeheadsystems.hofmann.model.opaque.RegistrationDeleteRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationFinishRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartResponse;
-import com.codeheadsystems.hofmann.server.auth.JwtManager;
 import com.codeheadsystems.hofmann.server.ratelimit.InMemoryRateLimiter;
-import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfig;
+import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfigSupplier;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitExceededException;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
@@ -86,8 +85,8 @@ public class HofmannOpaqueServerManager {
    */
   public HofmannOpaqueServerManager(Server server, CredentialStore credentialStore, JwtManager jwtManager) {
     this(server, credentialStore, jwtManager,
-        new InMemoryRateLimiter(RateLimitConfig.authDefault()),
-        new InMemoryRateLimiter(RateLimitConfig.registrationDefault()));
+        new InMemoryRateLimiter(new RateLimitConfigSupplier.DefaultRateLimitConfigSupplier().authRateLimitConfig()),
+        new InMemoryRateLimiter(new RateLimitConfigSupplier.DefaultRateLimitConfigSupplier().registrationRateLimitConfig()));
   }
 
   /**

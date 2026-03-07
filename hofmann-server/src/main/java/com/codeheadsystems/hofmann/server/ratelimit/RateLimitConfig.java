@@ -8,34 +8,4 @@ package com.codeheadsystems.hofmann.server.ratelimit;
  * @param maxEntries      maximum number of tracked keys (prevents OOM from key enumeration)
  */
 public record RateLimitConfig(int maxTokens, double refillPerSecond, int maxEntries) {
-
-  /**
-   * Default configuration for OPAQUE authentication endpoints.
-   * 10 burst, ~10 per minute per credential.
-   *
-   * @return the rate limit config
-   */
-  public static RateLimitConfig authDefault() {
-    return new RateLimitConfig(10, 10.0 / 60, 50_000);
-  }
-
-  /**
-   * Default configuration for OPAQUE registration endpoints.
-   * 5 burst, ~5 per minute per credential.
-   *
-   * @return the rate limit config
-   */
-  public static RateLimitConfig registrationDefault() {
-    return new RateLimitConfig(5, 5.0 / 60, 50_000);
-  }
-
-  /**
-   * Default configuration for the standalone OPRF endpoint.
-   * 30 burst, ~30 per minute per IP.
-   *
-   * @return the rate limit config
-   */
-  public static RateLimitConfig oprfDefault() {
-    return new RateLimitConfig(30, 30.0 / 60, 50_000);
-  }
 }

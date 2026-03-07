@@ -1,10 +1,10 @@
-package com.codeheadsystems.hofmann.server.auth;
+package com.codeheadsystems.hofmann.server.manager;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
-import com.codeheadsystems.hofmann.server.auth.JwtManager.VerifyResult;
+import com.codeheadsystems.hofmann.server.manager.JwtManager.VerifyResult;
 import com.codeheadsystems.hofmann.server.store.InMemorySessionStore;
 import java.time.Instant;
 import java.util.Optional;

@@ -3,7 +3,6 @@ package com.codeheadsystems.hofmann.server.manager;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.codeheadsystems.hofmann.model.opaque.RegistrationDeleteRequest;
-import com.codeheadsystems.hofmann.server.auth.JwtManager;
 import com.codeheadsystems.hofmann.server.store.InMemoryCredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemorySessionStore;
 import com.codeheadsystems.rfc.opaque.Server;

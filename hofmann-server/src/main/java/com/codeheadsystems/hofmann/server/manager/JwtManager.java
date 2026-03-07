@@ -1,4 +1,4 @@
-package com.codeheadsystems.hofmann.server.auth;
+package com.codeheadsystems.hofmann.server.manager;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;

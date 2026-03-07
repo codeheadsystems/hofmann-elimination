@@ -1,6 +1,6 @@
 package com.codeheadsystems.hofmann.dropwizard.auth;
 
-import com.codeheadsystems.hofmann.server.auth.JwtManager;
+import com.codeheadsystems.hofmann.server.manager.JwtManager;
 import io.dropwizard.auth.AuthenticationException;
 import io.dropwizard.auth.Authenticator;
 import java.util.Optional;

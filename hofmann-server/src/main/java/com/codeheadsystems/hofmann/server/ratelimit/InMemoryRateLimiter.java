@@ -64,6 +64,15 @@ public class InMemoryRateLimiter implements RateLimiter {
     reaper.shutdown();
   }
 
+  // Package-private test helpers
+  int bucketCount() {
+    return buckets.size();
+  }
+
+  void runEvictionNow() {
+    evictStale();
+  }
+
   private void evictStale() {
     long now = System.nanoTime();
     buckets.entrySet().removeIf(e -> (now - e.getValue().lastAccessNanos.get()) > STALE_THRESHOLD_NANOS);

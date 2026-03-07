@@ -1,14 +1,14 @@
 package com.codeheadsystems.hofmann.dropwizard;
 
-import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.hofmann.dropwizard.auth.HofmannAuthenticator;
 import com.codeheadsystems.hofmann.dropwizard.auth.HofmannPrincipal;
 import com.codeheadsystems.hofmann.dropwizard.health.OpaqueServerHealthCheck;
 import com.codeheadsystems.hofmann.model.opaque.OpaqueClientConfigResponse;
 import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
-import com.codeheadsystems.hofmann.server.auth.JwtManager;
 import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
+import com.codeheadsystems.hofmann.server.manager.JwtManager;
 import com.codeheadsystems.hofmann.server.ratelimit.InMemoryRateLimiter;
+import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfigSupplier;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfig;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
 import com.codeheadsystems.hofmann.server.resource.OpaqueResource;
@@ -17,10 +17,11 @@ import com.codeheadsystems.hofmann.server.store.CredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemoryCredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemorySessionStore;
 import com.codeheadsystems.hofmann.server.store.SessionStore;
+import com.codeheadsystems.rfc.common.ByteUtils;
+import com.codeheadsystems.rfc.common.RandomProvider;
 import com.codeheadsystems.rfc.opaque.Server;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
-import com.codeheadsystems.rfc.common.RandomProvider;
 import com.codeheadsystems.rfc.oprf.manager.OprfServerManager;
 import com.codeheadsystems.rfc.oprf.model.ServerProcessorDetail;
 import com.codeheadsystems.rfc.oprf.rfc9497.CurveHashSuite;
@@ -42,6 +43,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.HashSet;
 import java.util.HexFormat;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,6 +85,8 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
   private final CredentialStore credentialStore;
   private final SessionStore sessionStore;
   private final Supplier<ServerProcessorDetail> processorDetailSupplier;
+  private final RateLimitConfigSupplier rateLimitConfigSupplier;
+  private final Function<RateLimitConfig, RateLimiter> rateLimiterFunction;
   private final boolean ephemeralKey;
   private SecureRandom secureRandom = new SecureRandom();
 
@@ -98,6 +102,8 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     this.sessionStore = new InMemorySessionStore();
     this.processorDetailSupplier = null;
     this.ephemeralKey = true;
+    this.rateLimitConfigSupplier = new RateLimitConfigSupplier.DefaultRateLimitConfigSupplier();
+    this.rateLimiterFunction = InMemoryRateLimiter::new;
     log.warn("""
         #################################################################
         # WARNING: Using ephemeral in-memory stores and a random OPRF  #
@@ -106,6 +112,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
         #################################################################
         """);
   }
+
 
   /**
    * Creates a bundle backed by the supplied stores and an optional custom OPRF key supplier.
@@ -122,9 +129,33 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
   public HofmannBundle(CredentialStore credentialStore,
                        SessionStore sessionStore,
                        Supplier<ServerProcessorDetail> processorDetailSupplier) {
+    this(credentialStore, sessionStore, processorDetailSupplier, new RateLimitConfigSupplier.DefaultRateLimitConfigSupplier(), InMemoryRateLimiter::new);
+  }
+
+  /**
+   * Creates a bundle backed by the supplied stores and an optional custom OPRF key supplier.
+   * <p>
+   * When {@code processorDetailSupplier} is non-null it is called on every OPRF request,
+   * allowing key rotation — and {@code oprfMasterKeyHex} in the configuration is ignored.
+   * When {@code null}, {@code oprfMasterKeyHex} must be set in the configuration.
+   *
+   * @param credentialStore         the credential store
+   * @param sessionStore            the session store
+   * @param processorDetailSupplier the processor detail supplier
+   * @param rateLimitConfigSupplier the rate limit config supplier
+   * @param rateLimiterFunction the function to create rate limiters from configs
+   */
+  @Inject
+  public HofmannBundle(CredentialStore credentialStore,
+                       SessionStore sessionStore,
+                       Supplier<ServerProcessorDetail> processorDetailSupplier,
+                       RateLimitConfigSupplier rateLimitConfigSupplier,
+                       Function<RateLimitConfig, RateLimiter> rateLimiterFunction) {
     this.credentialStore = credentialStore;
     this.sessionStore = sessionStore;
     this.processorDetailSupplier = processorDetailSupplier;
+    this.rateLimitConfigSupplier = rateLimitConfigSupplier;
+    this.rateLimiterFunction = rateLimiterFunction;
     this.ephemeralKey = false;
   }
 
@@ -173,8 +204,8 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
         configuration.getArgon2Iterations(),
         configuration.getArgon2Parallelism());
 
-    RateLimiter authRateLimiter = new InMemoryRateLimiter(RateLimitConfig.authDefault());
-    RateLimiter registrationRateLimiter = new InMemoryRateLimiter(RateLimitConfig.registrationDefault());
+    RateLimiter authRateLimiter = rateLimiterFunction.apply(rateLimitConfigSupplier.authRateLimitConfig());
+    RateLimiter registrationRateLimiter = rateLimiterFunction.apply(rateLimitConfigSupplier.registrationRateLimitConfig());
     HofmannOpaqueServerManager hofmannOpaqueServerManager = new HofmannOpaqueServerManager(
         server, credentialStore, jwtManager, authRateLimiter, registrationRateLimiter);
     environment.jersey().register(new OpaqueResource(hofmannOpaqueServerManager, opaqueClientConfig));
@@ -203,7 +234,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     OprfClientConfigResponse oprfClientConfig = new OprfClientConfigResponse(
         configuration.getOprfCipherSuite());
     OprfServerManager oprfServerManager = new OprfServerManager(oprfSuite, oprfSupplier);
-    RateLimiter oprfRateLimiter = new InMemoryRateLimiter(RateLimitConfig.oprfDefault());
+    RateLimiter oprfRateLimiter = rateLimiterFunction.apply(rateLimitConfigSupplier.oprfRateLimitConfig());
     environment.jersey().register(new OprfResource(oprfServerManager, oprfClientConfig, oprfRateLimiter));
 
     // Shutdown lifecycle for manager and rate limiters

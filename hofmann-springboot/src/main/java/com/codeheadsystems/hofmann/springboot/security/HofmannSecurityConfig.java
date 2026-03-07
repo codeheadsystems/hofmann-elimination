@@ -1,6 +1,6 @@
 package com.codeheadsystems.hofmann.springboot.security;
 
-import com.codeheadsystems.hofmann.server.auth.JwtManager;
+import com.codeheadsystems.hofmann.server.manager.JwtManager;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
