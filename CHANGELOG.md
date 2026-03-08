@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.1] - 2026-03-08
+
+### Security
+
+- **TS: Constant-time scalar inversion** — Replaced the custom variable-time `modPow()`
+  in `suite.ts` with `invert()` from `@noble/curves/abstract/modular`, which provides
+  constant-time modular inversion via Fermat's little theorem. Affects OPRF finalize for
+  all Weierstrass and ristretto255 suites.
+- **TS: Constant-time equality for mismatched lengths** — `constantTimeEqual()` in
+  `primitives.ts` no longer early-returns on length mismatch; instead XORs the length
+  difference into the accumulator and iterates over `a.length` entries, preventing
+  timing-based length leakage.
+- **TS: Zero intermediate key material** — `derive3DHKeys()` in `ake.ts` now zeros
+  `dh1`, `dh2`, `dh3`, `ikm`, `prk`, and `handshakeSecret` via `.fill(0)` immediately
+  after use. `generateKE3()` in `client.ts` zeros `km2` and `km3` after MAC computation,
+  including on authentication failure. Matches the Java `OpaqueAke.java` zeroing behavior.
+- **Production KSF enforcement** — Added `allowIdentityKsf` property (default `false`)
+  to `HofmannProperties` (Spring Boot) and `HofmannConfiguration` (Dropwizard). When
+  `argon2MemoryKib=0` without `allowIdentityKsf=true`, startup fails with
+  `IllegalStateException`. Prevents accidental production deployment with the identity
+  KSF (no key stretching).
+
+### Added
+
+- **`OpaqueAuthenticationError`** — New error class in `hofmann-typescript` thrown for
+  HTTP 401 responses from `OpaqueHttpClient._post()` and `deleteRegistration()`. Allows
+  callers to distinguish authentication failures from other server errors, matching the
+  Java `HofmannOpaqueAccessor` behavior. Exported from the package index.
+- **`zeroRegistrationState()` / `zeroAuthState()`** — Utility functions in
+  `hofmann-typescript` for zeroing sensitive `Uint8Array` fields in
+  `ClientRegistrationState` and `ClientAuthState`. Callers invoke cleanup explicitly
+  (matching Java's `AutoCloseable` pattern). Exported from the package index.
+- **`IdentityKsfEnforcementTest`** — Unit test verifying that Spring Boot startup rejects
+  identity KSF without the opt-in flag, accepts it with the flag, and allows Argon2id
+  without the flag.
+
+---
+
 ## [1.2.0] - 2026-03-02
 
 ### Added
@@ -211,6 +249,7 @@ First stable release.
 
 ---
 
+[1.2.1]: https://github.com/codeheadsystems/hofmann-elimination/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/codeheadsystems/hofmann-elimination/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/codeheadsystems/hofmann-elimination/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/codeheadsystems/hofmann-elimination/releases/tag/v1.0.0
