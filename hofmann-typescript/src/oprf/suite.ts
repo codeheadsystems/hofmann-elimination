@@ -10,6 +10,7 @@ import { p384, hashToCurve as p384HashToCurve } from '@noble/curves/p384';
 import { p521, hashToCurve as p521HashToCurve } from '@noble/curves/p521';
 import { ristretto255, ristretto255_hasher } from '@noble/curves/ed25519';
 import { numberToBytesLE, bytesToNumberLE } from '@noble/curves/abstract/utils';
+import { invert } from '@noble/curves/abstract/modular';
 import { sha256 } from '@noble/hashes/sha256';
 import { sha384, sha512 } from '@noble/hashes/sha512';
 import { hmac as nobleHmac } from '@noble/hashes/hmac';
@@ -103,16 +104,6 @@ function os2ip(bytes: Uint8Array): bigint {
   return r;
 }
 
-function modPow(base: bigint, exp: bigint, mod: bigint): bigint {
-  let result = 1n;
-  base = ((base % mod) + mod) % mod;
-  while (exp > 0n) {
-    if (exp & 1n) result = (result * base) % mod;
-    exp >>= 1n;
-    base = (base * base) % mod;
-  }
-  return result;
-}
 
 // Structural type for noble/curves Weierstrass curve instances.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -142,10 +133,6 @@ function createSuite(
   function bigintToBytes(n: bigint): Uint8Array {
     const hex = n.toString(16).padStart(nsk * 2, '0');
     return fromHex(hex);
-  }
-
-  function modInverse(a: bigint): bigint {
-    return modPow(a, ORDER - 2n, ORDER);
   }
 
   function hashToScalar(input: Uint8Array, dst: Uint8Array): bigint {
@@ -180,7 +167,7 @@ function createSuite(
 
     finalize(input: Uint8Array, blindScalar: bigint, evaluatedElement: Uint8Array): Uint8Array {
       const Z = curve.ProjectivePoint.fromHex(evaluatedElement);
-      const N = Z.multiply(modInverse(blindScalar));
+      const N = Z.multiply(invert(blindScalar, ORDER));
       const unblinded = N.toRawBytes(true); // Npk bytes compressed
       const hashInput = concat(
         i2osp(input.length, 2),
@@ -291,10 +278,6 @@ function createRistrettoSuite(): CipherSuite {
     return numberToBytesLE(n, nsk);
   }
 
-  function modInverse(a: bigint): bigint {
-    return modPow(a, ORDER - 2n, ORDER);
-  }
-
   function hashToScalar(input: Uint8Array, dst: Uint8Array): bigint {
     return ristretto255_hasher.hashToScalar(input, { DST: dst });
   }
@@ -328,7 +311,7 @@ function createRistrettoSuite(): CipherSuite {
 
     finalize(input: Uint8Array, blindScalar: bigint, evaluatedElement: Uint8Array): Uint8Array {
       const Z = ristretto255.Point.fromHex(evaluatedElement);
-      const N = Z.multiply(modInverse(blindScalar));
+      const N = Z.multiply(invert(blindScalar, ORDER));
       const unblinded = N.toBytes();
       const hashInput = concat(
         i2osp(input.length, 2),

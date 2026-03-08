@@ -1,6 +1,7 @@
 hofmann:
   context: "hofmann-test"
   argon2-memory-kib: 0
+  allow-identity-ksf: true
   server-key-seed-hex: ""
   oprf-seed-hex: ""
   # Fixed test-only OPRF master key — do not use in production.

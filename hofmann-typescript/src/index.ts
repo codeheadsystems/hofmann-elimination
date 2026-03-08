@@ -43,6 +43,7 @@ export type {
   AuthResult,
   RecoveredCredentials,
 } from './opaque/types.js';
+export { zeroRegistrationState, zeroAuthState } from './opaque/types.js';
 
 // ── OPAQUE crypto ─────────────────────────────────────────────────────────────
 export {
@@ -55,4 +56,4 @@ export {
 export { buildPreamble, derive3DHKeys, verifyServerMac, computeClientMac } from './opaque/ake.js';
 export { OpaqueClient, deriveRandomizedPwd, parseKE2 } from './opaque/client.js';
 export { type KSF, identityKsf, argon2idKsf } from './opaque/ksf.js';
-export { OpaqueHttpClient, type OpaqueHttpClientOptions, type OpaqueConfigResponseDto } from './opaque/http.js';
+export { OpaqueHttpClient, OpaqueAuthenticationError, type OpaqueHttpClientOptions, type OpaqueConfigResponseDto } from './opaque/http.js';

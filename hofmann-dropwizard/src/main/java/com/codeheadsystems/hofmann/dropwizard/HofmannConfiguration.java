@@ -107,6 +107,13 @@ public class HofmannConfiguration extends Configuration {
   private int argon2Parallelism = 1;
 
   /**
+   * Whether the identity KSF (no key stretching) is allowed.  Must be set to {@code true}
+   * when {@code argon2MemoryKib} is 0, otherwise startup fails.  Defaults to {@code false}
+   * to prevent accidental production deployment without key stretching.
+   */
+  private boolean allowIdentityKsf = false;
+
+  /**
    * Allowed CORS origins.  When empty (the default), no CORS headers are added and
    * all cross-origin requests are blocked by the browser's same-origin policy.
    * Set to specific origins (e.g. {@code ["https://app.example.com"]}) to allow
@@ -421,5 +428,25 @@ public class HofmannConfiguration extends Configuration {
   @JsonProperty
   public void setCorsAllowedOrigins(List<String> corsAllowedOrigins) {
     this.corsAllowedOrigins = corsAllowedOrigins;
+  }
+
+  /**
+   * Whether the identity KSF (no key stretching) is allowed.
+   *
+   * @return true if identity KSF is allowed
+   */
+  @JsonProperty
+  public boolean isAllowIdentityKsf() {
+    return allowIdentityKsf;
+  }
+
+  /**
+   * Sets allow identity ksf.
+   *
+   * @param allowIdentityKsf the allow identity ksf
+   */
+  @JsonProperty
+  public void setAllowIdentityKsf(boolean allowIdentityKsf) {
+    this.allowIdentityKsf = allowIdentityKsf;
   }
 }

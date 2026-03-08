@@ -72,3 +72,24 @@ export interface RecoveredCredentials {
   exportKey: Uint8Array;
   envelope: Envelope;
 }
+
+/**
+ * Zero the sensitive fields of a ClientRegistrationState.
+ * BigInteger scalars (blind) are immutable and cannot be zeroed at the JS level.
+ */
+export function zeroRegistrationState(state: ClientRegistrationState): void {
+  state.password.fill(0);
+  state.blindedElement.fill(0);
+}
+
+/**
+ * Zero the sensitive fields of a ClientAuthState.
+ * BigInteger scalars (blind, clientAkeSecretKey) are immutable and cannot be zeroed at the JS level.
+ */
+export function zeroAuthState(state: ClientAuthState): void {
+  state.password.fill(0);
+  state.blindedElement.fill(0);
+  state.clientAkePublicKey.fill(0);
+  state.clientNonce.fill(0);
+  state.ke1Bytes.fill(0);
+}

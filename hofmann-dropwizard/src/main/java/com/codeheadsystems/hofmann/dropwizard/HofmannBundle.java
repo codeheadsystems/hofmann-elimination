@@ -285,6 +285,12 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     OpaqueCipherSuite suite = new OpaqueCipherSuite(oprfSuite);
     byte[] context = configuration.getContext().getBytes(StandardCharsets.UTF_8);
     if (configuration.getArgon2MemoryKib() == 0) {
+      if (!configuration.isAllowIdentityKsf()) {
+        throw new IllegalStateException(
+            "Argon2 is disabled (argon2MemoryKib=0) but allowIdentityKsf is false. "
+                + "Set allowIdentityKsf: true to explicitly allow the identity KSF "
+                + "(no key stretching). Do not use identity KSF in production.");
+      }
       log.warn("Argon2 disabled — using identity KSF. Do not use in production.");
       return new OpaqueConfig(suite, 0, 0, 0, context, new OpaqueConfig.IdentityKsf(), new RandomProvider(secureRandom));
     }

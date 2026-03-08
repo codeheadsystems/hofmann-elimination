@@ -98,6 +98,12 @@ public class HofmannAutoConfiguration {
     OpaqueCipherSuite suite = new OpaqueCipherSuite(oprfSuite);
     byte[] context = props.getContext().getBytes(StandardCharsets.UTF_8);
     if (props.getArgon2MemoryKib() == 0) {
+      if (!props.isAllowIdentityKsf()) {
+        throw new IllegalStateException(
+            "Argon2 is disabled (argon2-memory-kib=0) but allow-identity-ksf is false. "
+                + "Set hofmann.allow-identity-ksf=true to explicitly allow the identity KSF "
+                + "(no key stretching). Do not use identity KSF in production.");
+      }
       log.warn("Argon2 disabled — using identity KSF. Do not use in production.");
       return new OpaqueConfig(suite, 0, 0, 0, context, new OpaqueConfig.IdentityKsf(), new RandomProvider(secureRandom));
     }

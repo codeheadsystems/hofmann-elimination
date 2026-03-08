@@ -11,6 +11,16 @@ import { type KSF, identityKsf, argon2idKsf } from './ksf.js';
 import { type CipherSuite, P256_SHA256, getCipherSuite } from '../oprf/suite.js';
 import type { KE2 } from './types.js';
 
+/**
+ * Thrown when the server responds with HTTP 401, indicating authentication failure.
+ */
+export class OpaqueAuthenticationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OpaqueAuthenticationError';
+  }
+}
+
 export interface OpaqueHttpClientOptions {
   /** OPAQUE protocol context — must match the server's configured context exactly. */
   context?: string;
@@ -275,6 +285,9 @@ export class OpaqueHttpClient {
       body: JSON.stringify(body),
     });
     if (!response.ok) {
+      if (response.status === 401) {
+        throw new OpaqueAuthenticationError(`Delete failed: authentication required`);
+      }
       throw new Error(`Delete failed: ${response.status} ${response.statusText}`);
     }
   }
@@ -286,6 +299,9 @@ export class OpaqueHttpClient {
       body: JSON.stringify(body),
     });
     if (!response.ok) {
+      if (response.status === 401) {
+        throw new OpaqueAuthenticationError(`Authentication failed [${path}]`);
+      }
       const text = await response.text().catch(() => '');
       throw new Error(`OPAQUE server error [${path}]: ${response.status} ${response.statusText}${text ? ` — ${text}` : ''}`);
     }

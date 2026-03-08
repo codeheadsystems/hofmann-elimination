@@ -205,11 +205,17 @@ export class OpaqueClient {
 
     // 6. Verify server MAC
     if (!verifyServerMac(km2, preamble, ke2.serverMac, suite)) {
+      km2.fill(0);
+      km3.fill(0);
       throw new Error('generateKE3: server MAC verification failed');
     }
 
     // 7. Compute client MAC (= KE3 message sent to server)
     const clientMac = computeClientMac(km3, preamble, ke2.serverMac, suite);
+
+    // Zero intermediate MAC keys
+    km2.fill(0);
+    km3.fill(0);
 
     return { clientMac, sessionKey, exportKey };
   }

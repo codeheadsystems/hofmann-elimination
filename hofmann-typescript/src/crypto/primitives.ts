@@ -50,12 +50,13 @@ export function xor(a: Uint8Array, b: Uint8Array): Uint8Array {
 
 /**
  * Constant-time equality check. Accumulates XOR differences so no early exit.
+ * When lengths differ, compares against `a` length to avoid timing leak on length.
  */
 export function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a[i] ^ b[i];
+  const len = a.length;
+  let diff = len ^ b.length;
+  for (let i = 0; i < len; i++) {
+    diff |= a[i] ^ (b[i] ?? 0);
   }
   return diff === 0;
 }

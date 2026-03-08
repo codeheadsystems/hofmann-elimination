@@ -77,11 +77,21 @@ export function derive3DHKeys(
   const ikm = concat(dh1, dh2, dh3);
   const prk = suite.hkdfExtract(undefined, ikm);
 
+  // Zero DH intermediates immediately after use
+  dh1.fill(0);
+  dh2.fill(0);
+  dh3.fill(0);
+  ikm.fill(0);
+
   const preambleHash = suite.hash(preamble);
   const handshakeSecret = suite.hkdfExpandLabel(prk, 'HandshakeSecret', preambleHash, suite.Nh);
   const sessionKey      = suite.hkdfExpandLabel(prk, 'SessionKey',      preambleHash, suite.Nh);
   const km2 = suite.hkdfExpandLabel(handshakeSecret, 'ServerMAC', new Uint8Array(0), suite.Nh);
   const km3 = suite.hkdfExpandLabel(handshakeSecret, 'ClientMAC', new Uint8Array(0), suite.Nh);
+
+  // Zero intermediate key material
+  prk.fill(0);
+  handshakeSecret.fill(0);
 
   return { km2, km3, sessionKey };
 }

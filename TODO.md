@@ -97,6 +97,35 @@ addressed; the rest are listed by priority.
       override with custom `RateLimiter` implementations (e.g. Redis-backed). Spring Boot:
       `@ConditionalOnMissingBean` beans with `@Qualifier`. Dropwizard: created in
       `HofmannBundle.run()` with managed shutdown lifecycle.
+- [x] **TS: Replace custom `modPow` with noble's `invert()`** — Removed the custom
+      variable-time `modPow()` function from `suite.ts`. Weierstrass suites now use
+      `invert(blindScalar, ORDER)` from `@noble/curves/abstract/modular`, which provides
+      constant-time modular inversion. Ristretto255 suite uses the same `invert()`.
+- [x] **TS: Constant-time `constantTimeEqual()` for length mismatch** — Replaced
+      early-return `if (a.length !== b.length) return false` with branch-free
+      `diff = len ^ b.length` that XORs the length difference into the accumulator,
+      then compares up to `a.length` using `b[i] ?? 0` for out-of-bounds access.
+- [x] **TS: Distinguish 401 from other HTTP errors** — Added `OpaqueAuthenticationError`
+      class (extends `Error`). Both `_post()` and `deleteRegistration()` in
+      `OpaqueHttpClient` now throw `OpaqueAuthenticationError` for HTTP 401 responses,
+      matching the Java `HofmannOpaqueAccessor` behavior. Exported from package index.
+- [x] **TS: Zero intermediate key material** — `derive3DHKeys()` in `ake.ts` now
+      zeros `dh1`, `dh2`, `dh3`, `ikm`, `prk`, and `handshakeSecret` via `.fill(0)`
+      immediately after use. `generateKE3()` in `client.ts` zeros `km2` and `km3`
+      after computing MACs (including on auth failure). Matches Java `OpaqueAke.java`.
+- [x] **TS: Add cleanup utilities for client state** — Added `zeroRegistrationState()`
+      and `zeroAuthState()` functions in `types.ts`, exported from package index.
+      These zero all `Uint8Array` fields in `ClientRegistrationState` and
+      `ClientAuthState` respectively. Callers control when to invoke cleanup
+      (matching Java's `AutoCloseable` pattern). `BigInteger` scalars remain
+      immutable and cannot be zeroed at the JS level.
+- [x] **Production KSF enforcement** — Added `allowIdentityKsf` property (default
+      `false`) to both `HofmannProperties` (Spring Boot) and `HofmannConfiguration`
+      (Dropwizard). When `argon2MemoryKib=0` and `allowIdentityKsf` is not `true`,
+      startup fails with `IllegalStateException` explaining how to opt in. Test
+      configs updated with `allow-identity-ksf: true` / `allowIdentityKsf: true`.
+      Unit test in `IdentityKsfEnforcementTest` verifies rejection, opt-in, and
+      Argon2id-without-flag paths.
 
 ## P1: Important — Security hardening
 
@@ -108,6 +137,4 @@ addressed; the rest are listed by priority.
 
 ## P3: Good to have
 
-- [ ] **Production KSF enforcement** — The identity KSF is correctly flagged for
-      test use only. Consider adding a runtime check that rejects identity KSF
-      in non-test configurations to prevent accidental production deployment.
+(All P3 items completed.)

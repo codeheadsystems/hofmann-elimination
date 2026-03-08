@@ -5,6 +5,7 @@ context: "hofmann-test"
 
 # 0 = identity KSF (no Argon2) — fast for tests
 argon2MemoryKib: 0
+allowIdentityKsf: true
 
 # Empty seeds → ephemeral random key generation on each startup
 serverKeySeedHex: ""

@@ -21,6 +21,7 @@ public class HofmannProperties {
   private int argon2MemoryKib = 65536;
   private int argon2Iterations = 3;
   private int argon2Parallelism = 1;
+  private boolean allowIdentityKsf = false;
 
   /**
    * Gets opaque cipher suite.
@@ -254,5 +255,25 @@ public class HofmannProperties {
    */
   public void setArgon2Parallelism(int argon2Parallelism) {
     this.argon2Parallelism = argon2Parallelism;
+  }
+
+  /**
+   * Whether the identity KSF (no key stretching) is allowed. Must be set to {@code true}
+   * when {@code argon2MemoryKib} is 0, otherwise startup fails. Defaults to {@code false}
+   * to prevent accidental production deployment without key stretching.
+   *
+   * @return true if identity KSF is allowed
+   */
+  public boolean isAllowIdentityKsf() {
+    return allowIdentityKsf;
+  }
+
+  /**
+   * Sets allow identity ksf.
+   *
+   * @param allowIdentityKsf the allow identity ksf
+   */
+  public void setAllowIdentityKsf(boolean allowIdentityKsf) {
+    this.allowIdentityKsf = allowIdentityKsf;
   }
 }
