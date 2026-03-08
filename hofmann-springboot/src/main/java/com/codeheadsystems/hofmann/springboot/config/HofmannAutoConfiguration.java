@@ -9,7 +9,9 @@ import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfigSupplier;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemoryCredentialStore;
+import com.codeheadsystems.hofmann.server.store.InMemoryPendingSessionStore;
 import com.codeheadsystems.hofmann.server.store.InMemorySessionStore;
+import com.codeheadsystems.hofmann.server.store.PendingSessionStore;
 import com.codeheadsystems.hofmann.server.store.SessionStore;
 import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.common.RandomProvider;
@@ -231,6 +233,22 @@ public class HofmannAutoConfiguration {
   }
 
   /**
+   * Pending session store for in-flight OPAQUE authentication sessions.
+   * <p>
+   * Override this bean with a distributed implementation (e.g. Redis-backed) for
+   * multi-node cluster deployments where authStart and authFinish may be routed
+   * to different nodes.
+   *
+   * @return the pending session store
+   */
+  @Bean(destroyMethod = "shutdown")
+  @ConditionalOnMissingBean
+  public PendingSessionStore pendingSessionStore() {
+    log.warn("Using in-memory pending session store. Not suitable for multi-node clusters. Do not use in production.");
+    return new InMemoryPendingSessionStore();
+  }
+
+  /**
    * Opaque server manager hofmann opaque server manager.
    *
    * @param server                  the server
@@ -238,6 +256,7 @@ public class HofmannAutoConfiguration {
    * @param jwtManager              the jwt manager
    * @param authRateLimiter         the auth rate limiter
    * @param registrationRateLimiter the registration rate limiter
+   * @param pendingSessionStore     the pending session store
    * @return the hofmann opaque server manager
    */
   @Bean(destroyMethod = "shutdown")
@@ -245,9 +264,10 @@ public class HofmannAutoConfiguration {
   public HofmannOpaqueServerManager opaqueServerManager(Server server, CredentialStore credentialStore,
                                                         JwtManager jwtManager,
                                                         @Qualifier("authRateLimiter") RateLimiter authRateLimiter,
-                                                        @Qualifier("registrationRateLimiter") RateLimiter registrationRateLimiter) {
+                                                        @Qualifier("registrationRateLimiter") RateLimiter registrationRateLimiter,
+                                                        PendingSessionStore pendingSessionStore) {
     return new HofmannOpaqueServerManager(server, credentialStore, jwtManager,
-        authRateLimiter, registrationRateLimiter);
+        authRateLimiter, registrationRateLimiter, pendingSessionStore);
   }
 
   /**

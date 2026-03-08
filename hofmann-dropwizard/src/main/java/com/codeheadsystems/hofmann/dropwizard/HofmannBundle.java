@@ -15,7 +15,9 @@ import com.codeheadsystems.hofmann.server.resource.OpaqueResource;
 import com.codeheadsystems.hofmann.server.resource.OprfResource;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemoryCredentialStore;
+import com.codeheadsystems.hofmann.server.store.InMemoryPendingSessionStore;
 import com.codeheadsystems.hofmann.server.store.InMemorySessionStore;
+import com.codeheadsystems.hofmann.server.store.PendingSessionStore;
 import com.codeheadsystems.hofmann.server.store.SessionStore;
 import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.common.RandomProvider;
@@ -84,6 +86,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
 
   private final CredentialStore credentialStore;
   private final SessionStore sessionStore;
+  private final PendingSessionStore pendingSessionStore;
   private final Supplier<ServerProcessorDetail> processorDetailSupplier;
   private final RateLimitConfigSupplier rateLimitConfigSupplier;
   private final Function<RateLimitConfig, RateLimiter> rateLimiterFunction;
@@ -100,6 +103,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
   public HofmannBundle() {
     this.credentialStore = new InMemoryCredentialStore();
     this.sessionStore = new InMemorySessionStore();
+    this.pendingSessionStore = new InMemoryPendingSessionStore();
     this.processorDetailSupplier = null;
     this.ephemeralKey = true;
     this.rateLimitConfigSupplier = new RateLimitConfigSupplier.DefaultRateLimitConfigSupplier();
@@ -116,6 +120,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
 
   /**
    * Creates a bundle backed by the supplied stores and an optional custom OPRF key supplier.
+   * Uses a default in-memory pending session store.
    * <p>
    * When {@code processorDetailSupplier} is non-null it is called on every OPRF request,
    * allowing key rotation — and {@code oprfMasterKeyHex} in the configuration is ignored.
@@ -129,7 +134,8 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
   public HofmannBundle(CredentialStore credentialStore,
                        SessionStore sessionStore,
                        Supplier<ServerProcessorDetail> processorDetailSupplier) {
-    this(credentialStore, sessionStore, processorDetailSupplier, new RateLimitConfigSupplier.DefaultRateLimitConfigSupplier(), InMemoryRateLimiter::new);
+    this(credentialStore, sessionStore, new InMemoryPendingSessionStore(), processorDetailSupplier,
+        new RateLimitConfigSupplier.DefaultRateLimitConfigSupplier(), InMemoryRateLimiter::new);
   }
 
   /**
@@ -141,6 +147,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
    *
    * @param credentialStore         the credential store
    * @param sessionStore            the session store
+   * @param pendingSessionStore     the pending session store
    * @param processorDetailSupplier the processor detail supplier
    * @param rateLimitConfigSupplier the rate limit config supplier
    * @param rateLimiterFunction the function to create rate limiters from configs
@@ -148,11 +155,13 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
   @Inject
   public HofmannBundle(CredentialStore credentialStore,
                        SessionStore sessionStore,
+                       PendingSessionStore pendingSessionStore,
                        Supplier<ServerProcessorDetail> processorDetailSupplier,
                        RateLimitConfigSupplier rateLimitConfigSupplier,
                        Function<RateLimitConfig, RateLimiter> rateLimiterFunction) {
     this.credentialStore = credentialStore;
     this.sessionStore = sessionStore;
+    this.pendingSessionStore = pendingSessionStore;
     this.processorDetailSupplier = processorDetailSupplier;
     this.rateLimitConfigSupplier = rateLimitConfigSupplier;
     this.rateLimiterFunction = rateLimiterFunction;
@@ -207,7 +216,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     RateLimiter authRateLimiter = rateLimiterFunction.apply(rateLimitConfigSupplier.authRateLimitConfig());
     RateLimiter registrationRateLimiter = rateLimiterFunction.apply(rateLimitConfigSupplier.registrationRateLimitConfig());
     HofmannOpaqueServerManager hofmannOpaqueServerManager = new HofmannOpaqueServerManager(
-        server, credentialStore, jwtManager, authRateLimiter, registrationRateLimiter);
+        server, credentialStore, jwtManager, authRateLimiter, registrationRateLimiter, pendingSessionStore);
     environment.jersey().register(new OpaqueResource(hofmannOpaqueServerManager, opaqueClientConfig));
     environment.healthChecks().register("opaque-server", new OpaqueServerHealthCheck(server));
 

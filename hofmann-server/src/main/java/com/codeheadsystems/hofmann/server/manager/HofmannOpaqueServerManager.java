@@ -13,19 +13,15 @@ import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfigSupplier;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitExceededException;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
+import com.codeheadsystems.hofmann.server.store.InMemoryPendingSessionStore;
+import com.codeheadsystems.hofmann.server.store.PendingSessionStore;
 import com.codeheadsystems.rfc.opaque.Server;
 import com.codeheadsystems.rfc.opaque.model.KE1;
 import com.codeheadsystems.rfc.opaque.model.RegistrationRecord;
-import com.codeheadsystems.rfc.opaque.model.ServerAuthState;
 import com.codeheadsystems.rfc.opaque.model.ServerKE2Result;
-import java.time.Instant;
 import java.util.Base64;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,35 +45,16 @@ public class HofmannOpaqueServerManager {
   private static final Logger log = LoggerFactory.getLogger(HofmannOpaqueServerManager.class);
   private static final Base64.Encoder B64 = Base64.getEncoder();
 
-  /**
-   * TTL for pending authentication sessions (seconds).
-   */
-  private static final long SESSION_TTL_SECONDS = 120;
-
-  /**
-   * Maximum concurrent pending sessions.
-   * An attacker spamming /auth/start without finishing could otherwise cause OOM.
-   */
-  private static final int MAX_PENDING_SESSIONS = 10_000;
-
   private final Server server;
   private final CredentialStore credentialStore;
   private final JwtManager jwtManager;
   private final RateLimiter authRateLimiter;
   private final RateLimiter registrationRateLimiter;
-
-  private final ConcurrentHashMap<String, TimestampedAuthState> pendingSessions =
-      new ConcurrentHashMap<>();
-
-  private final ScheduledExecutorService sessionReaper =
-      Executors.newSingleThreadScheduledExecutor(r -> {
-        Thread t = new Thread(r, "opaque-session-reaper");
-        t.setDaemon(true);
-        return t;
-      });
+  private final PendingSessionStore pendingSessionStore;
 
   /**
-   * Instantiates a new Hofmann opaque server manager with default rate limiters.
+   * Instantiates a new Hofmann opaque server manager with default rate limiters
+   * and an in-memory pending session store.
    *
    * @param server          the server
    * @param credentialStore the credential store
@@ -90,7 +67,8 @@ public class HofmannOpaqueServerManager {
   }
 
   /**
-   * Instantiates a new Hofmann opaque server manager with custom rate limiters.
+   * Instantiates a new Hofmann opaque server manager with custom rate limiters
+   * and a default in-memory pending session store.
    *
    * @param server                  the server
    * @param credentialStore         the credential store
@@ -100,27 +78,41 @@ public class HofmannOpaqueServerManager {
    */
   public HofmannOpaqueServerManager(Server server, CredentialStore credentialStore, JwtManager jwtManager,
                                     RateLimiter authRateLimiter, RateLimiter registrationRateLimiter) {
+    this(server, credentialStore, jwtManager, authRateLimiter, registrationRateLimiter,
+        new InMemoryPendingSessionStore());
+  }
+
+  /**
+   * Instantiates a new Hofmann opaque server manager with custom rate limiters
+   * and a custom pending session store.
+   *
+   * @param server                  the server
+   * @param credentialStore         the credential store
+   * @param jwtManager              the jwt manager
+   * @param authRateLimiter         rate limiter for authentication endpoints (keyed by credential)
+   * @param registrationRateLimiter rate limiter for registration endpoints (keyed by credential)
+   * @param pendingSessionStore     store for in-flight authentication sessions
+   */
+  public HofmannOpaqueServerManager(Server server, CredentialStore credentialStore, JwtManager jwtManager,
+                                    RateLimiter authRateLimiter, RateLimiter registrationRateLimiter,
+                                    PendingSessionStore pendingSessionStore) {
     this.server = server;
     this.credentialStore = credentialStore;
     this.jwtManager = jwtManager;
     this.authRateLimiter = authRateLimiter;
     this.registrationRateLimiter = registrationRateLimiter;
-    sessionReaper.scheduleAtFixedRate(
-        () -> {
-          Instant cutoff = Instant.now().minusSeconds(SESSION_TTL_SECONDS);
-          pendingSessions.entrySet().removeIf(e -> e.getValue().createdAt().isBefore(cutoff));
-        }, SESSION_TTL_SECONDS, SESSION_TTL_SECONDS / 4, TimeUnit.SECONDS);
+    this.pendingSessionStore = pendingSessionStore;
   }
 
   /**
-   * Shuts down the session reaper thread pool.
+   * Shuts down background resources (pending session reaper, rate limiters).
    * <p>
-   * Should be called on application shutdown to release the background thread.
+   * Should be called on application shutdown to release background threads.
    * In Dropwizard, register this instance as a {@code Managed} component.
    * In Spring Boot, declare the bean with {@code @Bean(destroyMethod = "shutdown")}.
    */
   public void shutdown() {
-    sessionReaper.shutdown();
+    pendingSessionStore.shutdown();
     authRateLimiter.shutdown();
     registrationRateLimiter.shutdown();
   }
@@ -209,13 +201,9 @@ public class HofmannOpaqueServerManager {
         .map(r -> server.generateKE2(null, r, credentialIdentifier, ke1, null))
         .orElseGet(() -> server.generateFakeKE2(ke1, credentialIdentifier, null, null));
 
-    if (pendingSessions.size() >= MAX_PENDING_SESSIONS) {
-      throw new IllegalStateException("Too many pending sessions");
-    }
     String sessionToken = UUID.randomUUID().toString();
-    pendingSessions.put(sessionToken,
-        new TimestampedAuthState(ke2Result.serverAuthState(), Instant.now(),
-            req.credentialIdentifierBase64()));
+    pendingSessionStore.store(sessionToken, ke2Result.serverAuthState(),
+        req.credentialIdentifierBase64());
 
     return new AuthStartResponse(sessionToken, ke2Result.ke2());
   }
@@ -230,20 +218,11 @@ public class HofmannOpaqueServerManager {
    */
   public AuthFinishResponse authFinish(AuthFinishRequest req) {
     log.debug("authFinish(sessionToken={})", req.sessionToken());
-    TimestampedAuthState timestamped = pendingSessions.remove(req.sessionToken());
-    if (timestamped == null
-        || timestamped.createdAt().isBefore(Instant.now().minusSeconds(SESSION_TTL_SECONDS))) {
-      throw new SecurityException("Session not found or expired");
-    }
-    byte[] sessionKey = server.serverFinish(timestamped.state(), req.ke3());
+    PendingSessionStore.PendingSession pending = pendingSessionStore.remove(req.sessionToken())
+        .orElseThrow(() -> new SecurityException("Session not found or expired"));
+    byte[] sessionKey = server.serverFinish(pending.state(), req.ke3());
     String sessionKeyBase64 = B64.encodeToString(sessionKey);
-    String token = jwtManager.issueToken(timestamped.credentialIdentifierBase64(), sessionKeyBase64);
+    String token = jwtManager.issueToken(pending.credentialIdentifierBase64(), sessionKeyBase64);
     return new AuthFinishResponse(sessionKeyBase64, token);
-  }
-
-  private record TimestampedAuthState(
-      ServerAuthState state,
-      Instant createdAt,
-      String credentialIdentifierBase64) {
   }
 }
