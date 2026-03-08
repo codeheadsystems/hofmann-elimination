@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 description = "Rust implementation of RFC 9380 (Hash-to-Curve), RFC 9497 (OPRF), and RFC 9807 (OPAQUE)"
 license = "Apache-2.0"
+repository = "https://github.com/wolpert/hofmann-elimination"
+keywords = ["opaque", "oprf", "hash-to-curve", "pake", "cryptography"]
+categories = ["cryptography"]
 
 [dependencies]
 # Elliptic curves (RustCrypto)
