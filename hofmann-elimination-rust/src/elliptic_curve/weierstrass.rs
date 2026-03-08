@@ -277,8 +277,17 @@ fn decode_point_p384(bytes: &[u8]) -> ProjectivePoint<p384::NistP384> {
 ///
 /// P-521 scalars are 66 bytes but `U576` requires 72 bytes, so we zero-pad
 /// to the left before calling `from_be_slice`.
+///
+/// # Panics
+///
+/// Panics if `bytes` is longer than 72 bytes.
 fn decode_scalar_p521(bytes: &[u8]) -> p521::Scalar {
     use elliptic_curve::bigint::U576;
+    assert!(
+        bytes.len() <= 72,
+        "P-521 scalar bytes too long: {} > 72",
+        bytes.len()
+    );
     let mut padded = [0u8; 72];
     let start = 72 - bytes.len();
     padded[start..].copy_from_slice(bytes);

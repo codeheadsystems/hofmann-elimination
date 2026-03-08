@@ -149,12 +149,152 @@ impl ExpandMessageXmd {
 mod tests {
     use super::*;
 
+    fn hex(s: &str) -> Vec<u8> {
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+            .collect()
+    }
+
+    // ── RFC 9380 Appendix K.1: expand_message_xmd(SHA-256), standard DST ──
+
+    const DST: &[u8] = b"QUUX-V01-CS02-with-expander-SHA256-128";
+
     #[test]
-    fn test_expand_sha256_basic() {
-        // RFC 9380 test vector: expand_message_xmd(SHA-256)
+    fn rfc9380_k1_empty_msg_len32() {
         let xmd = ExpandMessageXmd::for_sha256();
-        let dst = b"QUUX-V01-CS02-with-expander-SHA256-128";
-        let result = xmd.expand(b"", dst, 0x20);
-        assert_eq!(result.len(), 0x20);
+        let result = xmd.expand(b"", DST, 0x20);
+        assert_eq!(
+            result,
+            hex("68a985b87eb6b46952128911f2a4412bbc302a9d759667f87f7a21d803f07235")
+        );
+    }
+
+    #[test]
+    fn rfc9380_k1_abc_len32() {
+        let xmd = ExpandMessageXmd::for_sha256();
+        let result = xmd.expand(b"abc", DST, 0x20);
+        assert_eq!(
+            result,
+            hex("d8ccab23b5985ccea865c6c97b6e5b8350e794e603b4b97902f53a8a0d605615")
+        );
+    }
+
+    #[test]
+    fn rfc9380_k1_abcdef0123456789_len32() {
+        let xmd = ExpandMessageXmd::for_sha256();
+        let result = xmd.expand(b"abcdef0123456789", DST, 0x20);
+        assert_eq!(
+            result,
+            hex("eff31487c770a893cfb36f912fbfcbff40d5661771ca4b2cb4eafe524333f5c1")
+        );
+    }
+
+    #[test]
+    fn rfc9380_k1_q128_len32() {
+        let xmd = ExpandMessageXmd::for_sha256();
+        let msg = "q128_".to_string() + &"q".repeat(128);
+        let result = xmd.expand(msg.as_bytes(), DST, 0x20);
+        assert_eq!(
+            result,
+            hex("b23a1d2b4d97b2ef7785562a7e8bac7eed54ed6e97e29aa51bfe3f12ddad1ff9")
+        );
+    }
+
+    #[test]
+    fn rfc9380_k1_a512_len32() {
+        let xmd = ExpandMessageXmd::for_sha256();
+        let msg = "a512_".to_string() + &"a".repeat(512);
+        let result = xmd.expand(msg.as_bytes(), DST, 0x20);
+        assert_eq!(
+            result,
+            hex("4623227bcc01293b8c130bf771da8c298dede7383243dc0993d2d94823958c4c")
+        );
+    }
+
+    #[test]
+    fn rfc9380_k1_empty_msg_len128() {
+        let xmd = ExpandMessageXmd::for_sha256();
+        let result = xmd.expand(b"", DST, 0x80);
+        assert_eq!(
+            result,
+            hex("af84c27ccfd45d41914fdff5df25293e221afc53d8ad2ac06d5e3e29485dadbee0d121587713a3e0dd4d5e69e93eb7cd4f5df4cd103e188cf60cb02edc3edf18eda8576c412b18ffb658e3dd6ec849469b979d444cf7b26911a08e63cf31f9dcc541708d3491184472c2c29bb749d4286b004ceb5ee6b9a7fa5b646c993f0ced")
+        );
+    }
+
+    #[test]
+    fn rfc9380_k1_abc_len128() {
+        let xmd = ExpandMessageXmd::for_sha256();
+        let result = xmd.expand(b"abc", DST, 0x80);
+        assert_eq!(
+            result,
+            hex("abba86a6129e366fc877aab32fc4ffc70120d8996c88aee2fe4b32d6c7b6437a647e6c3163d40b76a73cf6a5674ef1d890f95b664ee0afa5359a5c4e07985635bbecbac65d747d3d2da7ec2b8221b17b0ca9dc8a1ac1c07ea6a1e60583e2cb00058e77b7b72a298425cd1b941ad4ec65e8afc50303a22c0f99b0509b4c895f40")
+        );
+    }
+
+    // ── RFC 9380 Appendix K.2: expand_message_xmd(SHA-256), long DST (256 bytes) ──
+
+    fn long_dst() -> Vec<u8> {
+        let mut dst = b"QUUX-V01-CS02-with-expander-SHA256-128-long-DST-".to_vec();
+        dst.extend(std::iter::repeat(b'1').take(208));
+        assert_eq!(dst.len(), 256);
+        dst
+    }
+
+    #[test]
+    fn rfc9380_k2_empty_msg_len32() {
+        let xmd = ExpandMessageXmd::for_sha256();
+        let dst = long_dst();
+        let result = xmd.expand(b"", &dst, 0x20);
+        assert_eq!(
+            result,
+            hex("e8dc0c8b686b7ef2074086fbdd2f30e3f8bfbd3bdf177f73f04b97ce618a3ed3")
+        );
+    }
+
+    #[test]
+    fn rfc9380_k2_abc_len32() {
+        let xmd = ExpandMessageXmd::for_sha256();
+        let dst = long_dst();
+        let result = xmd.expand(b"abc", &dst, 0x20);
+        assert_eq!(
+            result,
+            hex("52dbf4f36cf560fca57dedec2ad924ee9c266341d8f3d6afe5171733b16bbb12")
+        );
+    }
+
+    #[test]
+    fn rfc9380_k2_abcdef0123456789_len32() {
+        let xmd = ExpandMessageXmd::for_sha256();
+        let dst = long_dst();
+        let result = xmd.expand(b"abcdef0123456789", &dst, 0x20);
+        assert_eq!(
+            result,
+            hex("35387dcf22618f3728e6c686490f8b431f76550b0b2c61cbc1ce7001536f4521")
+        );
+    }
+
+    #[test]
+    fn rfc9380_k2_q128_len32() {
+        let xmd = ExpandMessageXmd::for_sha256();
+        let dst = long_dst();
+        let msg = "q128_".to_string() + &"q".repeat(128);
+        let result = xmd.expand(msg.as_bytes(), &dst, 0x20);
+        assert_eq!(
+            result,
+            hex("01b637612bb18e840028be900a833a74414140dde0c4754c198532c3a0ba42bc")
+        );
+    }
+
+    #[test]
+    fn rfc9380_k2_a512_len32() {
+        let xmd = ExpandMessageXmd::for_sha256();
+        let dst = long_dst();
+        let msg = "a512_".to_string() + &"a".repeat(512);
+        let result = xmd.expand(msg.as_bytes(), &dst, 0x20);
+        assert_eq!(
+            result,
+            hex("20cce7033cabc5460743180be6fa8aac5a103f56d481cf369a8accc0c374431b")
+        );
     }
 }

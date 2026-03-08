@@ -32,12 +32,19 @@ pub struct KE2 {
 
 impl KE2 {
     /// Deserialize from bytes using the config for size constants.
-    pub fn deserialize(config: &OpaqueConfig, data: &[u8]) -> Self {
+    ///
+    /// Returns `Err` if `data` is shorter than the expected KE2 size.
+    pub fn deserialize(config: &OpaqueConfig, data: &[u8]) -> Result<Self, &'static str> {
         let noe = config.noe();
         let nn = NN;
         let masked_response_size = config.masked_response_size();
         let npk = config.npk();
         let nm = config.nm();
+
+        let expected_len = noe + nn + masked_response_size + nn + npk + nm;
+        if data.len() < expected_len {
+            return Err("KE2 data too short");
+        }
 
         let mut offset = 0;
 
@@ -64,12 +71,12 @@ impl KE2 {
 
         let server_mac = data[offset..offset + nm].to_vec();
 
-        Self {
+        Ok(Self {
             credential_response,
             server_nonce,
             server_ake_public_key,
             server_mac,
-        }
+        })
     }
 }
 
@@ -112,6 +119,12 @@ pub struct RegistrationRecord {
     pub client_public_key: Vec<u8>,
     pub masking_key: Vec<u8>,
     pub envelope: Envelope,
+}
+
+impl Drop for RegistrationRecord {
+    fn drop(&mut self) {
+        self.masking_key.zeroize();
+    }
 }
 
 /// OPAQUE envelope: protects the client's private key.
@@ -205,11 +218,25 @@ pub struct ServerAuthState {
     pub session_key: Vec<u8>,
 }
 
+impl Drop for ServerAuthState {
+    fn drop(&mut self) {
+        self.expected_client_mac.zeroize();
+        self.session_key.zeroize();
+    }
+}
+
 /// Result of successful client authentication.
 pub struct AuthResult {
     pub ke3: KE3,
     pub session_key: Vec<u8>,
     pub export_key: Vec<u8>,
+}
+
+impl Drop for AuthResult {
+    fn drop(&mut self) {
+        self.session_key.zeroize();
+        self.export_key.zeroize();
+    }
 }
 
 /// Bundle wrapping server GenerateKE2 result.

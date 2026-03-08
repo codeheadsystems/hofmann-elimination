@@ -57,8 +57,8 @@
 //!
 //! This library has **not** been formally audited. Use at your own risk in
 //! production systems. All MAC comparisons use constant-time equality, and
-//! sensitive state (`ClientAuthState`, `ClientRegistrationState`) is zeroized
-//! on drop.
+//! sensitive state (`ClientAuthState`, `ClientRegistrationState`,
+//! `ServerAuthState`, `AuthResult`, `RegistrationRecord`) is zeroized on drop.
 
 pub mod common;
 pub mod elliptic_curve;

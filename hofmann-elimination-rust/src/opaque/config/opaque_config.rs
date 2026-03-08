@@ -3,34 +3,6 @@ use super::OpaqueCipherSuite;
 /// Nonce length — suite-independent (always 32).
 pub const NN: usize = 32;
 
-/// Key Stretching Function trait for hardening OPRF output before key derivation.
-///
-/// Applied between OPRF finalize and HKDF-Extract in the `derive_randomized_pwd`
-/// step. In production, use [`Argon2idKsf`]; for test vectors, use [`IdentityKsf`].
-pub trait KeyStretchingFunction: Send + Sync {
-    /// Stretches `input` to produce hardened key material of length `nh`.
-    fn stretch(&self, input: &[u8], nh: usize) -> Vec<u8>;
-}
-
-/// Identity KSF: returns input unchanged. Used for CFRG test vectors.
-pub struct IdentityKsf;
-
-impl KeyStretchingFunction for IdentityKsf {
-    fn stretch(&self, input: &[u8], _nh: usize) -> Vec<u8> {
-        input.to_vec()
-    }
-}
-
-/// Argon2id KSF. Uses the config's Argon2id parameters.
-/// Salt is a 32-byte all-zero array per OPAQUE convention.
-pub struct Argon2idKsf;
-
-impl KeyStretchingFunction for Argon2idKsf {
-    fn stretch(&self, _input: &[u8], _nh: usize) -> Vec<u8> {
-        panic!("Argon2idKsf::stretch should not be called directly; use OpaqueConfig::stretch_password");
-    }
-}
-
 /// Configuration for the OPAQUE-3DH protocol.
 ///
 /// Bundles a cipher suite with optional Argon2id key stretching parameters

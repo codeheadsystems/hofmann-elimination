@@ -179,6 +179,7 @@ impl<'a> OpaqueServer<'a> {
     // --- Deterministic API (for testing) ---
 
     /// Generates KE2 with deterministic nonces and seeds.
+    #[allow(clippy::too_many_arguments)]
     pub fn generate_ke2_deterministic(
         &self,
         server_identity: Option<&[u8]>,

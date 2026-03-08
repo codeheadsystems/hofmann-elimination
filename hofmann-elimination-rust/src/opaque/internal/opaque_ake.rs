@@ -3,12 +3,21 @@ use crate::opaque::config::OpaqueConfig;
 use crate::opaque::config::NN;
 use crate::opaque::internal::opaque_credentials;
 use crate::opaque::model::*;
+use zeroize::Zeroize;
 
 /// Keys derived from the 3DH input key material and preamble.
 struct DerivedKeys {
     km2: Vec<u8>,
     km3: Vec<u8>,
     session_key: Vec<u8>,
+}
+
+impl Drop for DerivedKeys {
+    fn drop(&mut self) {
+        self.km2.zeroize();
+        self.km3.zeroize();
+        self.session_key.zeroize();
+    }
 }
 
 fn encode_vector(data: &[u8]) -> Vec<u8> {
@@ -69,6 +78,7 @@ fn derive_keys(config: &OpaqueConfig, ikm: &[u8], preamble: &[u8]) -> DerivedKey
 }
 
 /// Server GenerateKE2 with deterministic nonces and seeds.
+#[allow(clippy::too_many_arguments)]
 pub fn generate_ke2_deterministic(
     config: &OpaqueConfig,
     server_identity: Option<&[u8]>,
@@ -121,7 +131,7 @@ pub fn generate_ke2_deterministic(
     let dh3 = gs.scalar_multiply(&server_ake_sk, &record.client_public_key);
     let ikm = concat(&[&dh1, &dh2, &dh3]);
 
-    let keys = derive_keys(config, &ikm, &preamble);
+    let mut keys = derive_keys(config, &ikm, &preamble);
     let preamble_hash = suite.hash(&preamble);
     let server_mac = suite.hmac(&keys.km2, &preamble_hash);
     let expected_client_mac =
@@ -129,7 +139,7 @@ pub fn generate_ke2_deterministic(
 
     let auth_state = ServerAuthState {
         expected_client_mac,
-        session_key: keys.session_key,
+        session_key: std::mem::take(&mut keys.session_key),
     };
     let ke2 = KE2 {
         credential_response: cred_response,
@@ -145,6 +155,7 @@ pub fn generate_ke2_deterministic(
 }
 
 /// Server GenerateKE2 with random nonces.
+#[allow(clippy::too_many_arguments)]
 pub fn generate_ke2(
     config: &OpaqueConfig,
     server_identity: Option<&[u8]>,
@@ -225,7 +236,7 @@ pub fn generate_ke3(
     let dh3 = gs.scalar_multiply(&recovered.client_private_key, &ke2.server_ake_public_key);
     let ikm = concat(&[&dh1, &dh2, &dh3]);
 
-    let keys = derive_keys(config, &ikm, &preamble);
+    let mut keys = derive_keys(config, &ikm, &preamble);
     let preamble_hash = suite.hash(&preamble);
     let expected_server_mac = suite.hmac(&keys.km2, &preamble_hash);
 
@@ -240,7 +251,7 @@ pub fn generate_ke3(
 
     Ok(AuthResult {
         ke3: KE3 { client_mac },
-        session_key: keys.session_key,
+        session_key: std::mem::take(&mut keys.session_key),
         export_key: recovered.export_key,
     })
 }

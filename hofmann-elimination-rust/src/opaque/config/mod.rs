@@ -11,4 +11,4 @@ mod opaque_cipher_suite;
 mod opaque_config;
 
 pub use opaque_cipher_suite::{AkeKeyPair, OpaqueCipherSuite};
-pub use opaque_config::{Argon2idKsf, IdentityKsf, KeyStretchingFunction, OpaqueConfig, NN};
+pub use opaque_config::{OpaqueConfig, NN};
