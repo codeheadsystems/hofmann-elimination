@@ -155,6 +155,56 @@ public class OpaqueResource {
   }
 
   /**
+   * Change password start registration start response.
+   *
+   * @param req        the req
+   * @param authHeader the auth header
+   * @return the registration start response
+   */
+  @POST
+  @Path("/password/start")
+  public RegistrationStartResponse changePasswordStart(RegistrationStartRequest req,
+                                                       @HeaderParam(HttpHeaders.AUTHORIZATION) String authHeader) {
+    log.trace("changePasswordStart()");
+    try {
+      return manager.changePasswordStart(req, extractBearerToken(authHeader));
+    } catch (RateLimitExceededException e) {
+      throw new WebApplicationException(Response.status(429)
+          .header("Retry-After", "60").entity("Rate limit exceeded").build());
+    } catch (SecurityException e) {
+      log.debug("changePasswordStart auth failed: {}", e.getMessage());
+      throw new WebApplicationException(Response.Status.UNAUTHORIZED);
+    } catch (IllegalArgumentException e) {
+      log.debug("changePasswordStart bad request: {}", e.getMessage());
+      throw new WebApplicationException("Invalid request", Response.Status.BAD_REQUEST);
+    }
+  }
+
+  /**
+   * Change password finish response.
+   *
+   * @param req        the req
+   * @param authHeader the auth header
+   * @return the response
+   */
+  @POST
+  @Path("/password/finish")
+  public Response changePasswordFinish(RegistrationFinishRequest req,
+                                       @HeaderParam(HttpHeaders.AUTHORIZATION) String authHeader) {
+    log.trace("changePasswordFinish()");
+    try {
+      manager.changePasswordFinish(req, extractBearerToken(authHeader));
+      return Response.noContent().build();
+    } catch (SecurityException e) {
+      log.debug("changePasswordFinish auth failed: {}", e.getMessage());
+      throw new WebApplicationException(Response.Status.UNAUTHORIZED);
+    } catch (IllegalArgumentException e) {
+      log.debug("changePasswordFinish bad request: {}", e.getMessage());
+      throw new WebApplicationException("Invalid request", Response.Status.BAD_REQUEST);
+    }
+  }
+
+  /**
    * Recovery start — sends an out-of-band challenge.
    *
    * @param req the recovery start request

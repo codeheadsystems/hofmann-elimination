@@ -148,6 +148,42 @@ public class HofmannOpaqueAccessor {
     deleteNoContent(serverId, uri, request, bearerToken);
   }
 
+  // ── Password Change ──────────────────────────────────────────────────────
+
+  /**
+   * Phase 1 of password change: sends the blinded element for the new password to the server,
+   * authorized by a JWT from a prior authentication with the current password.
+   *
+   * @param serverId    the server id
+   * @param request     the request
+   * @param bearerToken JWT bearer token (without "Bearer " prefix) from prior authentication
+   * @return the registration start response
+   */
+  public RegistrationStartResponse changePasswordStart(final ServerIdentifier serverId,
+                                                        final RegistrationStartRequest request,
+                                                        final String bearerToken) {
+    log.debug("changePasswordStart(serverId={})", serverId);
+    URI uri = baseUri(serverId).resolve(baseUri(serverId).getPath() + "/opaque/password/start");
+    return post(serverId, uri, request, RegistrationStartResponse.class, bearerToken);
+  }
+
+  /**
+   * Phase 2 of password change: uploads the new registration record to the server,
+   * authorized by a JWT from a prior authentication with the current password.
+   * On success the old record is replaced and all sessions are revoked.
+   *
+   * @param serverId    the server id
+   * @param request     the request
+   * @param bearerToken JWT bearer token (without "Bearer " prefix) from prior authentication
+   */
+  public void changePasswordFinish(final ServerIdentifier serverId,
+                                    final RegistrationFinishRequest request,
+                                    final String bearerToken) {
+    log.debug("changePasswordFinish(serverId={})", serverId);
+    URI uri = baseUri(serverId).resolve(baseUri(serverId).getPath() + "/opaque/password/finish");
+    postNoContent(serverId, uri, request, bearerToken);
+  }
+
   // ── Authentication ────────────────────────────────────────────────────────
 
   /**

@@ -395,10 +395,42 @@
         </div>
       </div>
 
-      <!-- Account Recovery -->
+      <!-- Change Password -->
       <div class="card">
         <div class="card-title">
           <span class="badge">3</span>
+          <h2 style="margin:0">Change Password</h2>
+        </div>
+        <div class="form-row triple">
+          <div>
+            <label>Credential ID</label>
+            <input type="text" id="cpCredId" value="alice@example.com" />
+          </div>
+          <div>
+            <label>New Password</label>
+            <input type="password" id="cpNewPassword" value="new-password" />
+          </div>
+          <div>
+            <label>JWT Token (from step 2)</label>
+            <input type="text" id="cpToken" placeholder="Auto-filled from auth" />
+          </div>
+        </div>
+        <div class="action-row">
+          <button class="btn-primary" id="btnChangePassword">Change Password</button>
+          <span class="status-chip idle" id="cpStatus">
+            <span class="dot"></span> Idle
+          </span>
+        </div>
+        <div class="result-box" id="cpResult">
+          <label>Result</label>
+          <div class="result-value" id="cpResultText"></div>
+        </div>
+      </div>
+
+      <!-- Account Recovery -->
+      <div class="card">
+        <div class="card-title">
+          <span class="badge">4</span>
           <h2 style="margin:0">Account Recovery</h2>
         </div>
         <div class="form-row triple">
@@ -430,7 +462,7 @@
       <!-- Whoami -->
       <div class="card">
         <div class="card-title">
-          <span class="badge">4</span>
+          <span class="badge">5</span>
           <h2 style="margin:0">Whoami <span style="font-size:10px;color:var(--muted);text-transform:none;letter-spacing:0">(testserver only)</span></h2>
         </div>
         <div class="form-row single">
@@ -454,7 +486,7 @@
       <!-- OPAQUE Delete -->
       <div class="card">
         <div class="card-title">
-          <span class="badge">5</span>
+          <span class="badge">6</span>
           <h2 style="margin:0">Delete Registration</h2>
         </div>
         <div class="form-row">
@@ -530,6 +562,13 @@
           <p>C verifies serverMac</p>
           <p>C→S: KE3 (clientMac)</p>
           <p>S verifies clientMac → issues JWT</p>
+          <div class="divider"></div>
+          <p style="color:var(--text);font-weight:600;margin-bottom:4px">Password Change (authenticated)</p>
+          <p>C→S: authenticate(oldPassword) → JWT</p>
+          <p>C→S: POST /password/start (JWT + blindedEl)</p>
+          <p>S→C: evaluatedElement, serverPublicKey</p>
+          <p>C→S: POST /password/finish (JWT + new record)</p>
+          <p>S→C: 204 (sessions revoked)</p>
           <div class="divider"></div>
           <p style="color:var(--text);font-weight:600;margin-bottom:4px">Account Recovery</p>
           <p>C→S: POST /recovery/start (credentialId)</p>

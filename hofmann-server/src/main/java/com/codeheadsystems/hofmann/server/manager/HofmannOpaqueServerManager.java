@@ -285,6 +285,60 @@ public class HofmannOpaqueServerManager {
     jwtManager.revokeByCredentialIdentifier(req.credentialIdentifierBase64());
   }
 
+  // ── Password Change ──────────────────────────────────────────────────────
+
+  /**
+   * Phase 1 of password change: validates the JWT and evaluates the OPRF.
+   * Identical to registrationStart() but requires a valid JWT whose subject
+   * matches the credential identifier.
+   *
+   * @param req         the registration start request
+   * @param bearerToken the JWT bearer token (without "Bearer " prefix)
+   * @return the registration start response
+   * @throws SecurityException        if the JWT is missing, invalid, or mismatched
+   * @throws IllegalArgumentException if the request contains missing or invalid fields
+   */
+  public RegistrationStartResponse changePasswordStart(RegistrationStartRequest req, String bearerToken) {
+    log.debug("changePasswordStart()");
+    if (bearerToken == null || bearerToken.isBlank()) {
+      throw new SecurityException("Authentication required");
+    }
+    JwtManager.VerifyResult result = jwtManager.verify(bearerToken)
+        .orElseThrow(() -> new SecurityException("Authentication failed"));
+    if (!result.subject().equals(req.credentialIdentifierBase64())) {
+      throw new SecurityException("Authentication failed");
+    }
+    if (!registrationRateLimiter.tryConsume(req.credentialIdentifierBase64())) {
+      throw new RateLimitExceededException();
+    }
+    return new RegistrationStartResponse(
+        server.createRegistrationResponse(req.registrationRequest(), req.credentialIdentifier()));
+  }
+
+  /**
+   * Phase 2 of password change: validates the JWT, atomically deletes the old
+   * registration record, revokes all sessions, and stores the new record.
+   *
+   * @param req         the registration finish request
+   * @param bearerToken the JWT bearer token (without "Bearer " prefix)
+   * @throws SecurityException        if the JWT is missing, invalid, or mismatched
+   * @throws IllegalArgumentException if the request contains missing or invalid fields
+   */
+  public void changePasswordFinish(RegistrationFinishRequest req, String bearerToken) {
+    log.debug("changePasswordFinish()");
+    if (bearerToken == null || bearerToken.isBlank()) {
+      throw new SecurityException("Authentication required");
+    }
+    JwtManager.VerifyResult result = jwtManager.verify(bearerToken)
+        .orElseThrow(() -> new SecurityException("Authentication failed"));
+    if (!result.subject().equals(req.credentialIdentifierBase64())) {
+      throw new SecurityException("Authentication failed");
+    }
+    credentialStore.delete(req.credentialIdentifier());
+    jwtManager.revokeByCredentialIdentifier(req.credentialIdentifierBase64());
+    credentialStore.store(req.credentialIdentifier(), req.registrationRecord());
+  }
+
   // ── Recovery ───────────────────────────────────────────────────────────
 
   /**

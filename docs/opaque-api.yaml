@@ -116,6 +116,23 @@ tags:
       If no `RecoveryChallenger` is configured, recovery endpoints return 404.
 
       See [RECOVERY.md](../RECOVERY.md) for full implementation guide.
+  - name: Password Change
+    description: |
+      Change-password flow for authenticated users.
+
+      Because OPAQUE never exposes the password to the server, changing a password
+      requires the client to prove knowledge of the current password first (by
+      authenticating to obtain a JWT), then re-registering with the new password
+      using the JWT for authorization.
+
+      **Flow:**
+      1. Authenticate with the current password via `/opaque/auth/start` and
+         `/opaque/auth/finish` to obtain a JWT
+      2. `POST /opaque/password/start` — start re-registration (JWT required)
+      3. `POST /opaque/password/finish` — finish re-registration (JWT required)
+
+      After a successful password change, all existing sessions (JWTs) for the
+      credential are revoked. The user must re-authenticate with the new password.
 
 paths:
   /opaque/config:
@@ -405,6 +422,93 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /opaque/password/start:
+    post:
+      tags:
+        - Password Change
+      operationId: changePasswordStart
+      summary: Start password change (phase 1 of 2)
+      description: |
+        Identical to registration phase 1 (`/opaque/registration/start`) but requires
+        a valid JWT obtained from a prior successful authentication. The JWT subject
+        must match the `credentialIdentifier` in the request body, ensuring a user can
+        only change their own password.
+
+        The client should:
+        1. Authenticate with the current password to obtain a JWT
+        2. Generate a new OPRF blind using the **new** password
+        3. Call this endpoint with the blinded element and credential identifier
+
+        The server evaluates the blinded element and returns its public key, exactly
+        as in normal registration.
+
+        **Error conditions:**
+        - `400 Bad Request` — Any field is missing, blank, or not valid base64.
+        - `401 Unauthorized` — `Authorization` header is absent, the JWT is invalid,
+          expired, or its subject does not match the credential identifier.
+        - `429 Too Many Requests` — Rate limit exceeded; retry after the `Retry-After` delay.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrationStartRequest"
+      responses:
+        "200":
+          description: |
+            Password change phase 1 succeeded; client should proceed to
+            `/opaque/password/finish`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegistrationStartResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /opaque/password/finish:
+    post:
+      tags:
+        - Password Change
+      operationId: changePasswordFinish
+      summary: Finish password change (phase 2 of 2)
+      description: |
+        Stores the new registration record derived from the new password, atomically
+        replacing the old credential record. On success, all existing JWT sessions for
+        the credential are revoked — the user must re-authenticate with the new password.
+
+        The request body is identical to `/opaque/registration/finish`: the client
+        supplies the new client public key, masking key, envelope nonce, and auth tag
+        computed from the new password's OPRF output.
+
+        **Error conditions:**
+        - `400 Bad Request` — Any field is missing, blank, or not valid base64.
+        - `401 Unauthorized` — `Authorization` header is absent, the JWT is invalid,
+          expired, or its subject does not match the credential identifier.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrationFinishRequest"
+      responses:
+        "204":
+          description: |
+            Password changed successfully. The old credential record has been replaced
+            and all existing sessions have been revoked. The client must re-authenticate
+            with the new password to obtain a fresh JWT.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /opaque/auth/start:
     post:

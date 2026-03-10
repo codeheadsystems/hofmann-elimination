@@ -287,6 +287,68 @@ export class OpaqueHttpClient {
   }
 
   /**
+   * Change password for an existing registration (authenticated).
+   *
+   * Follows the same registration flow but POSTs to /opaque/password/start
+   * and /opaque/password/finish with a JWT bearer token.
+   *
+   * @param credentialId    Credential identifier
+   * @param newPassword     The new password
+   * @param token           JWT bearer token (from a previous authenticate() call)
+   * @param serverIdentity  Optional explicit server identity
+   * @param clientIdentity  Optional explicit client identity
+   */
+  async changePassword(
+    credentialId: string,
+    newPassword: string,
+    token: string,
+    serverIdentity?: string,
+    clientIdentity?: string,
+  ): Promise<void> {
+    const passwordBytes = strToBytes(newPassword);
+    const credentialIdBytes = strToBytes(credentialId);
+    const authHeaders: Record<string, string> = { 'Authorization': `Bearer ${token}` };
+
+    // Step 1: Create registration request
+    const regState = this.opaque.createRegistrationRequest(passwordBytes);
+
+    // Step 2: Send to server and get response
+    const reqDto: RegistrationStartRequestDto = {
+      credentialIdentifier: base64Encode(credentialIdBytes),
+      blindedElement: base64Encode(regState.blindedElement),
+    };
+    const regResp = await this._post<RegistrationStartResponseDto>(
+      `/opaque/password/start`,
+      reqDto,
+      authHeaders,
+    );
+
+    // Step 3: Finalize registration
+    const response = {
+      evaluatedElement: base64Decode(regResp.evaluatedElement),
+      serverPublicKey:  base64Decode(regResp.serverPublicKey),
+    };
+    const record = await this.opaque.finalizeRegistration(
+      regState,
+      response,
+      serverIdentity ? strToBytes(serverIdentity) : null,
+      clientIdentity ? strToBytes(clientIdentity) : null,
+      undefined,
+      this.ksf,
+    );
+
+    // Step 4: Upload new registration record
+    const uploadDto: RegistrationFinishRequestDto = {
+      credentialIdentifier: base64Encode(credentialIdBytes),
+      clientPublicKey: base64Encode(record.clientPublicKey),
+      maskingKey:      base64Encode(record.maskingKey),
+      envelopeNonce:   base64Encode(record.envelope.nonce),
+      authTag:         base64Encode(record.envelope.authTag),
+    };
+    await this._post<void>(`/opaque/password/finish`, uploadDto, authHeaders);
+  }
+
+  /**
    * Delete a registration by credential ID.
    *
    * @param credentialId  Credential identifier to delete

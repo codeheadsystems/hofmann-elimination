@@ -172,10 +172,12 @@ $('btnAuth').addEventListener('click', async () => {
     setStatus('authStatus', 'ok', `Done (${elapsed}ms)`);
     $<HTMLInputElement>('authToken').value = token;
     $('authResult').classList.add('visible');
-    // Auto-fill whoami and delete token fields
+    // Auto-fill whoami, delete, and change password token fields
     $<HTMLInputElement>('whoamiToken').value = token;
     $<HTMLInputElement>('delToken').value = token;
     $<HTMLInputElement>('delCredId').value = credId;
+    $<HTMLInputElement>('cpToken').value = token;
+    $<HTMLInputElement>('cpCredId').value = credId;
     log(`Authentication successful for "${credId}" (${elapsed}ms)`, 'ok');
     log(`JWT: ${token.substring(0, 40)}…`, 'data');
   } catch (e: unknown) {
@@ -189,6 +191,38 @@ $('btnCopyToken').addEventListener('click', () => {
   const token = $<HTMLInputElement>('authToken').value;
   if (!token) return;
   navigator.clipboard.writeText(token).then(() => log('JWT token copied to clipboard', 'ok'));
+});
+
+// ── Change Password ───────────────────────────────────────────────────────
+
+$('btnChangePassword').addEventListener('click', async () => {
+  const credId      = val('cpCredId');
+  const newPassword = val('cpNewPassword');
+  const token       = val('cpToken');
+  if (!credId || !newPassword || !token) { log('Credential ID, new password, and JWT token are required', 'err'); return; }
+
+  setStatus('cpStatus', 'running', 'Changing…');
+  log(`── Change password: ${credId}`, 'step');
+  const t0 = Date.now();
+
+  try {
+    const client = await getOpaqueClient();
+    log('Sending password change request (blinded new password)…', 'info');
+    await client.changePassword(credId, newPassword, token);
+    const elapsed = Date.now() - t0;
+    setStatus('cpStatus', 'ok', `Done (${elapsed}ms)`);
+    showResult('cpResult', 'cpResultText', `Password changed successfully in ${elapsed}ms`);
+    log(`Password changed for "${credId}" (${elapsed}ms)`, 'ok');
+
+    // Update auth fields with the new password
+    setVal('authCredId', credId);
+    setVal('authPassword', newPassword);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    setStatus('cpStatus', 'err', 'Failed');
+    showResult('cpResult', 'cpResultText', msg, true);
+    log(`Password change failed: ${msg}`, 'err');
+  }
 });
 
 // ── Account Recovery ──────────────────────────────────────────────────────────

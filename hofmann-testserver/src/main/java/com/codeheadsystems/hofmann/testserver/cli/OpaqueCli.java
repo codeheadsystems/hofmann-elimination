@@ -30,11 +30,12 @@ import java.util.Map;
  *       --args="whoami &lt;jwtToken&gt; [--server &lt;url&gt;]" -q
  *
  * Commands:
- *   register   Register a credential with the server.
- *   login      Authenticate and print the session key and JWT token.
- *   delete     Delete a registration using a JWT token from a prior login.
- *   whoami     Call GET /api/whoami using a JWT token from a prior login.
- *   recover    Run the full recovery flow: challenge → verify → re-register with new password.
+ *   register          Register a credential with the server.
+ *   login             Authenticate and print the session key and JWT token.
+ *   change-password   Authenticate with old password, then re-register with new password.
+ *   delete            Delete a registration using a JWT token from a prior login.
+ *   whoami            Call GET /api/whoami using a JWT token from a prior login.
+ *   recover           Run the full recovery flow: challenge → verify → re-register with new password.
  *
  * Options (register / login only):
  *   --server &lt;url&gt;       Server base URL          (default: http://localhost:8080)
@@ -46,6 +47,7 @@ import java.util.Map;
  * Typical workflow:
  *   ./gradlew :hofmann-testserver:runOpaqueCli --args="register alice@example.com hunter2" -q
  *   ./gradlew :hofmann-testserver:runOpaqueCli --args="login    alice@example.com hunter2" -q
+ *   ./gradlew :hofmann-testserver:runOpaqueCli --args="change-password alice@example.com hunter2 newpass" -q
  *   ./gradlew :hofmann-testserver:runOpaqueCli --args="delete   alice@example.com &lt;token&gt;" -q
  *   ./gradlew :hofmann-testserver:runOpaqueCli --args="whoami   &lt;token-from-login&gt;"       -q
  *   ./gradlew :hofmann-testserver:runOpaqueCli --args="recover  alice@example.com newpassword 123456" -q
@@ -128,6 +130,22 @@ public class OpaqueCli {
           System.out.println();
           runDelete(manager, credentialId, token);
         }
+        case "change-password" -> {
+          if (positional.size() < 4) {
+            printUsage();
+            System.exit(1);
+          }
+          byte[] credentialId = positional.get(1).getBytes(StandardCharsets.UTF_8);
+          byte[] oldPassword = positional.get(2).getBytes(StandardCharsets.UTF_8);
+          byte[] newPassword = positional.get(3).getBytes(StandardCharsets.UTF_8);
+          HofmannOpaqueClientManager manager = buildManager(server, context, memory, iterations, parallelism);
+          System.out.println("Server  : " + server);
+          System.out.println("Context : " + context);
+          System.out.println("Argon2id: memory=" + memory + " KiB, iterations=" + iterations
+              + ", parallelism=" + parallelism);
+          System.out.println();
+          runChangePassword(manager, credentialId, oldPassword, newPassword);
+        }
         case "recover" -> {
           if (positional.size() < 4) {
             printUsage();
@@ -203,6 +221,21 @@ public class OpaqueCli {
     System.out.println("Deletion successful.");
   }
 
+  private static void runChangePassword(HofmannOpaqueClientManager manager,
+                                        byte[] credentialId, byte[] oldPassword,
+                                        byte[] newPassword) {
+    // Step 1: Authenticate with old password to get JWT
+    System.out.println("Authenticating with current password...");
+    AuthFinishResponse authResp = manager.authenticate(SERVER_ID, credentialId, oldPassword);
+    System.out.println("  Authentication successful.");
+
+    // Step 2: Change password using the JWT
+    System.out.println("Changing password...");
+    manager.changePassword(SERVER_ID, credentialId, newPassword, authResp.token());
+    System.out.println("Password changed successfully.");
+    System.out.println("  (All previous sessions have been revoked.)");
+  }
+
   private static void runRecover(HofmannOpaqueClientManager manager, String server,
                                    byte[] credentialId, byte[] newPassword,
                                    String challengeResponse)
@@ -270,20 +303,22 @@ public class OpaqueCli {
 
   private static void printUsage() {
     System.err.println("Usage:");
-    System.err.println("  register <credentialId> <password> [options]");
-    System.err.println("  login    <credentialId> <password> [options]");
-    System.err.println("  delete   <credentialId> <jwtToken> [--server <url>]");
-    System.err.println("  whoami   <jwtToken>                [--server <url>]");
-    System.err.println("  recover  <credentialId> <newPassword> <challengeResponse> [options]");
+    System.err.println("  register        <credentialId> <password> [options]");
+    System.err.println("  login           <credentialId> <password> [options]");
+    System.err.println("  change-password <credentialId> <oldPassword> <newPassword> [options]");
+    System.err.println("  delete          <credentialId> <jwtToken> [--server <url>]");
+    System.err.println("  whoami          <jwtToken>                [--server <url>]");
+    System.err.println("  recover         <credentialId> <newPassword> <challengeResponse> [options]");
     System.err.println();
     System.err.println("Commands:");
-    System.err.println("  register   Register a credential with the server");
-    System.err.println("  login      Authenticate and print the session key and JWT token");
-    System.err.println("  delete     Delete a registration (requires JWT from a prior login)");
-    System.err.println("  whoami     Call GET /api/whoami with a JWT token from a prior login");
-    System.err.println("  recover    Recovery flow: send challenge, verify, re-register with new password");
+    System.err.println("  register          Register a credential with the server");
+    System.err.println("  login             Authenticate and print the session key and JWT token");
+    System.err.println("  change-password   Authenticate with old password, then re-register with new password");
+    System.err.println("  delete            Delete a registration (requires JWT from a prior login)");
+    System.err.println("  whoami            Call GET /api/whoami with a JWT token from a prior login");
+    System.err.println("  recover           Recovery flow: send challenge, verify, re-register with new password");
     System.err.println();
-    System.err.println("Options (register / login / recover):");
+    System.err.println("Options (register / login / change-password / recover):");
     System.err.println("  --server <url>       Server base URL        (default: " + DEFAULT_SERVER + ")");
     System.err.println("  --context <string>   OPAQUE context string  (default: " + DEFAULT_CONTEXT + ")");
     System.err.println("  --memory <kib>       Argon2id memory KiB    (default: " + DEFAULT_MEMORY + ")");
@@ -293,6 +328,7 @@ public class OpaqueCli {
     System.err.println("Workflow:");
     System.err.println("  ./gradlew :hofmann-testserver:runOpaqueCli --args=\"register alice@example.com hunter2\" -q");
     System.err.println("  ./gradlew :hofmann-testserver:runOpaqueCli --args=\"login    alice@example.com hunter2\" -q");
+    System.err.println("  ./gradlew :hofmann-testserver:runOpaqueCli --args=\"change-password alice@example.com hunter2 newpass\" -q");
     System.err.println("  # copy the JWT token printed by login, then:");
     System.err.println("  ./gradlew :hofmann-testserver:runOpaqueCli --args=\"whoami   <token>\" -q");
     System.err.println();

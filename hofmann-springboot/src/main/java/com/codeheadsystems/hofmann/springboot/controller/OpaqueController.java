@@ -151,6 +151,55 @@ public class OpaqueController {
   }
 
   /**
+   * Change password start registration start response.
+   *
+   * @param req        the req
+   * @param authHeader the auth header
+   * @return the registration start response
+   */
+  @PostMapping("/password/start")
+  public RegistrationStartResponse changePasswordStart(
+      @RequestBody RegistrationStartRequest req,
+      @RequestHeader(value = "Authorization", required = false) String authHeader) {
+    log.trace("changePasswordStart()");
+    try {
+      return manager.changePasswordStart(req, extractBearerToken(authHeader));
+    } catch (RateLimitExceededException e) {
+      throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Rate limit exceeded");
+    } catch (SecurityException e) {
+      log.debug("changePasswordStart auth failed: {}", e.getMessage());
+      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+    } catch (IllegalArgumentException e) {
+      log.debug("changePasswordStart bad request: {}", e.getMessage());
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid request");
+    }
+  }
+
+  /**
+   * Change password finish response entity.
+   *
+   * @param req        the req
+   * @param authHeader the auth header
+   * @return the response entity
+   */
+  @PostMapping("/password/finish")
+  public ResponseEntity<Void> changePasswordFinish(
+      @RequestBody RegistrationFinishRequest req,
+      @RequestHeader(value = "Authorization", required = false) String authHeader) {
+    log.trace("changePasswordFinish()");
+    try {
+      manager.changePasswordFinish(req, extractBearerToken(authHeader));
+      return ResponseEntity.noContent().build();
+    } catch (SecurityException e) {
+      log.debug("changePasswordFinish auth failed: {}", e.getMessage());
+      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+    } catch (IllegalArgumentException e) {
+      log.debug("changePasswordFinish bad request: {}", e.getMessage());
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid request");
+    }
+  }
+
+  /**
    * Recovery start — sends an out-of-band challenge.
    *
    * @param req the recovery start request

@@ -168,6 +168,40 @@ public class HofmannOpaqueClientManager {
   }
 
   /**
+   * Changes the password for an existing credential. Requires a valid JWT
+   * from a prior {@link #authenticate} call.
+   * <p>
+   * Internally this runs the same three-step registration flow as {@link #register}, but
+   * targets the dedicated password-change endpoints and passes the JWT for authorization.
+   * On success the server atomically replaces the old registration record and revokes all
+   * existing sessions — the user must re-authenticate with the new password.
+   *
+   * @param serverId             the server
+   * @param credentialIdentifier credential identifier (must match JWT subject)
+   * @param newPassword          the new password
+   * @param bearerToken          JWT from prior authentication with old password
+   */
+  public void changePassword(final ServerIdentifier serverId,
+                              final byte[] credentialIdentifier,
+                              final byte[] newPassword,
+                              final String bearerToken) {
+    log.debug("changePassword(serverId={})", serverId);
+
+    // Step 1 — blind the new password and obtain the OPRF-evaluated element from the server
+    ClientRegistrationState regState = clientFor(serverId).createRegistrationRequest(newPassword);
+    RegistrationStartResponse startResp = accessor.changePasswordStart(serverId,
+        new RegistrationStartRequest(credentialIdentifier, regState.request()), bearerToken);
+
+    // Step 2 — finalize locally: unblind, derive the envelope, and build the registration record
+    RegistrationRecord record = clientFor(serverId).finalizeRegistration(
+        regState, startResp.registrationResponse(), null, null);
+
+    // Step 3 — upload the new registration record to the server
+    accessor.changePasswordFinish(serverId,
+        new RegistrationFinishRequest(credentialIdentifier, record), bearerToken);
+  }
+
+  /**
    * Deletes a previously registered credential from the server.
    * Requires a valid JWT bearer token obtained from a prior {@link #authenticate} call
    * for the same credential identifier.
