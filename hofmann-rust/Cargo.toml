@@ -1,6 +1,6 @@
 [package]
 name = "hofmann-rfc"
-version = "0.1.0"
+version = "1.3.0"
 edition = "2021"
 description = "Rust implementation of RFC 9380 (Hash-to-Curve), RFC 9497 (OPRF), and RFC 9807 (OPAQUE)"
 license = "Apache-2.0"

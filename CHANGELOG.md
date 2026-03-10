@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.0] - 2026-03-09
+
+### Added
+
+#### Account recovery (`hofmann-server`, `hofmann-springboot`, `hofmann-dropwizard`)
+
+- **`RecoveryChallenger` SPI** — pluggable interface for out-of-band identity verification
+  (email codes, SMS OTP, TOTP, admin approval); implementations define `sendChallenge()` and
+  `verifyResponse()` with constant-time comparison guidance
+- **`RecoveryTokenStore` interface** — single-use, TTL-limited token storage for recovery
+  authorization; `InMemoryRecoveryTokenStore` reference implementation with capacity limits
+- **Recovery endpoints** — `POST /opaque/recovery/start` (sends challenge),
+  `POST /opaque/recovery/verify` (validates response, issues recovery token); recovery token
+  authorizes re-registration for the same credential identifier
+- **Recovery DTOs** — `RecoveryStartRequest`, `RecoveryVerifyRequest`, `RecoveryVerifyResponse`
+  in `hofmann-model`
+- Wired into both Spring Boot (`OpaqueController`, `HofmannAutoConfiguration`) and Dropwizard
+  (`OpaqueResource`, `HofmannBundle`); recovery is disabled when no `RecoveryChallenger` bean
+  is provided
+
+#### Rate limiting (`hofmann-server`)
+
+- **`RateLimiter` interface** — token-bucket rate limiting with `tryConsume(key)` and pluggable
+  implementations; default `InMemoryRateLimiter` suitable for single-node deployments
+- **`RateLimitConfig`** — configurable `maxTokens`, `refillPerSecond`, and `maxEntries`
+  (prevents OOM from key enumeration)
+- **`RateLimitConfigSupplier`** — allows dynamic reconfiguration of rate limit parameters
+- Applied to authentication endpoints by default; overridable via `@Bean` (Spring Boot) or
+  `withAuthRateLimiter()` (Dropwizard)
+
+#### `PendingSessionStore` interface (`hofmann-server`)
+
+- Extracted pending OPAQUE session storage into a dedicated `PendingSessionStore` interface
+  with `InMemoryPendingSessionStore` reference implementation; enables distributed session
+  storage (e.g. Redis-backed) for multi-node clusters where authStart and authFinish may
+  hit different nodes
+
+#### Rust implementation (`hofmann-rust`)
+
+- **New crate `hofmann-rfc`** — Rust library implementing RFC 9380, RFC 9497, and RFC 9807
+- Supports P-256/SHA-256, P-384/SHA-384, P-521/SHA-512, and Ristretto255/SHA-512 cipher suites
+- Uses RustCrypto ecosystem: `p256`, `p384`, `p521`, `sha2`, `hmac`, `hkdf`, `argon2`,
+  `curve25519-dalek`, `subtle`, `zeroize`
+- Full OPAQUE registration + authentication, fake KE2, Argon2id KSF, deterministic test APIs
+- Recovery module with `RecoveryChallenger` trait and `InMemoryTokenStore`
+- Test suite: RFC vector tests (hash-to-curve, OPRF, OPAQUE), roundtrip tests across all
+  four cipher suites, recovery flow tests
+
+### Security
+
+- **HTTP security headers** — `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+  `Strict-Transport-Security` (1 year, includeSubDomains), `Cache-Control: no-store` added
+  to all responses in both Dropwizard (`SecurityHeadersFilter`) and Spring Boot
+  (`HofmannSecurityConfig`)
+- **CORS configuration** — configurable CORS filter added to Dropwizard (`CorsFilter`) and
+  Spring Boot; actuator endpoints restricted from external access
+- **Constant-time scalar serialization** — removed timing leak in scalar-to-bytes conversion
+
+### Changed
+
+- `JwtManager` moved from `server.auth` to `server.manager` package
+- Gradle wrapper bumped from 9.3.1 to 9.4.0
+
+---
+
 ## [1.2.1] - 2026-03-08
 
 ### Security
@@ -249,6 +314,7 @@ First stable release.
 
 ---
 
+[1.3.0]: https://github.com/codeheadsystems/hofmann-elimination/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/codeheadsystems/hofmann-elimination/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/codeheadsystems/hofmann-elimination/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/codeheadsystems/hofmann-elimination/compare/v1.0.0...v1.1.0
