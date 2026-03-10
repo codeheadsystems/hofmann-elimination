@@ -94,6 +94,31 @@ cargo doc --open
 - **subtle** — Constant-time MAC comparison
 - **zeroize** — Zeroing sensitive memory on drop
 
+## Publishing to crates.io
+
+Ensure the version in `Cargo.toml` is correct, then:
+
+```sh
+# Dry run — validates packaging without uploading
+cargo publish --dry-run
+
+# Publish (requires a crates.io API token configured via `cargo login`)
+cargo publish
+```
+
+If publishing for the first time, log in with your API token from https://crates.io/settings/tokens:
+
+```sh
+cargo login
+```
+
+The `Cargo.toml` already includes the required metadata (`description`, `license`, `repository`, `keywords`, `categories`). After publishing, the crate will be available as:
+
+```toml
+[dependencies]
+hofmann-rfc = "1.3.0"
+```
+
 ## Security
 
 This library has **not** been formally audited. Use at your own risk in production systems. Mitigations in place:
