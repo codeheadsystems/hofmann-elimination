@@ -49,10 +49,12 @@ public class HofmannTestServerApplication extends Application<HofmannConfigurati
     // With ephemeralKey=false and a null processorDetailSupplier, HofmannBundle reads
     // oprfMasterKeyHex from configuration — giving stable OPRF hashes across restarts.
     // Credentials and sessions still live in memory and are lost on restart.
+    // Recovery is enabled with a test challenger that always accepts "123456".
     bootstrap.addBundle(new HofmannBundle<>(
         new InMemoryCredentialStore(),
         new InMemorySessionStore(),
-        null));
+        null)
+        .withRecovery(new TestRecoveryChallenger()));
   }
 
   @Override

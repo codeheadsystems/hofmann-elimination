@@ -5,6 +5,9 @@ import com.codeheadsystems.hofmann.model.opaque.AuthFinishResponse;
 import com.codeheadsystems.hofmann.model.opaque.AuthStartRequest;
 import com.codeheadsystems.hofmann.model.opaque.AuthStartResponse;
 import com.codeheadsystems.hofmann.model.opaque.OpaqueClientConfigResponse;
+import com.codeheadsystems.hofmann.model.opaque.RecoveryStartRequest;
+import com.codeheadsystems.hofmann.model.opaque.RecoveryVerifyRequest;
+import com.codeheadsystems.hofmann.model.opaque.RecoveryVerifyResponse;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationDeleteRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationFinishRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartRequest;
@@ -70,16 +73,22 @@ public class OpaqueController {
   /**
    * Registration start registration start response.
    *
-   * @param req the req
+   * @param req        the req
+   * @param authHeader optional Authorization header (recovery token for re-registration)
    * @return the registration start response
    */
   @PostMapping("/registration/start")
-  public RegistrationStartResponse registrationStart(@RequestBody RegistrationStartRequest req) {
+  public RegistrationStartResponse registrationStart(
+      @RequestBody RegistrationStartRequest req,
+      @RequestHeader(value = "Authorization", required = false) String authHeader) {
     log.trace("registrationStart()");
     try {
-      return manager.registrationStart(req);
+      return manager.registrationStart(req, extractBearerToken(authHeader));
     } catch (RateLimitExceededException e) {
       throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Rate limit exceeded");
+    } catch (SecurityException e) {
+      log.debug("registrationStart auth failed: {}", e.getMessage());
+      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
     } catch (IllegalArgumentException e) {
       log.debug("registrationStart bad request: {}", e.getMessage());
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid request");
@@ -89,15 +98,21 @@ public class OpaqueController {
   /**
    * Registration finish response entity.
    *
-   * @param req the req
+   * @param req        the req
+   * @param authHeader optional Authorization header (recovery token for re-registration)
    * @return the response entity
    */
   @PostMapping("/registration/finish")
-  public ResponseEntity<Void> registrationFinish(@RequestBody RegistrationFinishRequest req) {
+  public ResponseEntity<Void> registrationFinish(
+      @RequestBody RegistrationFinishRequest req,
+      @RequestHeader(value = "Authorization", required = false) String authHeader) {
     log.trace("registrationFinish()");
     try {
-      manager.registrationFinish(req);
+      manager.registrationFinish(req, extractBearerToken(authHeader));
       return ResponseEntity.noContent().build();
+    } catch (SecurityException e) {
+      log.debug("registrationFinish auth failed: {}", e.getMessage());
+      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
     } catch (IllegalArgumentException e) {
       log.debug("registrationFinish bad request: {}", e.getMessage());
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid request");
@@ -133,6 +148,50 @@ public class OpaqueController {
       return authHeader.substring(7);
     }
     return null;
+  }
+
+  /**
+   * Recovery start — sends an out-of-band challenge.
+   *
+   * @param req the recovery start request
+   * @return 202 Accepted
+   */
+  @PostMapping("/recovery/start")
+  public ResponseEntity<Void> recoveryStart(@RequestBody RecoveryStartRequest req) {
+    log.trace("recoveryStart()");
+    try {
+      manager.recoveryStart(req);
+      return ResponseEntity.accepted().build();
+    } catch (UnsupportedOperationException e) {
+      throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+    } catch (RateLimitExceededException e) {
+      throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Rate limit exceeded");
+    } catch (IllegalArgumentException e) {
+      log.debug("recoveryStart bad request: {}", e.getMessage());
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid request");
+    }
+  }
+
+  /**
+   * Recovery verify — verifies the challenge response and returns a recovery token.
+   *
+   * @param req the recovery verify request
+   * @return the recovery verify response containing the recovery token
+   */
+  @PostMapping("/recovery/verify")
+  public RecoveryVerifyResponse recoveryVerify(@RequestBody RecoveryVerifyRequest req) {
+    log.trace("recoveryVerify()");
+    try {
+      return manager.recoveryVerify(req);
+    } catch (UnsupportedOperationException e) {
+      throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+    } catch (SecurityException e) {
+      log.debug("recoveryVerify failed: {}", e.getMessage());
+      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+    } catch (IllegalArgumentException e) {
+      log.debug("recoveryVerify bad request: {}", e.getMessage());
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid request");
+    }
   }
 
   /**

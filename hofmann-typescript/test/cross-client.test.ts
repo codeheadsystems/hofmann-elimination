@@ -95,6 +95,28 @@ describe.skipIf(skip)('cross-client OPAQUE', () => {
     }
   }, 60_000);
 
+  it('recovers a credential registered by Java and re-registers with a new password', async () => {
+    const credId = readFile('opaque-recovery-cred.txt');
+    const newPassword = readFile('opaque-recovery-new-pwd.txt');
+
+    if (!credId || !newPassword) {
+      writeFile('opaque-ts-recovery-result.txt', 'skipped');
+      return;
+    }
+
+    try {
+      // Recovery flow: start → verify (code "123456") → re-register
+      await client.recoveryStart(credId);
+      const recoveryToken = await client.recoveryVerify(credId, '123456');
+      expect(recoveryToken).toBeTruthy();
+      await client.register(credId, newPassword, undefined, undefined, recoveryToken);
+      writeFile('opaque-ts-recovery-result.txt', 'success');
+    } catch (e) {
+      writeFile('opaque-ts-recovery-result.txt', `failed: ${e}`);
+      throw e;
+    }
+  }, 60_000);
+
   it('registers a credential for Java to authenticate with', async () => {
     const credId = readFile('opaque-ts-register-cred.txt');
     const password = readFile('opaque-ts-register-pwd.txt');

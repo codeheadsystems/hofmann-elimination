@@ -191,6 +191,50 @@ $('btnCopyToken').addEventListener('click', () => {
   navigator.clipboard.writeText(token).then(() => log('JWT token copied to clipboard', 'ok'));
 });
 
+// ── Account Recovery ──────────────────────────────────────────────────────────
+
+$('btnRecover').addEventListener('click', async () => {
+  const credId   = val('recCredId');
+  const password = val('recPassword');
+  const code     = val('recCode');
+  if (!credId || !password || !code) { log('All recovery fields are required', 'err'); return; }
+
+  setStatus('recStatus', 'running', 'Recovering…');
+  log(`── Recovery: ${credId}`, 'step');
+  const t0 = Date.now();
+
+  try {
+    const client = await getOpaqueClient();
+
+    log('Sending recovery challenge…', 'info');
+    await client.recoveryStart(credId);
+    log('Challenge sent (202 Accepted)', 'ok');
+
+    log('Verifying challenge response…', 'info');
+    const recoveryToken = await client.recoveryVerify(credId, code);
+    log('Recovery token received', 'ok');
+
+    log('Re-registering with new password…', 'info');
+    await client.register(credId, password, undefined, undefined, recoveryToken);
+    const elapsed = Date.now() - t0;
+
+    setStatus('recStatus', 'ok', `Done (${elapsed}ms)`);
+    showResult('recResult', 'recResultText', `Recovery successful — "${credId}" re-registered with new password (${elapsed}ms)`);
+    log(`Recovery complete for "${credId}" (${elapsed}ms)`, 'ok');
+
+    // Update auth and registration fields with new password
+    setVal('authCredId', credId);
+    setVal('authPassword', password);
+    setVal('regCredId', credId);
+    setVal('regPassword', password);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    setStatus('recStatus', 'err', 'Failed');
+    showResult('recResult', 'recResultText', msg, true);
+    log(`Recovery failed: ${msg}`, 'err');
+  }
+});
+
 // ── Whoami ────────────────────────────────────────────────────────────────────
 
 $('btnWhoami').addEventListener('click', async () => {

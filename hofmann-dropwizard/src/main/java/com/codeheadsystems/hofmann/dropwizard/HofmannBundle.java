@@ -13,11 +13,14 @@ import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfig;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
 import com.codeheadsystems.hofmann.server.resource.OpaqueResource;
 import com.codeheadsystems.hofmann.server.resource.OprfResource;
+import com.codeheadsystems.hofmann.server.recovery.RecoveryChallenger;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemoryCredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemoryPendingSessionStore;
+import com.codeheadsystems.hofmann.server.store.InMemoryRecoveryTokenStore;
 import com.codeheadsystems.hofmann.server.store.InMemorySessionStore;
 import com.codeheadsystems.hofmann.server.store.PendingSessionStore;
+import com.codeheadsystems.hofmann.server.store.RecoveryTokenStore;
 import com.codeheadsystems.hofmann.server.store.SessionStore;
 import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.common.RandomProvider;
@@ -92,6 +95,8 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
   private final Function<RateLimitConfig, RateLimiter> rateLimiterFunction;
   private final boolean ephemeralKey;
   private SecureRandom secureRandom = new SecureRandom();
+  private RecoveryChallenger recoveryChallenger;
+  private RecoveryTokenStore recoveryTokenStore;
 
   /**
    * Creates a bundle backed by in-memory stores and an ephemeral random OPRF master key.
@@ -186,6 +191,32 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     return this;
   }
 
+  /**
+   * Enables account recovery with the given {@link RecoveryChallenger} and a default
+   * in-memory {@link RecoveryTokenStore}.
+   *
+   * @param recoveryChallenger the recovery challenger implementation
+   * @return {@code this}, for fluent chaining
+   */
+  public HofmannBundle<C> withRecovery(RecoveryChallenger recoveryChallenger) {
+    return withRecovery(recoveryChallenger, new InMemoryRecoveryTokenStore());
+  }
+
+  /**
+   * Enables account recovery with the given {@link RecoveryChallenger} and a custom
+   * {@link RecoveryTokenStore}.
+   *
+   * @param recoveryChallenger the recovery challenger implementation
+   * @param recoveryTokenStore the recovery token store implementation
+   * @return {@code this}, for fluent chaining
+   */
+  public HofmannBundle<C> withRecovery(RecoveryChallenger recoveryChallenger,
+                                       RecoveryTokenStore recoveryTokenStore) {
+    this.recoveryChallenger = recoveryChallenger;
+    this.recoveryTokenStore = recoveryTokenStore;
+    return this;
+  }
+
   @Override
   public void initialize(Bootstrap<?> bootstrap) {
     // No additional bootstrapping needed
@@ -215,8 +246,11 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
 
     RateLimiter authRateLimiter = rateLimiterFunction.apply(rateLimitConfigSupplier.authRateLimitConfig());
     RateLimiter registrationRateLimiter = rateLimiterFunction.apply(rateLimitConfigSupplier.registrationRateLimitConfig());
+    RateLimiter recoveryRateLimiter = recoveryChallenger != null
+        ? rateLimiterFunction.apply(rateLimitConfigSupplier.recoveryRateLimitConfig()) : null;
     HofmannOpaqueServerManager hofmannOpaqueServerManager = new HofmannOpaqueServerManager(
-        server, credentialStore, jwtManager, authRateLimiter, registrationRateLimiter, pendingSessionStore);
+        server, credentialStore, jwtManager, authRateLimiter, registrationRateLimiter, pendingSessionStore,
+        recoveryChallenger, recoveryTokenStore, recoveryRateLimiter);
     environment.jersey().register(new OpaqueResource(hofmannOpaqueServerManager, opaqueClientConfig));
     environment.healthChecks().register("opaque-server", new OpaqueServerHealthCheck(server));
 

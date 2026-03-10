@@ -56,4 +56,12 @@ export {
 export { buildPreamble, derive3DHKeys, verifyServerMac, computeClientMac } from './opaque/ake.js';
 export { OpaqueClient, deriveRandomizedPwd, parseKE2 } from './opaque/client.js';
 export { type KSF, identityKsf, argon2idKsf } from './opaque/ksf.js';
-export { OpaqueHttpClient, OpaqueAuthenticationError, type OpaqueHttpClientOptions, type OpaqueConfigResponseDto } from './opaque/http.js';
+export {
+  OpaqueHttpClient,
+  OpaqueAuthenticationError,
+  type OpaqueHttpClientOptions,
+  type OpaqueConfigResponseDto,
+  type RecoveryStartRequest,
+  type RecoveryVerifyRequest,
+  type RecoveryVerifyResponse,
+} from './opaque/http.js';

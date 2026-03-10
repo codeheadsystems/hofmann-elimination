@@ -4,6 +4,9 @@ import com.codeheadsystems.hofmann.model.opaque.AuthFinishRequest;
 import com.codeheadsystems.hofmann.model.opaque.AuthFinishResponse;
 import com.codeheadsystems.hofmann.model.opaque.AuthStartRequest;
 import com.codeheadsystems.hofmann.model.opaque.AuthStartResponse;
+import com.codeheadsystems.hofmann.model.opaque.RecoveryStartRequest;
+import com.codeheadsystems.hofmann.model.opaque.RecoveryVerifyRequest;
+import com.codeheadsystems.hofmann.model.opaque.RecoveryVerifyResponse;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationDeleteRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationFinishRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartRequest;
@@ -12,9 +15,12 @@ import com.codeheadsystems.hofmann.server.ratelimit.InMemoryRateLimiter;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfigSupplier;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitExceededException;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
+import com.codeheadsystems.hofmann.server.recovery.RecoveryChallenger;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemoryPendingSessionStore;
+import com.codeheadsystems.hofmann.server.store.InMemoryRecoveryTokenStore;
 import com.codeheadsystems.hofmann.server.store.PendingSessionStore;
+import com.codeheadsystems.hofmann.server.store.RecoveryTokenStore;
 import com.codeheadsystems.rfc.opaque.Server;
 import com.codeheadsystems.rfc.opaque.model.KE1;
 import com.codeheadsystems.rfc.opaque.model.RegistrationRecord;
@@ -35,9 +41,10 @@ import org.slf4j.LoggerFactory;
  * <p>
  * <strong>Exception contract</strong> (callers should map these to HTTP responses):
  * <ul>
- *   <li>{@link IllegalArgumentException} — bad / missing request data → HTTP 400</li>
- *   <li>{@link SecurityException}        — auth failure or expired session → HTTP 401</li>
- *   <li>{@link IllegalStateException}    — session store at capacity → HTTP 503</li>
+ *   <li>{@link IllegalArgumentException}      — bad / missing request data → HTTP 400</li>
+ *   <li>{@link SecurityException}             — auth failure or expired session → HTTP 401</li>
+ *   <li>{@link UnsupportedOperationException} — recovery not configured → HTTP 404</li>
+ *   <li>{@link IllegalStateException}         — session store at capacity → HTTP 503</li>
  * </ul>
  */
 public class HofmannOpaqueServerManager {
@@ -51,10 +58,13 @@ public class HofmannOpaqueServerManager {
   private final RateLimiter authRateLimiter;
   private final RateLimiter registrationRateLimiter;
   private final PendingSessionStore pendingSessionStore;
+  private final RecoveryChallenger recoveryChallenger;
+  private final RecoveryTokenStore recoveryTokenStore;
+  private final RateLimiter recoveryRateLimiter;
 
   /**
    * Instantiates a new Hofmann opaque server manager with default rate limiters
-   * and an in-memory pending session store.
+   * and an in-memory pending session store. Recovery is disabled.
    *
    * @param server          the server
    * @param credentialStore the credential store
@@ -68,7 +78,7 @@ public class HofmannOpaqueServerManager {
 
   /**
    * Instantiates a new Hofmann opaque server manager with custom rate limiters
-   * and a default in-memory pending session store.
+   * and a default in-memory pending session store. Recovery is disabled.
    *
    * @param server                  the server
    * @param credentialStore         the credential store
@@ -84,7 +94,7 @@ public class HofmannOpaqueServerManager {
 
   /**
    * Instantiates a new Hofmann opaque server manager with custom rate limiters
-   * and a custom pending session store.
+   * and a custom pending session store. Recovery is disabled.
    *
    * @param server                  the server
    * @param credentialStore         the credential store
@@ -96,12 +106,50 @@ public class HofmannOpaqueServerManager {
   public HofmannOpaqueServerManager(Server server, CredentialStore credentialStore, JwtManager jwtManager,
                                     RateLimiter authRateLimiter, RateLimiter registrationRateLimiter,
                                     PendingSessionStore pendingSessionStore) {
+    this(server, credentialStore, jwtManager, authRateLimiter, registrationRateLimiter,
+        pendingSessionStore, null, null, null);
+  }
+
+  /**
+   * Instantiates a new Hofmann opaque server manager with full configuration including
+   * account recovery support.
+   * <p>
+   * Pass {@code null} for {@code recoveryChallenger} to disable recovery endpoints (they
+   * will throw {@link UnsupportedOperationException}).
+   *
+   * @param server                  the server
+   * @param credentialStore         the credential store
+   * @param jwtManager              the jwt manager
+   * @param authRateLimiter         rate limiter for authentication endpoints (keyed by credential)
+   * @param registrationRateLimiter rate limiter for registration endpoints (keyed by credential)
+   * @param pendingSessionStore     store for in-flight authentication sessions
+   * @param recoveryChallenger      out-of-band challenge sender/verifier, or null to disable recovery
+   * @param recoveryTokenStore      store for recovery tokens, or null (defaults to in-memory if challenger is set)
+   * @param recoveryRateLimiter     rate limiter for recovery endpoints, or null (defaults to in-memory if challenger is set)
+   */
+  public HofmannOpaqueServerManager(Server server, CredentialStore credentialStore, JwtManager jwtManager,
+                                    RateLimiter authRateLimiter, RateLimiter registrationRateLimiter,
+                                    PendingSessionStore pendingSessionStore,
+                                    RecoveryChallenger recoveryChallenger,
+                                    RecoveryTokenStore recoveryTokenStore,
+                                    RateLimiter recoveryRateLimiter) {
     this.server = server;
     this.credentialStore = credentialStore;
     this.jwtManager = jwtManager;
     this.authRateLimiter = authRateLimiter;
     this.registrationRateLimiter = registrationRateLimiter;
     this.pendingSessionStore = pendingSessionStore;
+    this.recoveryChallenger = recoveryChallenger;
+    if (recoveryChallenger != null) {
+      this.recoveryTokenStore = recoveryTokenStore != null
+          ? recoveryTokenStore : new InMemoryRecoveryTokenStore();
+      this.recoveryRateLimiter = recoveryRateLimiter != null
+          ? recoveryRateLimiter : new InMemoryRateLimiter(
+          new RateLimitConfigSupplier.DefaultRateLimitConfigSupplier().recoveryRateLimitConfig());
+    } else {
+      this.recoveryTokenStore = null;
+      this.recoveryRateLimiter = null;
+    }
   }
 
   /**
@@ -115,6 +163,21 @@ public class HofmannOpaqueServerManager {
     pendingSessionStore.shutdown();
     authRateLimiter.shutdown();
     registrationRateLimiter.shutdown();
+    if (recoveryTokenStore != null) {
+      recoveryTokenStore.shutdown();
+    }
+    if (recoveryRateLimiter != null) {
+      recoveryRateLimiter.shutdown();
+    }
+  }
+
+  /**
+   * Returns whether account recovery is enabled (a {@link RecoveryChallenger} was provided).
+   *
+   * @return true if recovery endpoints are available
+   */
+  public boolean isRecoveryEnabled() {
+    return recoveryChallenger != null;
   }
 
   // ── Registration ─────────────────────────────────────────────────────────
@@ -128,9 +191,29 @@ public class HofmannOpaqueServerManager {
    * @throws IllegalArgumentException if the request contains missing or invalid fields
    */
   public RegistrationStartResponse registrationStart(RegistrationStartRequest req) {
+    return registrationStart(req, null);
+  }
+
+  /**
+   * Phase 1 of registration with optional recovery token.
+   * <p>
+   * When a recovery token is present, validates that the token is valid and matches the
+   * credential identifier. The token is not consumed here — it will be consumed in
+   * {@link #registrationFinish(RegistrationFinishRequest, String)}.
+   *
+   * @param req         the registration start request
+   * @param bearerToken optional recovery token (without "Bearer " prefix), or null for normal registration
+   * @return the registration start response
+   * @throws IllegalArgumentException if the request contains missing or invalid fields
+   * @throws SecurityException        if the recovery token is invalid, expired, or mismatched
+   */
+  public RegistrationStartResponse registrationStart(RegistrationStartRequest req, String bearerToken) {
     log.debug("registrationStart()");
     if (!registrationRateLimiter.tryConsume(req.credentialIdentifierBase64())) {
       throw new RateLimitExceededException();
+    }
+    if (bearerToken != null && !bearerToken.isBlank()) {
+      validateRecoveryToken(bearerToken, req.credentialIdentifierBase64());
     }
     return new RegistrationStartResponse(
         server.createRegistrationResponse(req.registrationRequest(), req.credentialIdentifier()));
@@ -143,7 +226,33 @@ public class HofmannOpaqueServerManager {
    * @throws IllegalArgumentException if the request contains missing or invalid fields
    */
   public void registrationFinish(RegistrationFinishRequest req) {
+    registrationFinish(req, null);
+  }
+
+  /**
+   * Phase 2 of registration with optional recovery token.
+   * <p>
+   * When a recovery token is present, this performs recovery re-registration:
+   * the old credential is deleted, all active JWTs are revoked, the recovery
+   * token is consumed, and the new registration record is stored.
+   *
+   * @param req         the registration finish request
+   * @param bearerToken optional recovery token (without "Bearer " prefix), or null for normal registration
+   * @throws IllegalArgumentException if the request contains missing or invalid fields
+   * @throws SecurityException        if the recovery token is invalid, expired, or mismatched
+   */
+  public void registrationFinish(RegistrationFinishRequest req, String bearerToken) {
     log.debug("registrationFinish()");
+    if (bearerToken != null && !bearerToken.isBlank()) {
+      String credId = recoveryTokenStore.remove(bearerToken)
+          .orElseThrow(() -> new SecurityException("Invalid or expired recovery token"));
+      if (!credId.equals(req.credentialIdentifierBase64())) {
+        throw new SecurityException("Recovery token does not match credential");
+      }
+      log.info("Recovery re-registration for credential {}", req.credentialIdentifierBase64());
+      credentialStore.delete(req.credentialIdentifier());
+      jwtManager.revokeByCredentialIdentifier(req.credentialIdentifierBase64());
+    }
     credentialStore.store(req.credentialIdentifier(), req.registrationRecord());
   }
 
@@ -174,6 +283,64 @@ public class HofmannOpaqueServerManager {
     }
     credentialStore.delete(req.credentialIdentifier());
     jwtManager.revokeByCredentialIdentifier(req.credentialIdentifierBase64());
+  }
+
+  // ── Recovery ───────────────────────────────────────────────────────────
+
+  /**
+   * Initiates account recovery by sending an out-of-band challenge.
+   * <p>
+   * Always returns successfully to prevent user enumeration — the
+   * {@link RecoveryChallenger} is responsible for not revealing whether
+   * the credential exists.
+   *
+   * @param req the recovery start request
+   * @throws UnsupportedOperationException if recovery is not configured
+   * @throws IllegalArgumentException      if the request contains missing or invalid fields
+   */
+  public void recoveryStart(RecoveryStartRequest req) {
+    log.debug("recoveryStart()");
+    if (recoveryChallenger == null) {
+      throw new UnsupportedOperationException("Account recovery is not configured");
+    }
+    if (!recoveryRateLimiter.tryConsume(req.credentialIdentifierBase64())) {
+      throw new RateLimitExceededException();
+    }
+    recoveryChallenger.sendChallenge(req.credentialIdentifier());
+  }
+
+  /**
+   * Verifies the challenge response and issues a single-use recovery token.
+   *
+   * @param req the recovery verify request
+   * @return the recovery verify response containing the recovery token
+   * @throws UnsupportedOperationException if recovery is not configured
+   * @throws IllegalArgumentException      if the request contains missing or invalid fields
+   * @throws SecurityException             if the challenge response is incorrect or expired
+   */
+  public RecoveryVerifyResponse recoveryVerify(RecoveryVerifyRequest req) {
+    log.debug("recoveryVerify()");
+    if (recoveryChallenger == null) {
+      throw new UnsupportedOperationException("Account recovery is not configured");
+    }
+    if (!recoveryChallenger.verifyResponse(
+        req.credentialIdentifier(), req.validatedChallengeResponse())) {
+      throw new SecurityException("Recovery verification failed");
+    }
+    String token = UUID.randomUUID().toString();
+    recoveryTokenStore.store(token, req.credentialIdentifierBase64());
+    return new RecoveryVerifyResponse(token);
+  }
+
+  private void validateRecoveryToken(String token, String expectedCredentialIdentifierBase64) {
+    if (recoveryTokenStore == null) {
+      throw new SecurityException("Invalid or expired recovery token");
+    }
+    String credId = recoveryTokenStore.peek(token)
+        .orElseThrow(() -> new SecurityException("Invalid or expired recovery token"));
+    if (!credId.equals(expectedCredentialIdentifierBase64)) {
+      throw new SecurityException("Recovery token does not match credential");
+    }
   }
 
   // ── Authentication ────────────────────────────────────────────────────────

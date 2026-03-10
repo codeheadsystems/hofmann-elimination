@@ -64,3 +64,4 @@ pub mod common;
 pub mod elliptic_curve;
 pub mod opaque;
 pub mod oprf;
+pub mod recovery;

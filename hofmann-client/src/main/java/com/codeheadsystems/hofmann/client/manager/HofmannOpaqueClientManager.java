@@ -103,12 +103,31 @@ public class HofmannOpaqueClientManager {
   public void register(final ServerIdentifier serverId,
                        final byte[] credentialIdentifier,
                        final byte[] password) {
-    log.debug("register(serverId={})", serverId);
+    register(serverId, credentialIdentifier, password, null);
+  }
+
+  /**
+   * Runs the full OPAQUE registration flow, optionally authorized by a recovery token.
+   * <p>
+   * When {@code recoveryToken} is non-null, the registration endpoints receive an
+   * {@code Authorization: Bearer <recoveryToken>} header, which authorizes re-registration
+   * for an existing credential (the old record is replaced and all sessions revoked).
+   *
+   * @param serverId             the server to register with
+   * @param credentialIdentifier raw bytes identifying the credential (e.g. UTF-8 email)
+   * @param password             the password to register
+   * @param recoveryToken        optional recovery token (without "Bearer " prefix)
+   */
+  public void register(final ServerIdentifier serverId,
+                       final byte[] credentialIdentifier,
+                       final byte[] password,
+                       final String recoveryToken) {
+    log.debug("register(serverId={}, recovery={})", serverId, recoveryToken != null);
 
     // Step 1 — blind the password and obtain the OPRF-evaluated element from the server
     ClientRegistrationState regState = clientFor(serverId).createRegistrationRequest(password);
     RegistrationStartResponse startResp = accessor.registrationStart(serverId,
-        new RegistrationStartRequest(credentialIdentifier, regState.request()));
+        new RegistrationStartRequest(credentialIdentifier, regState.request()), recoveryToken);
 
     // Step 2 — finalize locally: unblind, derive the envelope, and build the registration record
     RegistrationRecord record = clientFor(serverId).finalizeRegistration(
@@ -116,7 +135,7 @@ public class HofmannOpaqueClientManager {
 
     // Step 3 — upload the completed registration record to the server
     accessor.registrationFinish(serverId,
-        new RegistrationFinishRequest(credentialIdentifier, record));
+        new RegistrationFinishRequest(credentialIdentifier, record), recoveryToken);
   }
 
   /**

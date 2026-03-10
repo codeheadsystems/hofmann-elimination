@@ -89,13 +89,13 @@ class HofmannOpaqueClientManagerTest {
                 regState.request().blindedElement()),
             CREDENTIAL_ID);
 
-    when(accessor.registrationStart(eq(SERVER_ID), any()))
+    when(accessor.registrationStart(eq(SERVER_ID), any(), any()))
         .thenReturn(new RegistrationStartResponse(regResp));
 
     manager.register(SERVER_ID, CREDENTIAL_ID, PASSWORD);
 
-    verify(accessor).registrationStart(eq(SERVER_ID), any());
-    verify(accessor).registrationFinish(eq(SERVER_ID), any());
+    verify(accessor).registrationStart(eq(SERVER_ID), any(), any());
+    verify(accessor).registrationFinish(eq(SERVER_ID), any(), any());
   }
 
   /**
@@ -111,7 +111,7 @@ class HofmannOpaqueClientManagerTest {
     ClientRegistrationState regState1 = realClient.createRegistrationRequest(PASSWORD);
     RegistrationResponse regResp1 = server.createRegistrationResponse(
         new RegistrationRequest(regState1.request().blindedElement()), CREDENTIAL_ID);
-    when(accessor.registrationStart(eq(SERVER_ID), any()))
+    when(accessor.registrationStart(eq(SERVER_ID), any(), any()))
         .thenReturn(new RegistrationStartResponse(regResp1));
 
     manager.register(SERVER_ID, CREDENTIAL_ID, PASSWORD);
@@ -120,7 +120,7 @@ class HofmannOpaqueClientManagerTest {
     ClientRegistrationState regState2 = realClient.createRegistrationRequest(PASSWORD);
     RegistrationResponse regResp2 = server.createRegistrationResponse(
         new RegistrationRequest(regState2.request().blindedElement()), CREDENTIAL_ID);
-    when(accessor.registrationStart(eq(SERVER_ID), any()))
+    when(accessor.registrationStart(eq(SERVER_ID), any(), any()))
         .thenReturn(new RegistrationStartResponse(regResp2));
 
     manager.register(SERVER_ID, CREDENTIAL_ID, PASSWORD);

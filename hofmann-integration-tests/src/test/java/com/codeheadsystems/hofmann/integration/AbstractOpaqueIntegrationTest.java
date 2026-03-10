@@ -15,6 +15,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -125,6 +126,102 @@ abstract class AbstractOpaqueIntegrationTest {
 
     assertThat(response.statusCode()).isEqualTo(200);
     assertThat(response.body()).contains("credentialIdentifier");
+  }
+
+  // ── Recovery integration tests ──────────────────────────────────────────────
+
+  @Test
+  void recoveryStart_returns202() throws Exception {
+    byte[] credId = uniqueCredId("recovery-start");
+    manager.register(SERVER_ID, credId, PASSWORD);
+
+    HttpResponse<String> response = postJson(
+        "/opaque/recovery/start",
+        "{\"credentialIdentifier\":\"" + b64(credId) + "\"}",
+        null);
+    assertThat(response.statusCode()).isEqualTo(202);
+  }
+
+  @Test
+  void recoveryVerify_returnsToken() throws Exception {
+    byte[] credId = uniqueCredId("recovery-verify");
+    manager.register(SERVER_ID, credId, PASSWORD);
+
+    // Send challenge
+    postJson("/opaque/recovery/start",
+        "{\"credentialIdentifier\":\"" + b64(credId) + "\"}", null);
+
+    // Verify with the fixed test code
+    HttpResponse<String> verifyResp = postJson(
+        "/opaque/recovery/verify",
+        "{\"credentialIdentifier\":\"" + b64(credId) + "\",\"challengeResponse\":\"123456\"}",
+        null);
+    assertThat(verifyResp.statusCode()).isEqualTo(200);
+    assertThat(verifyResp.body()).contains("recoveryToken");
+  }
+
+  @Test
+  void recoveryVerify_wrongCode_returns401() throws Exception {
+    byte[] credId = uniqueCredId("recovery-wrong-code");
+    manager.register(SERVER_ID, credId, PASSWORD);
+
+    postJson("/opaque/recovery/start",
+        "{\"credentialIdentifier\":\"" + b64(credId) + "\"}", null);
+
+    HttpResponse<String> verifyResp = postJson(
+        "/opaque/recovery/verify",
+        "{\"credentialIdentifier\":\"" + b64(credId) + "\",\"challengeResponse\":\"wrong\"}",
+        null);
+    assertThat(verifyResp.statusCode()).isEqualTo(401);
+  }
+
+  @Test
+  void fullRecoveryFlow_reRegistersAndAuthenticatesWithNewPassword() throws Exception {
+    byte[] credId = uniqueCredId("recovery-full");
+    byte[] newPassword = "new-password-after-recovery".getBytes(StandardCharsets.UTF_8);
+
+    // Register with original password
+    manager.register(SERVER_ID, credId, PASSWORD);
+    // Verify original password works
+    AuthFinishResponse origAuth = manager.authenticate(SERVER_ID, credId, PASSWORD);
+    assertThat(origAuth.token()).isNotEmpty();
+
+    // Recovery flow: start → verify → get token
+    postJson("/opaque/recovery/start",
+        "{\"credentialIdentifier\":\"" + b64(credId) + "\"}", null);
+    HttpResponse<String> verifyResp = postJson(
+        "/opaque/recovery/verify",
+        "{\"credentialIdentifier\":\"" + b64(credId) + "\",\"challengeResponse\":\"123456\"}",
+        null);
+    ObjectMapper mapper = new ObjectMapper();
+    String recoveryToken = mapper.readTree(verifyResp.body()).get("recoveryToken").asText();
+
+    // Re-register with new password using recovery token
+    manager.register(SERVER_ID, credId, newPassword, recoveryToken);
+
+    // Authenticate with new password
+    AuthFinishResponse newAuth = manager.authenticate(SERVER_ID, credId, newPassword);
+    assertThat(newAuth.sessionKeyBase64()).isNotEmpty();
+    assertThat(newAuth.token()).isNotEmpty();
+
+    // Old password should fail
+    assertThatThrownBy(() -> manager.authenticate(SERVER_ID, credId, PASSWORD))
+        .isInstanceOf(SecurityException.class);
+  }
+
+  private HttpResponse<String> postJson(String path, String body, String bearerToken) throws Exception {
+    HttpRequest.Builder builder = HttpRequest.newBuilder()
+        .uri(URI.create(baseUrl() + path))
+        .header("Content-Type", "application/json")
+        .POST(HttpRequest.BodyPublishers.ofString(body));
+    if (bearerToken != null) {
+      builder.header("Authorization", "Bearer " + bearerToken);
+    }
+    return httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+  }
+
+  private static String b64(byte[] data) {
+    return Base64.getEncoder().encodeToString(data);
   }
 
   protected String baseUrl() {

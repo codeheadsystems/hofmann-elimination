@@ -81,6 +81,21 @@ interface RegistrationDeleteRequestDto {
   credentialIdentifier: string;  // base64-encoded credential identifier
 }
 
+// ── Recovery DTOs ────────────────────────────────────────────────────────────
+
+export interface RecoveryStartRequest {
+  credentialIdentifier: string;  // base64-encoded credential identifier
+}
+
+export interface RecoveryVerifyRequest {
+  credentialIdentifier: string;  // base64-encoded credential identifier
+  challengeResponse: string;
+}
+
+export interface RecoveryVerifyResponse {
+  recoveryToken: string;
+}
+
 export interface OpaqueConfigResponseDto {
   cipherSuite: string;
   context: string;
@@ -150,15 +165,20 @@ export class OpaqueHttpClient {
    * @param password        The user's password
    * @param serverIdentity  Optional explicit server identity
    * @param clientIdentity  Optional explicit client identity
+   * @param recoveryToken   Optional recovery token (from recoveryVerify) to authorize re-registration
    */
   async register(
     credentialId: string,
     password: string,
     serverIdentity?: string,
     clientIdentity?: string,
+    recoveryToken?: string,
   ): Promise<void> {
     const passwordBytes = strToBytes(password);
     const credentialIdBytes = strToBytes(credentialId);
+    const authHeaders: Record<string, string> = recoveryToken
+      ? { 'Authorization': `Bearer ${recoveryToken}` }
+      : {};
 
     // Step 1: Create registration request
     const regState = this.opaque.createRegistrationRequest(passwordBytes);
@@ -171,6 +191,7 @@ export class OpaqueHttpClient {
     const regResp = await this._post<RegistrationStartResponseDto>(
       `/opaque/registration/start`,
       reqDto,
+      authHeaders,
     );
 
     // Step 3: Finalize registration
@@ -195,7 +216,7 @@ export class OpaqueHttpClient {
       envelopeNonce:   base64Encode(record.envelope.nonce),
       authTag:         base64Encode(record.envelope.authTag),
     };
-    await this._post<void>(`/opaque/registration/finish`, uploadDto);
+    await this._post<void>(`/opaque/registration/finish`, uploadDto, authHeaders);
   }
 
   /**
@@ -292,10 +313,65 @@ export class OpaqueHttpClient {
     }
   }
 
-  private async _post<T>(path: string, body: unknown): Promise<T> {
+  /**
+   * Initiates account recovery by sending an out-of-band challenge to the user.
+   *
+   * The server always returns 202 Accepted regardless of whether the credential
+   * exists, to prevent user enumeration.
+   *
+   * @param credentialId  Credential identifier to recover
+   */
+  async recoveryStart(credentialId: string): Promise<void> {
+    const dto: RecoveryStartRequest = {
+      credentialIdentifier: base64Encode(strToBytes(credentialId)),
+    };
+    await this._post<void>(`/opaque/recovery/start`, dto);
+  }
+
+  /**
+   * Verifies the user's response to a recovery challenge.
+   *
+   * @param credentialId       Credential identifier being recovered
+   * @param challengeResponse  The user's response to the challenge (e.g. email code, OTP)
+   * @returns                  A single-use recovery token to authorize re-registration
+   */
+  async recoveryVerify(
+    credentialId: string,
+    challengeResponse: string,
+  ): Promise<string> {
+    const dto: RecoveryVerifyRequest = {
+      credentialIdentifier: base64Encode(strToBytes(credentialId)),
+      challengeResponse,
+    };
+    const resp = await this._post<RecoveryVerifyResponse>(`/opaque/recovery/verify`, dto);
+    return resp.recoveryToken;
+  }
+
+  /**
+   * Convenience method for the full recovery flow:
+   * recoveryStart → (user provides challenge response) → recoveryVerify → register with recovery token.
+   *
+   * @param credentialId       Credential identifier to recover
+   * @param challengeResponse  The user's response to the out-of-band challenge
+   * @param newPassword        The new password to register
+   * @param serverIdentity     Optional explicit server identity
+   * @param clientIdentity     Optional explicit client identity
+   */
+  async recoverAndReRegister(
+    credentialId: string,
+    challengeResponse: string,
+    newPassword: string,
+    serverIdentity?: string,
+    clientIdentity?: string,
+  ): Promise<void> {
+    const recoveryToken = await this.recoveryVerify(credentialId, challengeResponse);
+    await this.register(credentialId, newPassword, serverIdentity, clientIdentity, recoveryToken);
+  }
+
+  private async _post<T>(path: string, body: unknown, extraHeaders?: Record<string, string>): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...extraHeaders },
       body: JSON.stringify(body),
     });
     if (!response.ok) {

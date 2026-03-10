@@ -82,6 +82,10 @@ tags:
     description: |
       Two-round registration flow that stores a password-derived record on the server
       without transmitting the password. Requires no prior authentication.
+
+      Registration endpoints also support **account recovery re-registration** when an
+      `Authorization: Bearer <recoveryToken>` header is present. See the Recovery tag
+      for details on obtaining a recovery token.
   - name: Authentication
     description: |
       Two-round OPAQUE-3DH login flow. On success, returns a shared session key and
@@ -90,6 +94,28 @@ tags:
     description: |
       Operations on existing registrations. Requires a valid JWT obtained from a
       successful authentication.
+  - name: Recovery
+    description: |
+      Account recovery flow for users who have lost their password.
+
+      Because OPAQUE never exposes the password to the server, "password reset" is not
+      possible. Instead, the user proves their identity through an out-of-band mechanism
+      (email code, SMS OTP, TOTP, admin approval, etc.) and then re-registers with a
+      new password using the standard registration endpoints.
+
+      **Flow:**
+      1. `POST /opaque/recovery/start` — triggers an out-of-band challenge
+      2. `POST /opaque/recovery/verify` — verifies the challenge response, returns a
+         single-use recovery token
+      3. Use the recovery token as `Authorization: Bearer <token>` in
+         `POST /opaque/registration/start` and `POST /opaque/registration/finish`
+         to re-register with a new password
+
+      The recovery mechanism is **pluggable**: the server operator implements the
+      `RecoveryChallenger` interface to define how challenges are sent and verified.
+      If no `RecoveryChallenger` is configured, recovery endpoints return 404.
+
+      See [RECOVERY.md](../RECOVERY.md) for full implementation guide.
 
 paths:
   /opaque/config:
@@ -157,8 +183,14 @@ paths:
         4. Seals the server's public key in an envelope authenticated by `randomized_pwd`
         5. Calls `/opaque/registration/finish`
 
+        **Account recovery:** This endpoint also supports re-registration during account
+        recovery. Include an `Authorization: Bearer <recoveryToken>` header (obtained from
+        `/opaque/recovery/verify`) to authorize re-registration for an existing credential.
+
         **Error conditions:**
         - `400 Bad Request` — Any field is missing, blank, or not valid base64.
+        - `401 Unauthorized` — Recovery token is invalid, expired, or does not match
+          the credential identifier (only when `Authorization` header is present).
       requestBody:
         required: true
         content:
@@ -199,8 +231,15 @@ paths:
         - `envelopeNonce` — unique random nonce sealing the envelope
         - `authTag` — authentication tag binding the server's public key to the envelope
 
+        **Account recovery:** When an `Authorization: Bearer <recoveryToken>` header is
+        present, this endpoint performs recovery re-registration: the old credential and
+        all its active JWT sessions are revoked before the new record is stored. The
+        recovery token is consumed (single-use) on success.
+
         **Error conditions:**
         - `400 Bad Request` — Any field is missing, blank, or not valid base64.
+        - `401 Unauthorized` — Recovery token is invalid, expired, or does not match
+          the credential identifier (only when `Authorization` header is present).
       requestBody:
         required: true
         content:
@@ -255,6 +294,117 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+
+  /opaque/recovery/start:
+    post:
+      tags:
+        - Recovery
+      operationId: recoveryStart
+      summary: Initiate account recovery (send out-of-band challenge)
+      description: |
+        Triggers an out-of-band identity challenge for the given credential identifier.
+        The challenge mechanism is determined by the server's `RecoveryChallenger`
+        implementation (e.g. email code, SMS OTP, TOTP prompt).
+
+        **User enumeration resistance:** This endpoint always returns `202 Accepted`,
+        even if the credential identifier is not registered. The `RecoveryChallenger`
+        implementation should likewise avoid revealing whether the account exists.
+
+        After the user receives the challenge, they should call `/opaque/recovery/verify`
+        with the challenge response.
+
+        **Error conditions:**
+        - `400 Bad Request` — `credentialIdentifier` is missing, blank, or not valid base64.
+        - `404 Not Found` — Account recovery is not configured on this server.
+        - `429 Too Many Requests` — Rate limit exceeded; retry after the `Retry-After` delay.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecoveryStartRequest"
+            examples:
+              typical:
+                summary: Start recovery for a user
+                value:
+                  credentialIdentifier: "dXNlckBleGFtcGxlLmNvbQ=="
+      responses:
+        "202":
+          description: |
+            Challenge sent (or silently ignored if the credential is unknown).
+            The user should check their out-of-band channel (email, SMS, etc.)
+            and call `/opaque/recovery/verify` with the response.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          description: Account recovery is not configured on this server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /opaque/recovery/verify:
+    post:
+      tags:
+        - Recovery
+      operationId: recoveryVerify
+      summary: Verify recovery challenge and obtain recovery token
+      description: |
+        Verifies the user's response to the out-of-band challenge sent by
+        `/opaque/recovery/start`. On success, returns a single-use recovery token
+        that authorizes re-registration.
+
+        The recovery token should be used as `Authorization: Bearer <recoveryToken>`
+        in the subsequent `/opaque/registration/start` and `/opaque/registration/finish`
+        calls to complete the password reset.
+
+        **Recovery token properties:**
+        - **Single-use:** consumed when `/opaque/registration/finish` succeeds
+        - **Short TTL:** expires after 10 minutes (configurable)
+        - **Scoped:** bound to the specific credential identifier
+
+        **Error conditions:**
+        - `400 Bad Request` — A required field is missing, blank, or not valid base64.
+        - `401 Unauthorized` — The challenge response is incorrect or expired.
+        - `404 Not Found` — Account recovery is not configured on this server.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecoveryVerifyRequest"
+            examples:
+              emailCode:
+                summary: Verify a 6-digit email code
+                value:
+                  credentialIdentifier: "dXNlckBleGFtcGxlLmNvbQ=="
+                  challengeResponse: "482901"
+              totp:
+                summary: Verify a TOTP code
+                value:
+                  credentialIdentifier: "dXNlckBleGFtcGxlLmNvbQ=="
+                  challengeResponse: "731205"
+      responses:
+        "200":
+          description: |
+            Challenge verified. Use the `recoveryToken` as a Bearer token in the
+            registration endpoints to re-register with a new password.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoveryVerifyResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Account recovery is not configured on this server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /opaque/auth/start:
     post:
@@ -681,6 +831,55 @@ components:
             DELETE). The token subject is the credential identifier.
           example: "eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiJ1c2VyQGV4YW1wbGUuY29tIn0.signature"
 
+    # ─── Recovery ─────────────────────────────────────────────────────────────
+
+    RecoveryStartRequest:
+      type: object
+      required:
+        - credentialIdentifier
+      properties:
+        credentialIdentifier:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded credential identifier of the account to recover.
+          example: "dXNlckBleGFtcGxlLmNvbQ=="
+
+    RecoveryVerifyRequest:
+      type: object
+      required:
+        - credentialIdentifier
+        - challengeResponse
+      properties:
+        credentialIdentifier:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded credential identifier. Must match the value used in
+            the corresponding `/recovery/start` call.
+          example: "dXNlckBleGFtcGxlLmNvbQ=="
+        challengeResponse:
+          type: string
+          description: |
+            The user's response to the out-of-band challenge. The format depends
+            on the server's `RecoveryChallenger` implementation — typically a
+            6-digit code, TOTP value, or similar.
+          example: "482901"
+
+    RecoveryVerifyResponse:
+      type: object
+      required:
+        - recoveryToken
+      properties:
+        recoveryToken:
+          type: string
+          description: |
+            Single-use recovery token authorizing re-registration for the verified
+            credential. Use this as `Authorization: Bearer <recoveryToken>` in the
+            subsequent `/opaque/registration/start` and `/opaque/registration/finish`
+            calls. Expires after 10 minutes (configurable).
+          example: "a3f8c2d1-7b4e-4f9a-9c6e-2d1f3e4a5b6c"
+
     # ─── Error responses ───────────────────────────────────────────────────────
 
     ErrorResponse:
@@ -733,6 +932,26 @@ components:
               summary: Client MAC did not verify
               value:
                 message: "Authentication failed"
+
+    TooManyRequests:
+      description: |
+        Rate limit exceeded. The client is making too many requests for this
+        credential identifier. Retry after the delay indicated by the `Retry-After` header.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Number of seconds to wait before retrying
+          example: 60
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            rateLimited:
+              summary: Rate limit exceeded
+              value:
+                message: "Rate limit exceeded"
 
     ServiceUnavailable:
       description: |

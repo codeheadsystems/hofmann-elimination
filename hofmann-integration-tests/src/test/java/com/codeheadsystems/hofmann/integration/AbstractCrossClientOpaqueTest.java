@@ -1,6 +1,7 @@
 package com.codeheadsystems.hofmann.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assumptions.assumeThat;
 
 import com.codeheadsystems.hofmann.client.accessor.HofmannOpaqueAccessor;
@@ -119,11 +120,55 @@ abstract class AbstractCrossClientOpaqueTest {
     assertThat(response.token()).isNotEmpty();
   }
 
+  @Test
+  void javaRegisters_typeScriptRecovers_javaAuthenticatesWithNewPassword() throws Exception {
+    assumeThat(TypeScriptRunner.isTypeScriptAvailable())
+        .as("TypeScript module must be built (npm install && npm run build in hofmann-typescript/)")
+        .isTrue();
+    assumeThat(TypeScriptRunner.isTypeScriptSuiteSupported(cipherSuiteName()))
+        .as("TypeScript client must support cipher suite " + cipherSuiteName())
+        .isTrue();
+
+    // Java registers with original password
+    String credId = "java-recovery-" + cipherSuiteName() + "@cross-client.test";
+    String newPassword = "recovered-new-password";
+    manager.register(SERVER_ID, credId.getBytes(StandardCharsets.UTF_8), PASSWORD);
+
+    // Write info for TypeScript to run recovery
+    Files.writeString(outputDir.resolve("opaque-recovery-cred.txt"), credId);
+    Files.writeString(outputDir.resolve("opaque-recovery-new-pwd.txt"), newPassword);
+
+    // TypeScript runs: recoveryStart → recoveryVerify("123456") → register with new password
+    int exitCode = TypeScriptRunner.runCrossClientTest(
+        baseUrl(), outputDir, "recovers a credential registered by Java");
+    assertThat(exitCode).as("TypeScript cross-client recovery test exit code").isZero();
+
+    String tsResult = TypeScriptRunner.readResultFile(outputDir, "opaque-ts-recovery-result.txt");
+    assertThat(tsResult)
+        .as("TypeScript recovery result")
+        .isNotNull()
+        .isEqualTo("success");
+
+    // Java authenticates with the new password
+    AuthFinishResponse newAuth = manager.authenticate(
+        SERVER_ID, credId.getBytes(StandardCharsets.UTF_8),
+        newPassword.getBytes(StandardCharsets.UTF_8));
+    assertThat(newAuth.sessionKeyBase64()).isNotEmpty();
+    assertThat(newAuth.token()).isNotEmpty();
+
+    // Old password should fail
+    assertThatThrownBy(() -> manager.authenticate(
+        SERVER_ID, credId.getBytes(StandardCharsets.UTF_8), PASSWORD))
+        .isInstanceOf(SecurityException.class);
+  }
+
   private void cleanExchangeFiles() throws IOException {
     String[] files = {
         "opaque-java-registered-cred.txt", "opaque-java-registered-pwd.txt",
         "opaque-ts-register-cred.txt", "opaque-ts-register-pwd.txt",
-        "opaque-ts-auth-result.txt", "opaque-ts-reg-result.txt"
+        "opaque-ts-auth-result.txt", "opaque-ts-reg-result.txt",
+        "opaque-recovery-cred.txt", "opaque-recovery-new-pwd.txt",
+        "opaque-ts-recovery-result.txt"
     };
     for (String f : files) {
       Files.deleteIfExists(outputDir.resolve(f));

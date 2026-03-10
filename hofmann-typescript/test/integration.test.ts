@@ -11,12 +11,14 @@
  * being hardcoded here.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
-import { OpaqueHttpClient } from '../src/opaque/http.js';
+import { OpaqueHttpClient, OpaqueAuthenticationError } from '../src/opaque/http.js';
 import { OprfHttpClient } from '../src/oprf/http.js';
 import { strToBytes } from '../src/crypto/encoding.js';
 
 const SERVER_URL = process.env['TEST_SERVER_URL'];
 const skip = !SERVER_URL;
+// Recovery tests require the server to have a RecoveryChallenger configured
+const skipRecovery = skip || !process.env['TEST_RECOVERY_ENABLED'];
 
 describe.skipIf(skip)('OprfHttpClient integration', () => {
   let client: OprfHttpClient;
@@ -78,4 +80,70 @@ describe.skipIf(skip)('OpaqueHttpClient integration', () => {
   it('deletes the registration', async () => {
     await expect(client.deleteRegistration(credentialId, authToken)).resolves.toBeUndefined();
   });
+});
+
+// ── Recovery integration tests ────────────────────────────────────────────────
+// These require TEST_RECOVERY_ENABLED=true and a server with a RecoveryChallenger
+// that accepts "123456" as the challenge response for any credential.
+
+describe.skipIf(skipRecovery)('OpaqueHttpClient recovery integration', () => {
+  const credentialId = `ts-recovery-${Date.now()}`;
+  const oldPassword = 'old-password';
+  const newPassword = 'new-password';
+  let client: OpaqueHttpClient;
+
+  beforeAll(async () => {
+    client = await OpaqueHttpClient.create(SERVER_URL!);
+  });
+
+  it('registers with old password', async () => {
+    await expect(client.register(credentialId, oldPassword)).resolves.toBeUndefined();
+  }, 30_000);
+
+  it('authenticates with old password', async () => {
+    const token = await client.authenticate(credentialId, oldPassword);
+    expect(token).toBeTruthy();
+  }, 30_000);
+
+  it('recoveryStart succeeds (always 202)', async () => {
+    await expect(client.recoveryStart(credentialId)).resolves.toBeUndefined();
+  });
+
+  it('recoveryVerify returns a recovery token', async () => {
+    // Assumes test challenger accepts "123456"
+    const token = await client.recoveryVerify(credentialId, '123456');
+    expect(token).toBeTruthy();
+    expect(typeof token).toBe('string');
+  });
+
+  it('re-registers with new password using recovery token', async () => {
+    // Need a fresh recovery flow since token was consumed by the previous test's verify
+    await client.recoveryStart(credentialId);
+    const recoveryToken = await client.recoveryVerify(credentialId, '123456');
+    await expect(
+      client.register(credentialId, newPassword, undefined, undefined, recoveryToken),
+    ).resolves.toBeUndefined();
+  }, 30_000);
+
+  it('authenticates with new password after recovery', async () => {
+    const token = await client.authenticate(credentialId, newPassword);
+    expect(token).toBeTruthy();
+  }, 30_000);
+
+  it('old password fails after recovery', async () => {
+    await expect(
+      client.authenticate(credentialId, oldPassword),
+    ).rejects.toThrow();
+  }, 30_000);
+
+  it('recoverAndReRegister convenience method works', async () => {
+    // Re-register back to old password using the convenience method
+    await client.recoveryStart(credentialId);
+    await expect(
+      client.recoverAndReRegister(credentialId, '123456', oldPassword),
+    ).resolves.toBeUndefined();
+    // Verify old password works again
+    const token = await client.authenticate(credentialId, oldPassword);
+    expect(token).toBeTruthy();
+  }, 60_000);
 });

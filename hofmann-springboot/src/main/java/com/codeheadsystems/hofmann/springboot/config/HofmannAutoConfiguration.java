@@ -7,11 +7,14 @@ import com.codeheadsystems.hofmann.server.manager.JwtManager;
 import com.codeheadsystems.hofmann.server.ratelimit.InMemoryRateLimiter;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfigSupplier;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
+import com.codeheadsystems.hofmann.server.recovery.RecoveryChallenger;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemoryCredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemoryPendingSessionStore;
+import com.codeheadsystems.hofmann.server.store.InMemoryRecoveryTokenStore;
 import com.codeheadsystems.hofmann.server.store.InMemorySessionStore;
 import com.codeheadsystems.hofmann.server.store.PendingSessionStore;
+import com.codeheadsystems.hofmann.server.store.RecoveryTokenStore;
 import com.codeheadsystems.hofmann.server.store.SessionStore;
 import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.common.RandomProvider;
@@ -28,8 +31,10 @@ import java.util.HexFormat;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -249,6 +254,35 @@ public class HofmannAutoConfiguration {
   }
 
   /**
+   * Default in-memory recovery token store, created only when a {@link RecoveryChallenger}
+   * bean is present. Override this bean with a distributed implementation (e.g. Redis)
+   * for multi-node clusters.
+   *
+   * @return the recovery token store
+   */
+  @Bean(destroyMethod = "shutdown")
+  @ConditionalOnBean(RecoveryChallenger.class)
+  @ConditionalOnMissingBean
+  public RecoveryTokenStore recoveryTokenStore() {
+    log.warn("Using in-memory recovery token store. Not suitable for multi-node clusters.");
+    return new InMemoryRecoveryTokenStore();
+  }
+
+  /**
+   * Rate limiter for recovery endpoints, created only when a {@link RecoveryChallenger}
+   * bean is present.
+   *
+   * @param rateLimitConfigSupplier the rate limit config supplier
+   * @return the recovery rate limiter
+   */
+  @Bean(destroyMethod = "shutdown")
+  @ConditionalOnBean(RecoveryChallenger.class)
+  @ConditionalOnMissingBean(name = "recoveryRateLimiter")
+  public RateLimiter recoveryRateLimiter(RateLimitConfigSupplier rateLimitConfigSupplier) {
+    return new InMemoryRateLimiter(rateLimitConfigSupplier.recoveryRateLimitConfig());
+  }
+
+  /**
    * Opaque server manager hofmann opaque server manager.
    *
    * @param server                  the server
@@ -257,6 +291,9 @@ public class HofmannAutoConfiguration {
    * @param authRateLimiter         the auth rate limiter
    * @param registrationRateLimiter the registration rate limiter
    * @param pendingSessionStore     the pending session store
+   * @param recoveryChallenger      optional recovery challenger (null if not configured)
+   * @param recoveryTokenStore      optional recovery token store (null if not configured)
+   * @param recoveryRateLimiter     optional recovery rate limiter (null if not configured)
    * @return the hofmann opaque server manager
    */
   @Bean(destroyMethod = "shutdown")
@@ -265,9 +302,13 @@ public class HofmannAutoConfiguration {
                                                         JwtManager jwtManager,
                                                         @Qualifier("authRateLimiter") RateLimiter authRateLimiter,
                                                         @Qualifier("registrationRateLimiter") RateLimiter registrationRateLimiter,
-                                                        PendingSessionStore pendingSessionStore) {
+                                                        PendingSessionStore pendingSessionStore,
+                                                        @Autowired(required = false) RecoveryChallenger recoveryChallenger,
+                                                        @Autowired(required = false) RecoveryTokenStore recoveryTokenStore,
+                                                        @Autowired(required = false) @Qualifier("recoveryRateLimiter") RateLimiter recoveryRateLimiter) {
     return new HofmannOpaqueServerManager(server, credentialStore, jwtManager,
-        authRateLimiter, registrationRateLimiter, pendingSessionStore);
+        authRateLimiter, registrationRateLimiter, pendingSessionStore,
+        recoveryChallenger, recoveryTokenStore, recoveryRateLimiter);
   }
 
   /**

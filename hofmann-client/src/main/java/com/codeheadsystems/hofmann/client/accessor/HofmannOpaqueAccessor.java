@@ -87,9 +87,23 @@ public class HofmannOpaqueAccessor {
    */
   public RegistrationStartResponse registrationStart(final ServerIdentifier serverId,
                                                      final RegistrationStartRequest request) {
+    return registrationStart(serverId, request, null);
+  }
+
+  /**
+   * Phase 1 of registration with optional recovery token authorization.
+   *
+   * @param serverId    the server id
+   * @param request     the request
+   * @param bearerToken optional recovery token (without "Bearer " prefix) for re-registration
+   * @return the registration start response
+   */
+  public RegistrationStartResponse registrationStart(final ServerIdentifier serverId,
+                                                     final RegistrationStartRequest request,
+                                                     final String bearerToken) {
     log.debug("registrationStart(serverId={})", serverId);
     URI uri = baseUri(serverId).resolve(baseUri(serverId).getPath() + "/opaque/registration/start");
-    return post(serverId, uri, request, RegistrationStartResponse.class);
+    return post(serverId, uri, request, RegistrationStartResponse.class, bearerToken);
   }
 
   /**
@@ -100,9 +114,22 @@ public class HofmannOpaqueAccessor {
    */
   public void registrationFinish(final ServerIdentifier serverId,
                                  final RegistrationFinishRequest request) {
+    registrationFinish(serverId, request, null);
+  }
+
+  /**
+   * Phase 2 of registration with optional recovery token authorization.
+   *
+   * @param serverId    the server id
+   * @param request     the request
+   * @param bearerToken optional recovery token (without "Bearer " prefix) for re-registration
+   */
+  public void registrationFinish(final ServerIdentifier serverId,
+                                 final RegistrationFinishRequest request,
+                                 final String bearerToken) {
     log.debug("registrationFinish(serverId={})", serverId);
     URI uri = baseUri(serverId).resolve(baseUri(serverId).getPath() + "/opaque/registration/finish");
-    postNoContent(serverId, uri, request);
+    postNoContent(serverId, uri, request, bearerToken);
   }
 
   /**
@@ -181,14 +208,21 @@ public class HofmannOpaqueAccessor {
   }
 
   private <T> T post(ServerIdentifier serverId, URI uri, Object body, Class<T> responseType) {
+    return post(serverId, uri, body, responseType, null);
+  }
+
+  private <T> T post(ServerIdentifier serverId, URI uri, Object body, Class<T> responseType,
+                     String bearerToken) {
     try {
       String requestBody = objectMapper.writeValueAsString(body);
-      HttpRequest request = HttpRequest.newBuilder()
+      HttpRequest.Builder builder = HttpRequest.newBuilder()
           .uri(uri)
           .header("Content-Type", "application/json")
-          .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-          .build();
-      HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+          .POST(HttpRequest.BodyPublishers.ofString(requestBody));
+      if (bearerToken != null) {
+        builder.header("Authorization", "Bearer " + bearerToken);
+      }
+      HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
       checkStatus(serverId, response.statusCode());
       return objectMapper.readValue(response.body(), responseType);
     } catch (IOException e) {
@@ -200,14 +234,20 @@ public class HofmannOpaqueAccessor {
   }
 
   private void postNoContent(ServerIdentifier serverId, URI uri, Object body) {
+    postNoContent(serverId, uri, body, null);
+  }
+
+  private void postNoContent(ServerIdentifier serverId, URI uri, Object body, String bearerToken) {
     try {
       String requestBody = objectMapper.writeValueAsString(body);
-      HttpRequest request = HttpRequest.newBuilder()
+      HttpRequest.Builder builder = HttpRequest.newBuilder()
           .uri(uri)
           .header("Content-Type", "application/json")
-          .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-          .build();
-      HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+          .POST(HttpRequest.BodyPublishers.ofString(requestBody));
+      if (bearerToken != null) {
+        builder.header("Authorization", "Bearer " + bearerToken);
+      }
+      HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
       checkStatus(serverId, response.statusCode());
     } catch (IOException e) {
       throw new OpaqueAccessorException("HTTP request failed for server: " + serverId, e);

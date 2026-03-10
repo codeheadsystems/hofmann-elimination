@@ -8,7 +8,14 @@ public interface RateLimitConfigSupplier {
 
   RateLimitConfig oprfRateLimitConfig();
 
+  RateLimitConfig recoveryRateLimitConfig();
+
   class DefaultRateLimitConfigSupplier implements RateLimitConfigSupplier {
+
+    @Override
+    public RateLimitConfig recoveryRateLimitConfig() {
+      return new RateLimitConfig(3, 3.0 / 60, 50_000);
+    }
 
     @Override
     public RateLimitConfig authRateLimitConfig() {

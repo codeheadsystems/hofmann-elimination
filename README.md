@@ -41,6 +41,7 @@ See [hofmann-elimination-example](https://github.com/codeheadsystems/hofmann-eli
 - **[Project landing page](https://codeheadsystems.github.io/hofmann-elimination/)** — overview, protocol diagrams, quick start guides
 - **[Migration guide](MIGRATION.md)** — how to migrate an existing site from traditional password auth to OPAQUE
 - **[Configuration guide](USAGE.md)** — server configuration, key management, credential store implementation
+- **[Account recovery guide](RECOVERY.md)** — pluggable account recovery via email, OTP, or custom mechanisms
 - **[Interactive API docs](https://codeheadsystems.github.io/hofmann-elimination/api-docs.html)** — Swagger UI for OPAQUE and OPRF endpoints
 - **At runtime:** Start your Dropwizard or Spring Boot server and visit `/api-docs/` for embedded Swagger UI
 - **Raw OpenAPI specs:** [OPRF API](docs/oprf-api.yaml) | [OPAQUE API](docs/opaque-api.yaml)
@@ -95,6 +96,11 @@ This project implements three layered RFCs:
 - **OPAQUE** ([details](hofmann-rfc/OPAQUE.md), [rfc 9807](https://www.rfc-editor.org/rfc/rfc9807.html)): Augmented Password-Authenticated Key
   Exchange. Password-based authentication where the password is never transmitted and a
   compromised server database does not expose passwords to offline dictionary attacks.
+
+- **Account Recovery** ([details](RECOVERY.md)): Pluggable account recovery that works
+  alongside OPAQUE without modifying the protocol. Users prove their identity through an
+  out-of-band mechanism (email code, SMS OTP, TOTP, etc.) and then re-register with a new
+  password. Implement the `RecoveryChallenger` interface to define your recovery method.
 
 For protocol details, cipher suites, API reference, and wire formats, see the linked docs above.
 

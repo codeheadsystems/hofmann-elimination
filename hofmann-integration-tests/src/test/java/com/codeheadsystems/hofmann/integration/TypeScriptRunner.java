@@ -70,7 +70,7 @@ final class TypeScriptRunner {
     Files.createDirectories(outputDir);
     // Clean only TS-written result files to avoid stale data from previous runs.
     // Java-written input files (e.g. opaque-java-registered-*.txt) are preserved.
-    for (String tsFile : new String[]{"oprf-ts.txt", "opaque-ts-auth-result.txt", "opaque-ts-reg-result.txt"}) {
+    for (String tsFile : new String[]{"oprf-ts.txt", "opaque-ts-auth-result.txt", "opaque-ts-reg-result.txt", "opaque-ts-recovery-result.txt"}) {
       Files.deleteIfExists(outputDir.resolve(tsFile));
     }
 

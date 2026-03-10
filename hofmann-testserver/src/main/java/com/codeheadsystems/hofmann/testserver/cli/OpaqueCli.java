@@ -14,6 +14,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -33,6 +34,7 @@ import java.util.Map;
  *   login      Authenticate and print the session key and JWT token.
  *   delete     Delete a registration using a JWT token from a prior login.
  *   whoami     Call GET /api/whoami using a JWT token from a prior login.
+ *   recover    Run the full recovery flow: challenge → verify → re-register with new password.
  *
  * Options (register / login only):
  *   --server &lt;url&gt;       Server base URL          (default: http://localhost:8080)
@@ -46,6 +48,7 @@ import java.util.Map;
  *   ./gradlew :hofmann-testserver:runOpaqueCli --args="login    alice@example.com hunter2" -q
  *   ./gradlew :hofmann-testserver:runOpaqueCli --args="delete   alice@example.com &lt;token&gt;" -q
  *   ./gradlew :hofmann-testserver:runOpaqueCli --args="whoami   &lt;token-from-login&gt;"       -q
+ *   ./gradlew :hofmann-testserver:runOpaqueCli --args="recover  alice@example.com newpassword 123456" -q
  * </pre>
  *
  * <p>The --context, --memory, --iterations, and --parallelism options must match the
@@ -125,6 +128,22 @@ public class OpaqueCli {
           System.out.println();
           runDelete(manager, credentialId, token);
         }
+        case "recover" -> {
+          if (positional.size() < 4) {
+            printUsage();
+            System.exit(1);
+          }
+          byte[] credentialId = positional.get(1).getBytes(StandardCharsets.UTF_8);
+          byte[] newPassword = positional.get(2).getBytes(StandardCharsets.UTF_8);
+          String challengeResponse = positional.get(3);
+          HofmannOpaqueClientManager manager = buildManager(server, context, memory, iterations, parallelism);
+          System.out.println("Server  : " + server);
+          System.out.println("Context : " + context);
+          System.out.println("Argon2id: memory=" + memory + " KiB, iterations=" + iterations
+              + ", parallelism=" + parallelism);
+          System.out.println();
+          runRecover(manager, server, credentialId, newPassword, challengeResponse);
+        }
         case "whoami" -> {
           if (positional.size() < 2) {
             printUsage();
@@ -184,6 +203,51 @@ public class OpaqueCli {
     System.out.println("Deletion successful.");
   }
 
+  private static void runRecover(HofmannOpaqueClientManager manager, String server,
+                                   byte[] credentialId, byte[] newPassword,
+                                   String challengeResponse)
+      throws IOException, InterruptedException {
+    ObjectMapper mapper = new ObjectMapper();
+    String credB64 = Base64.getEncoder().encodeToString(credentialId);
+    HttpClient httpClient = HttpClient.newHttpClient();
+
+    // Step 1: Recovery start
+    System.out.println("Sending recovery challenge...");
+    String startBody = mapper.writeValueAsString(Map.of("credentialIdentifier", credB64));
+    HttpRequest startReq = HttpRequest.newBuilder()
+        .uri(URI.create(server + "/opaque/recovery/start"))
+        .header("Content-Type", "application/json")
+        .POST(HttpRequest.BodyPublishers.ofString(startBody))
+        .build();
+    HttpResponse<String> startResp = httpClient.send(startReq, HttpResponse.BodyHandlers.ofString());
+    if (startResp.statusCode() != 202) {
+      throw new RuntimeException("Recovery start failed: " + startResp.statusCode() + " " + startResp.body());
+    }
+    System.out.println("  Challenge sent (HTTP 202).");
+
+    // Step 2: Recovery verify
+    System.out.println("Verifying challenge response...");
+    String verifyBody = mapper.writeValueAsString(Map.of(
+        "credentialIdentifier", credB64,
+        "challengeResponse", challengeResponse));
+    HttpRequest verifyReq = HttpRequest.newBuilder()
+        .uri(URI.create(server + "/opaque/recovery/verify"))
+        .header("Content-Type", "application/json")
+        .POST(HttpRequest.BodyPublishers.ofString(verifyBody))
+        .build();
+    HttpResponse<String> verifyResp = httpClient.send(verifyReq, HttpResponse.BodyHandlers.ofString());
+    if (verifyResp.statusCode() != 200) {
+      throw new RuntimeException("Recovery verify failed: " + verifyResp.statusCode() + " " + verifyResp.body());
+    }
+    String recoveryToken = mapper.readTree(verifyResp.body()).get("recoveryToken").asText();
+    System.out.println("  Recovery token received.");
+
+    // Step 3: Re-register with new password using recovery token
+    System.out.println("Re-registering with new password...");
+    manager.register(SERVER_ID, credentialId, newPassword, recoveryToken);
+    System.out.println("Recovery successful — credential re-registered with new password.");
+  }
+
   private static void runWhoami(String server, String token)
       throws IOException, InterruptedException {
     System.out.println("Calling GET /api/whoami...");
@@ -210,14 +274,16 @@ public class OpaqueCli {
     System.err.println("  login    <credentialId> <password> [options]");
     System.err.println("  delete   <credentialId> <jwtToken> [--server <url>]");
     System.err.println("  whoami   <jwtToken>                [--server <url>]");
+    System.err.println("  recover  <credentialId> <newPassword> <challengeResponse> [options]");
     System.err.println();
     System.err.println("Commands:");
     System.err.println("  register   Register a credential with the server");
     System.err.println("  login      Authenticate and print the session key and JWT token");
     System.err.println("  delete     Delete a registration (requires JWT from a prior login)");
     System.err.println("  whoami     Call GET /api/whoami with a JWT token from a prior login");
+    System.err.println("  recover    Recovery flow: send challenge, verify, re-register with new password");
     System.err.println();
-    System.err.println("Options (register / login):");
+    System.err.println("Options (register / login / recover):");
     System.err.println("  --server <url>       Server base URL        (default: " + DEFAULT_SERVER + ")");
     System.err.println("  --context <string>   OPAQUE context string  (default: " + DEFAULT_CONTEXT + ")");
     System.err.println("  --memory <kib>       Argon2id memory KiB    (default: " + DEFAULT_MEMORY + ")");
@@ -229,5 +295,8 @@ public class OpaqueCli {
     System.err.println("  ./gradlew :hofmann-testserver:runOpaqueCli --args=\"login    alice@example.com hunter2\" -q");
     System.err.println("  # copy the JWT token printed by login, then:");
     System.err.println("  ./gradlew :hofmann-testserver:runOpaqueCli --args=\"whoami   <token>\" -q");
+    System.err.println();
+    System.err.println("Recovery (testserver uses code '123456'):");
+    System.err.println("  ./gradlew :hofmann-testserver:runOpaqueCli --args=\"recover alice@example.com newpass 123456\" -q");
   }
 }
