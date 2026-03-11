@@ -6,6 +6,7 @@ import com.codeheadsystems.hofmann.dropwizard.health.OpaqueServerHealthCheck;
 import com.codeheadsystems.hofmann.model.opaque.OpaqueClientConfigResponse;
 import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
 import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
+import com.codeheadsystems.hofmann.server.manager.JwtKeyDetail;
 import com.codeheadsystems.hofmann.server.manager.JwtManager;
 import com.codeheadsystems.hofmann.server.ratelimit.InMemoryRateLimiter;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfigSupplier;
@@ -95,6 +96,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
   private final Function<RateLimitConfig, RateLimiter> rateLimiterFunction;
   private final boolean ephemeralKey;
   private SecureRandom secureRandom = new SecureRandom();
+  private Supplier<JwtKeyDetail> jwtKeyDetailSupplier;
   private RecoveryChallenger recoveryChallenger;
   private RecoveryTokenStore recoveryTokenStore;
 
@@ -188,6 +190,26 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
    */
   public HofmannBundle<C> withSecureRandom(SecureRandom secureRandom) {
     this.secureRandom = secureRandom;
+    return this;
+  }
+
+  /**
+   * Sets a custom {@link Supplier Supplier&lt;JwtKeyDetail&gt;} for dynamic JWT key rotation.
+   * When set, the supplier is called on every sign/verify operation, allowing key rotation
+   * without server restart — and {@code jwtSecretHex} / {@code jwtPreviousSecretHex} in the
+   * configuration are ignored.
+   * <p>
+   * Call this before the application starts (i.e., during {@code bootstrap.addBundle(...)}):
+   * <pre>{@code
+   *   bootstrap.addBundle(new HofmannBundle<>()
+   *       .withJwtKeyDetailSupplier(() -> keyRotationService.currentJwtKeyDetail()));
+   * }**</pre>
+   *
+   * @param jwtKeyDetailSupplier the jwt key detail supplier
+   * @return {@code this}, for fluent chaining
+   */
+  public HofmannBundle<C> withJwtKeyDetailSupplier(Supplier<JwtKeyDetail> jwtKeyDetailSupplier) {
+    this.jwtKeyDetailSupplier = jwtKeyDetailSupplier;
     return this;
   }
 
@@ -308,17 +330,31 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
   }
 
   private JwtManager buildJwtManager(C configuration) {
-    String secretHex = configuration.getJwtSecretHex();
-    byte[] secret;
-    if (secretHex == null || secretHex.isEmpty()) {
-      log.warn("No JWT secret configured — generating randomly. "
-          + "Tokens will be invalidated on restart. Do not use in production.");
-      secret = new byte[32];
-      secureRandom.nextBytes(secret);
+    Supplier<JwtKeyDetail> supplier;
+    if (jwtKeyDetailSupplier != null) {
+      supplier = jwtKeyDetailSupplier;
     } else {
-      secret = HexFormat.of().parseHex(secretHex);
+      String secretHex = configuration.getJwtSecretHex();
+      byte[] secret;
+      if (secretHex == null || secretHex.isEmpty()) {
+        log.warn("No JWT secret configured — generating randomly. "
+            + "Tokens will be invalidated on restart. Do not use in production.");
+        secret = new byte[32];
+        secureRandom.nextBytes(secret);
+      } else {
+        secret = HexFormat.of().parseHex(secretHex);
+      }
+
+      String previousHex = configuration.getJwtPreviousSecretHex();
+      byte[] previousSecret = null;
+      if (previousHex != null && !previousHex.isEmpty()) {
+        previousSecret = HexFormat.of().parseHex(previousHex);
+      }
+
+      JwtKeyDetail detail = new JwtKeyDetail(secret, previousSecret);
+      supplier = () -> detail;
     }
-    return new JwtManager(secret, configuration.getJwtIssuer(),
+    return new JwtManager(supplier, configuration.getJwtIssuer(),
         configuration.getJwtTtlSeconds(), sessionStore);
   }
 

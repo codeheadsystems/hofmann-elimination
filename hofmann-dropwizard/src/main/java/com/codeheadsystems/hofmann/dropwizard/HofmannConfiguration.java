@@ -77,6 +77,14 @@ public class HofmannConfiguration extends Configuration {
   private String jwtSecretHex = "";
 
   /**
+   * Hex-encoded previous HMAC-SHA256 signing secret for JWT key rotation.
+   * When set, tokens signed with this key are still accepted for verification
+   * while new tokens are signed with {@code jwtSecretHex}.
+   * Leave empty when no rotation is in progress.
+   */
+  private String jwtPreviousSecretHex = "";
+
+  /**
    * JWT token time-to-live in seconds.
    */
   @Min(1)
@@ -188,6 +196,26 @@ public class HofmannConfiguration extends Configuration {
   @JsonProperty
   public void setJwtSecretHex(String jwtSecretHex) {
     this.jwtSecretHex = jwtSecretHex;
+  }
+
+  /**
+   * Gets jwt previous secret hex.
+   *
+   * @return the jwt previous secret hex
+   */
+  @JsonProperty
+  public String getJwtPreviousSecretHex() {
+    return jwtPreviousSecretHex;
+  }
+
+  /**
+   * Sets jwt previous secret hex.
+   *
+   * @param jwtPreviousSecretHex the jwt previous secret hex
+   */
+  @JsonProperty
+  public void setJwtPreviousSecretHex(String jwtPreviousSecretHex) {
+    this.jwtPreviousSecretHex = jwtPreviousSecretHex;
   }
 
   /**

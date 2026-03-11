@@ -10,6 +10,7 @@ import com.codeheadsystems.hofmann.server.store.SessionStore;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,19 +19,38 @@ import org.slf4j.LoggerFactory;
  * <p>
  * Tokens are signed with HMAC-SHA256. Each token's JTI is stored in a {@link SessionStore}
  * so that sessions can be revoked before expiry.
+ * <p>
+ * Key material is supplied via a {@link Supplier Supplier&lt;JwtKeyDetail&gt;}, allowing
+ * runtime key rotation without server restart — modeled after the OPRF
+ * {@code Supplier<ServerProcessorDetail>} pattern.
  */
 public class JwtManager {
 
   private static final Logger log = LoggerFactory.getLogger(JwtManager.class);
 
-  private final Algorithm algorithm;
-  private final JWTVerifier verifier;
+  private final Supplier<JwtKeyDetail> keyDetailSupplier;
   private final SessionStore sessionStore;
   private final String issuer;
   private final long ttlSeconds;
 
   /**
-   * Creates a new JwtManager.
+   * Creates a new JwtManager with a dynamic key supplier.
+   *
+   * @param keyDetailSupplier supplies the current (and optionally previous) signing key
+   * @param issuer            JWT issuer claim
+   * @param ttlSeconds        token time-to-live in seconds
+   * @param sessionStore      backing store for session data and revocation
+   */
+  public JwtManager(Supplier<JwtKeyDetail> keyDetailSupplier, String issuer, long ttlSeconds,
+                    SessionStore sessionStore) {
+    this.keyDetailSupplier = keyDetailSupplier;
+    this.sessionStore = sessionStore;
+    this.issuer = issuer;
+    this.ttlSeconds = ttlSeconds;
+  }
+
+  /**
+   * Creates a new JwtManager with a static key (no rotation support).
    *
    * @param secret       HMAC-SHA256 signing secret
    * @param issuer       JWT issuer claim
@@ -38,11 +58,7 @@ public class JwtManager {
    * @param sessionStore backing store for session data and revocation
    */
   public JwtManager(byte[] secret, String issuer, long ttlSeconds, SessionStore sessionStore) {
-    this.algorithm = Algorithm.HMAC256(secret);
-    this.verifier = JWT.require(algorithm).withIssuer(issuer).build();
-    this.sessionStore = sessionStore;
-    this.issuer = issuer;
-    this.ttlSeconds = ttlSeconds;
+    this(() -> new JwtKeyDetail(secret), issuer, ttlSeconds, sessionStore);
   }
 
   /**
@@ -56,6 +72,9 @@ public class JwtManager {
     String jti = UUID.randomUUID().toString();
     Instant now = Instant.now();
     Instant expiresAt = now.plusSeconds(ttlSeconds);
+
+    JwtKeyDetail detail = keyDetailSupplier.get();
+    Algorithm algorithm = Algorithm.HMAC256(detail.signingKey());
 
     String token = JWT.create()
         .withIssuer(issuer)
@@ -72,21 +91,45 @@ public class JwtManager {
 
   /**
    * Verifies a JWT and returns the subject and JTI if valid and not revoked.
+   * <p>
+   * If a {@link JwtKeyDetail#previousKey()} is available, tokens that fail verification
+   * with the current signing key are retried with the previous key. This allows graceful
+   * key rotation: tokens signed with the old key remain valid until they expire.
    *
    * @param token JWT string
    * @return verify result if valid, empty if invalid or revoked
    */
   public Optional<VerifyResult> verify(String token) {
+    JwtKeyDetail detail = keyDetailSupplier.get();
+
+    // Try the current signing key first
+    Optional<DecodedJWT> decoded = verifyWith(token, detail.signingKey());
+
+    // Fall back to the previous key during rotation
+    if (decoded.isEmpty() && detail.previousKey() != null) {
+      decoded = verifyWith(token, detail.previousKey());
+    }
+
+    if (decoded.isEmpty()) {
+      return Optional.empty();
+    }
+
+    DecodedJWT jwt = decoded.get();
+    String jti = jwt.getId();
+    // Check the session store for revocation
+    Optional<SessionData> session = sessionStore.load(jti);
+    if (session.isEmpty()) {
+      log.debug("JWT jti={} not found in session store (revoked or expired)", jti);
+      return Optional.empty();
+    }
+    return Optional.of(new VerifyResult(jwt.getSubject(), jti));
+  }
+
+  private Optional<DecodedJWT> verifyWith(String token, byte[] key) {
     try {
-      DecodedJWT decoded = verifier.verify(token);
-      String jti = decoded.getId();
-      // Check the session store for revocation
-      Optional<SessionData> session = sessionStore.load(jti);
-      if (session.isEmpty()) {
-        log.debug("JWT jti={} not found in session store (revoked or expired)", jti);
-        return Optional.empty();
-      }
-      return Optional.of(new VerifyResult(decoded.getSubject(), jti));
+      Algorithm algorithm = Algorithm.HMAC256(key);
+      JWTVerifier verifier = JWT.require(algorithm).withIssuer(issuer).build();
+      return Optional.of(verifier.verify(token));
     } catch (JWTVerificationException e) {
       log.debug("JWT verification failed: {}", e.getMessage());
       return Optional.empty();

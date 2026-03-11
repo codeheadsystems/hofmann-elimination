@@ -3,6 +3,7 @@ package com.codeheadsystems.hofmann.springboot.config;
 import com.codeheadsystems.hofmann.model.opaque.OpaqueClientConfigResponse;
 import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
 import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
+import com.codeheadsystems.hofmann.server.manager.JwtKeyDetail;
 import com.codeheadsystems.hofmann.server.manager.JwtManager;
 import com.codeheadsystems.hofmann.server.ratelimit.InMemoryRateLimiter;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfigSupplier;
@@ -165,17 +166,25 @@ public class HofmannAutoConfiguration {
   }
 
   /**
-   * Jwt manager jwt manager.
+   * Default {@link JwtKeyDetail} supplier that reads the signing key (and optional previous
+   * key) from configuration.
+   * <p>
+   * Override this bean to implement dynamic key rotation (e.g. from a secrets manager):
+   * <pre>{@code
+   *   @Bean
+   *   public Supplier<JwtKeyDetail> jwtKeyDetailSupplier() {
+   *     return () -> keyRotationService.currentJwtKeyDetail();
+   *   }
+   * }**</pre>
    *
    * @param props        the props
-   * @param sessionStore the session store
    * @param secureRandom the secure random
-   * @return the jwt manager
+   * @return the supplier
    */
   @Bean
   @ConditionalOnMissingBean
-  public JwtManager jwtManager(HofmannProperties props, SessionStore sessionStore,
-                               SecureRandom secureRandom) {
+  public Supplier<JwtKeyDetail> jwtKeyDetailSupplier(HofmannProperties props,
+                                                     SecureRandom secureRandom) {
     String secretHex = props.getJwtSecretHex();
     byte[] secret;
     if (secretHex == null || secretHex.isEmpty()) {
@@ -186,7 +195,31 @@ public class HofmannAutoConfiguration {
     } else {
       secret = HexFormat.of().parseHex(secretHex);
     }
-    return new JwtManager(secret, props.getJwtIssuer(), props.getJwtTtlSeconds(), sessionStore);
+
+    String previousHex = props.getJwtPreviousSecretHex();
+    byte[] previousSecret = null;
+    if (previousHex != null && !previousHex.isEmpty()) {
+      previousSecret = HexFormat.of().parseHex(previousHex);
+    }
+
+    JwtKeyDetail detail = new JwtKeyDetail(secret, previousSecret);
+    return () -> detail;
+  }
+
+  /**
+   * Jwt manager jwt manager.
+   *
+   * @param jwtKeyDetailSupplier the jwt key detail supplier
+   * @param props                the props
+   * @param sessionStore         the session store
+   * @return the jwt manager
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public JwtManager jwtManager(Supplier<JwtKeyDetail> jwtKeyDetailSupplier,
+                               HofmannProperties props, SessionStore sessionStore) {
+    return new JwtManager(jwtKeyDetailSupplier, props.getJwtIssuer(),
+        props.getJwtTtlSeconds(), sessionStore);
   }
 
   /**

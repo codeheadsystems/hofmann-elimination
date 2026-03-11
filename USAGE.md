@@ -37,11 +37,12 @@ at their default in a real deployment.
 
 ### JWT
 
-| Field           | Default       | Required for production | Description                                                                                                                                                                              |
-|-----------------|---------------|-------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `jwtSecretHex`  | `""` (random) | **Yes**                 | Hex-encoded 32-byte HMAC-SHA256 signing secret. Generate with `openssl rand -hex 32`. An empty value generates a random secret on each startup, invalidating all tokens after a restart. |
-| `jwtTtlSeconds` | `3600`        | No                      | Token time-to-live in seconds.                                                                                                                                                           |
-| `jwtIssuer`     | `hofmann`     | No                      | Value placed in the JWT `iss` claim.                                                                                                                                                     |
+| Field                  | Default       | Required for production | Description                                                                                                                                                                              |
+|------------------------|---------------|-------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `jwtSecretHex`         | `""` (random) | **Yes**                 | Hex-encoded 32-byte HMAC-SHA256 signing secret. Generate with `openssl rand -hex 32`. An empty value generates a random secret on each startup, invalidating all tokens after a restart. |
+| `jwtPreviousSecretHex` | `""`          | No                      | Hex-encoded previous signing secret for key rotation. Tokens signed with this key are accepted for verification while new tokens are signed with `jwtSecretHex`. See [JWT key rotation](#jwt-key-rotation). |
+| `jwtTtlSeconds`        | `3600`        | No                      | Token time-to-live in seconds.                                                                                                                                                           |
+| `jwtIssuer`            | `hofmann`     | No                      | Value placed in the JWT `iss` claim.                                                                                                                                                     |
 
 ### Security
 
@@ -241,10 +242,16 @@ public SecureRandom secureRandom() {
     return myHsmSecureRandom();
 }
 
-// Key rotation via dynamic supplier
+// OPRF key rotation via dynamic supplier
 @Bean
 public Supplier<ServerProcessorDetail> serverProcessorDetailSupplier(KeyRotationService svc) {
     return () -> new ServerProcessorDetail(svc.currentKey(), svc.currentKeyId());
+}
+
+// JWT key rotation via dynamic supplier
+@Bean
+public Supplier<JwtKeyDetail> jwtKeyDetailSupplier(MySecretsManager secrets) {
+    return () -> new JwtKeyDetail(secrets.currentJwtKey(), secrets.previousJwtKey());
 }
 ```
 
@@ -258,6 +265,7 @@ hofmann:
   oprf-seed-hex: <output of openssl rand -hex 32>
   oprf-master-key-hex: <output of openssl rand -hex 32>
   jwt-secret-hex: <output of openssl rand -hex 32>
+  jwt-previous-secret-hex: ""   # set to old jwt-secret-hex during key rotation
   argon2-memory-kib: 65536
   argon2-iterations: 3
   argon2-parallelism: 1
@@ -301,7 +309,7 @@ Supplier<ServerProcessorDetail> oprfSupplier =
 CredentialStore credentialStore = new MyDatabaseCredentialStore(dataSource);
 SessionStore    sessionStore    = new MyRedisSessionStore(redisClient);
 
-// 5. Build the JWT manager
+// 5. Build the JWT manager (supports key rotation via Supplier<JwtKeyDetail>)
 byte[] jwtSecret = hexToBytes(env.getRequired("JWT_SECRET_HEX"));
 JwtManager jwt   = new JwtManager(jwtSecret, "my-app", 3600L, sessionStore);
 
@@ -508,6 +516,85 @@ byte[] credId = buf.array();
 ```
 
 The identifier is never transmitted in plaintext — it is hashed into the OPRF evaluation — but you must store the mapping between it and the user record in your own database so you can look up the credential during authentication.
+
+### JWT key rotation
+
+JWT signing keys can be rotated without invalidating in-flight sessions by using the
+`jwtPreviousSecretHex` field.  During rotation, tokens signed with the previous key are
+still accepted for verification while all new tokens are signed with the current key.
+
+**Step-by-step rotation:**
+
+1. Generate a new secret:
+
+   ```bash
+   NEW_JWT_SECRET=$(openssl rand -hex 32)
+   ```
+
+2. Deploy with the new secret as `jwtSecretHex` and the old secret as `jwtPreviousSecretHex`:
+
+   **Spring Boot (`application.yml`):**
+
+   ```yaml
+   hofmann:
+     jwt-secret-hex: ${NEW_JWT_SECRET_HEX}
+     jwt-previous-secret-hex: ${OLD_JWT_SECRET_HEX}
+   ```
+
+   **Dropwizard (`config.yml`):**
+
+   ```yaml
+   jwtSecretHex: ${NEW_JWT_SECRET_HEX}
+   jwtPreviousSecretHex: ${OLD_JWT_SECRET_HEX}
+   ```
+
+3. After one TTL period (default 1 hour), all tokens signed with the old key have expired.
+   Remove `jwtPreviousSecretHex` on the next deploy:
+
+   ```yaml
+   hofmann:
+     jwt-secret-hex: ${NEW_JWT_SECRET_HEX}
+     jwt-previous-secret-hex: ""
+   ```
+
+**Dynamic rotation (without restart):**
+
+For systems that need to rotate keys without redeploying, provide a custom
+`Supplier<JwtKeyDetail>` that returns the current and previous keys from your secrets
+manager.  The supplier is called on every sign and verify operation, so key changes
+take effect immediately.
+
+**Spring Boot:**
+
+```java
+@Bean
+public Supplier<JwtKeyDetail> jwtKeyDetailSupplier(MySecretsManager secrets) {
+    return () -> new JwtKeyDetail(
+        secrets.currentJwtKey(),
+        secrets.previousJwtKey());  // null when no rotation in progress
+}
+```
+
+**Dropwizard:**
+
+```java
+bootstrap.addBundle(new HofmannBundle<>(credentialStore, sessionStore, null)
+    .withJwtKeyDetailSupplier(() -> new JwtKeyDetail(
+        secrets.currentJwtKey(),
+        secrets.previousJwtKey())));
+```
+
+**Custom / bare framework:**
+
+```java
+Supplier<JwtKeyDetail> supplier = () -> new JwtKeyDetail(
+    secrets.currentJwtKey(),
+    secrets.previousJwtKey());
+JwtManager jwt = new JwtManager(supplier, "my-app", 3600L, sessionStore);
+```
+
+When a custom `Supplier<JwtKeyDetail>` is provided, the `jwtSecretHex` and
+`jwtPreviousSecretHex` configuration fields are ignored.
 
 ### OPRF key rotation (standalone endpoint)
 

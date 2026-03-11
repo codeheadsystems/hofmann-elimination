@@ -16,6 +16,7 @@ public class HofmannProperties {
   private String oprfProcessorId = "hofmann-oprf-v1";
   private String context = "hofmann-opaque-v1";
   private String jwtSecretHex = "";
+  private String jwtPreviousSecretHex = "";
   private long jwtTtlSeconds = 3600;
   private String jwtIssuer = "hofmann";
   private int argon2MemoryKib = 65536;
@@ -165,6 +166,24 @@ public class HofmannProperties {
    */
   public void setJwtSecretHex(String jwtSecretHex) {
     this.jwtSecretHex = jwtSecretHex;
+  }
+
+  /**
+   * Gets jwt previous secret hex.
+   *
+   * @return the jwt previous secret hex
+   */
+  public String getJwtPreviousSecretHex() {
+    return jwtPreviousSecretHex;
+  }
+
+  /**
+   * Sets jwt previous secret hex.
+   *
+   * @param jwtPreviousSecretHex the jwt previous secret hex
+   */
+  public void setJwtPreviousSecretHex(String jwtPreviousSecretHex) {
+    this.jwtPreviousSecretHex = jwtPreviousSecretHex;
   }
 
   /**
