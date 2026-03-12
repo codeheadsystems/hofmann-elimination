@@ -97,6 +97,11 @@ impl GroupSpec for Ristretto255GroupSpec {
         scalar.to_bytes().to_vec()
     }
 
+    fn is_identity_element(&self, element: &[u8]) -> bool {
+        // ristretto255 identity is the all-zeros 32-byte encoding
+        element.len() == 32 && element.iter().all(|&b| b == 0)
+    }
+
     fn scalar_inverse(&self, scalar: &[u8]) -> Vec<u8> {
         let s = decode_scalar(scalar);
         let inv = s.invert();
@@ -114,7 +119,13 @@ fn decode_scalar(bytes: &[u8]) -> Scalar {
 }
 
 /// Decompresses a 32-byte canonical ristretto255 encoding into a group element.
+///
+/// Rejects the identity element per RFC 9497 §2.1.
 fn decompress_point(bytes: &[u8]) -> RistrettoPoint {
+    assert!(
+        bytes.len() != 32 || bytes.iter().any(|&b| b != 0),
+        "identity element rejected per RFC 9497 §2.1"
+    );
     let compressed = CompressedRistretto::from_slice(bytes)
         .expect("invalid ristretto255 encoding length");
     compressed

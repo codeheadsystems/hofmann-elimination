@@ -69,4 +69,9 @@ pub trait GroupSpec: Send + Sync {
     ///
     /// Panics if the scalar is zero (has no inverse).
     fn scalar_inverse(&self, scalar: &[u8]) -> Vec<u8>;
+
+    /// Returns `true` if the serialized element is the group identity element.
+    ///
+    /// Per RFC 9497 §2.1, `DeserializeElement` must reject the identity.
+    fn is_identity_element(&self, element: &[u8]) -> bool;
 }
