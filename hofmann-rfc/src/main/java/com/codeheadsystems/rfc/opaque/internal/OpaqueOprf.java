@@ -24,7 +24,17 @@ public class OpaqueOprf {
    */
   public static byte[] blind(OpaqueCipherSuite suite, byte[] password, BigInteger blind) {
     byte[] H = suite.oprfSuite().groupSpec().hashToGroup(password, suite.oprfSuite().hashToGroupDst());
+    if (isIdentity(H)) {
+      throw new IllegalArgumentException("HashToGroup produced the identity element");
+    }
     return suite.oprfSuite().groupSpec().scalarMultiply(blind, H);
+  }
+
+  private static boolean isIdentity(byte[] element) {
+    for (byte b : element) {
+      if (b != 0) return false;
+    }
+    return true;
   }
 
   /**

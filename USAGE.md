@@ -23,6 +23,8 @@ at their default in a real deployment.
 | `context`           | `hofmann-opaque-v1` | **Yes**                 | Application context string bound into the OPAQUE preamble. Must be unique per deployment. Shared between server and client out-of-band.                                                                                              |
 | `serverKeySeedHex`  | `""` (random)       | **Yes**                 | Hex-encoded 32-byte seed that deterministically derives the server's long-term AKE key pair. Generate with `openssl rand -hex 32`.                                                                                                   |
 | `oprfSeedHex`       | `""` (random)       | **Yes**                 | Hex-encoded 32-byte seed that deterministically derives per-credential OPRF keys. Generate with `openssl rand -hex 32`. Must be set together with `serverKeySeedHex` — providing only one throws `IllegalStateException` on startup. |
+| `previousServerKeySeedHex` | `""`         | No                      | Previous server key seed for key rotation. Credentials registered under these keys remain authenticatable. See [OPAQUE key rotation](#opaque-key-rotation). |
+| `previousOprfSeedHex`      | `""`         | No                      | Previous OPRF seed for key rotation. Must be set together with `previousServerKeySeedHex` or both omitted. |
 | `argon2MemoryKib`   | `65536`             | **Yes**                 | Argon2id memory cost in kibibytes. Set to `0` to disable Argon2 (identity KSF — for testing only). See [Argon2id consistency](#argon2id-consistency-between-server-and-client) below.                                                |
 | `argon2Iterations`  | `3`                 | **Yes**                 | Argon2id iteration count. Ignored when `argon2MemoryKib` is `0`.                                                                                                                                                                     |
 | `argon2Parallelism` | `1`                 | **Yes**                 | Argon2id parallelism. Ignored when `argon2MemoryKib` is `0`.                                                                                                                                                                         |
@@ -621,13 +623,115 @@ The `processorIdentifier` string (e.g., `"key-v2"`) is returned in every `/oprf`
 
 ### OPAQUE key rotation
 
-OPAQUE server keys cannot be rotated transparently.  Every registered credential is cryptographically bound to the specific server AKE key pair and OPRF seed that were active at registration time.  Rotating `serverKeySeedHex` or `oprfSeedHex` silently invalidates all existing registrations — the authentication MAC check will fail as if the user supplied a wrong password.
+Every OPAQUE registration record is cryptographically bound to the server's `oprfSeed` and
+`serverPrivateKey` that were active at registration time.  Simply replacing `serverKeySeedHex`
+or `oprfSeedHex` would silently invalidate all existing registrations.
 
-Plan for key rotation by:
+To rotate safely, keep old keys available for authentication while new registrations use the
+new keys.  Clients automatically re-register via the change-password flow when they see the
+`keyRotationRequired` flag in the auth response.
 
-1. Versioning credential records in your `CredentialStore` (e.g., a `key_version` column).
-2. On login, detecting a version mismatch and prompting the user to re-register.
-3. Never rotating without notifying affected users in advance.
+**Step-by-step rotation:**
+
+1. Generate new seeds:
+
+   ```bash
+   NEW_SERVER_KEY_SEED=$(openssl rand -hex 32)
+   NEW_OPRF_SEED=$(openssl rand -hex 32)
+   ```
+
+2. Deploy with new seeds as current and old seeds as previous:
+
+   **Spring Boot (`application.yml`):**
+
+   ```yaml
+   hofmann:
+     server-key-seed-hex: ${NEW_SERVER_KEY_SEED_HEX}
+     oprf-seed-hex: ${NEW_OPRF_SEED_HEX}
+     previous-server-key-seed-hex: ${OLD_SERVER_KEY_SEED_HEX}
+     previous-oprf-seed-hex: ${OLD_OPRF_SEED_HEX}
+   ```
+
+   **Dropwizard (`config.yml`):**
+
+   ```yaml
+   serverKeySeedHex: ${NEW_SERVER_KEY_SEED_HEX}
+   oprfSeedHex: ${NEW_OPRF_SEED_HEX}
+   previousServerKeySeedHex: ${OLD_SERVER_KEY_SEED_HEX}
+   previousOprfSeedHex: ${OLD_OPRF_SEED_HEX}
+   ```
+
+3. Users log in gradually.  Each login authenticates with the old keys, then the Java and
+   TypeScript clients automatically re-register the credential under the new keys (via the
+   existing change-password flow).  This is transparent to the user.
+
+4. Monitor migration progress by querying your `CredentialStore` for remaining version 0
+   records.
+
+5. After all credentials are migrated (or after a deadline), remove the previous seeds:
+
+   ```yaml
+   hofmann:
+     server-key-seed-hex: ${NEW_SERVER_KEY_SEED_HEX}
+     oprf-seed-hex: ${NEW_OPRF_SEED_HEX}
+     previous-server-key-seed-hex: ""
+     previous-oprf-seed-hex: ""
+   ```
+
+   Users who never logged in during the rotation window will need to re-register via the
+   account recovery flow.
+
+**Versioned credential storage:**
+
+The `CredentialStore` interface has default `store(id, record, keyVersion)` and
+`loadVersioned(id)` methods.  The defaults delegate to the unversioned methods with
+version 0, so existing implementations continue to work.  For production, override these
+to persist a `key_version` column:
+
+```java
+@Override
+public void store(byte[] id, RegistrationRecord record, int keyVersion) {
+    jdbcTemplate.update(
+        "INSERT INTO credentials(id, record_bytes, key_version) VALUES (?, ?, ?) " +
+        "ON CONFLICT(id) DO UPDATE SET record_bytes = EXCLUDED.record_bytes, " +
+        "key_version = EXCLUDED.key_version",
+        id, record.serialize(), keyVersion);
+}
+
+@Override
+public Optional<VersionedCredential> loadVersioned(byte[] id) {
+    List<VersionedCredential> rows = jdbcTemplate.query(
+        "SELECT record_bytes, key_version FROM credentials WHERE id = ?",
+        (rs, n) -> new VersionedCredential(
+            rs.getInt("key_version"),
+            RegistrationRecord.deserialize(rs.getBytes("record_bytes"))),
+        id);
+    return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
+}
+```
+
+**Dynamic rotation (without restart):**
+
+Provide a custom `Supplier<OpaqueServerKeyDetail>` that returns the current and previous
+servers from your key management system:
+
+**Spring Boot:**
+
+```java
+@Bean
+public Supplier<OpaqueServerKeyDetail> opaqueServerKeyDetailSupplier(KeyVaultService vault) {
+    return () -> vault.currentOpaqueKeyDetail();
+}
+```
+
+**Dropwizard:**
+
+```java
+bootstrap.addBundle(new HofmannBundle<>(credentialStore, sessionStore, null)
+    .withOpaqueServerKeyDetailSupplier(() -> vault.currentOpaqueKeyDetail()));
+```
+
+When a custom supplier is provided, the seed configuration fields are ignored.
 
 ---
 

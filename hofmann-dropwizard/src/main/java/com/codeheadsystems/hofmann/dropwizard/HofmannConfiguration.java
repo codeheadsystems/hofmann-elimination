@@ -50,6 +50,19 @@ public class HofmannConfiguration extends Configuration {
   private String oprfSeedHex = "";
 
   /**
+   * Hex-encoded previous 32-byte seed for the server's AKE key pair, used during key rotation.
+   * When set along with {@code previousOprfSeedHex}, credentials registered under these keys
+   * remain authenticatable while new registrations use the current keys.
+   */
+  private String previousServerKeySeedHex = "";
+
+  /**
+   * Hex-encoded previous 32-byte OPRF seed, used during key rotation.
+   * Must be set together with {@code previousServerKeySeedHex} or both omitted.
+   */
+  private String previousOprfSeedHex = "";
+
+  /**
    * Hex-encoded scalar (BigInteger) used as the server's master key for the standalone
    * OPRF endpoint ({@code POST /oprf}).  Must be a valid non-zero scalar in the P-256 group.
    * Leave empty for random generation (dev only — OPRF outputs change on restart).
@@ -296,6 +309,26 @@ public class HofmannConfiguration extends Configuration {
   @JsonProperty
   public void setOprfSeedHex(String oprfSeedHex) {
     this.oprfSeedHex = oprfSeedHex;
+  }
+
+  @JsonProperty
+  public String getPreviousServerKeySeedHex() {
+    return previousServerKeySeedHex;
+  }
+
+  @JsonProperty
+  public void setPreviousServerKeySeedHex(String previousServerKeySeedHex) {
+    this.previousServerKeySeedHex = previousServerKeySeedHex;
+  }
+
+  @JsonProperty
+  public String getPreviousOprfSeedHex() {
+    return previousOprfSeedHex;
+  }
+
+  @JsonProperty
+  public void setPreviousOprfSeedHex(String previousOprfSeedHex) {
+    this.previousOprfSeedHex = previousOprfSeedHex;
   }
 
   /**

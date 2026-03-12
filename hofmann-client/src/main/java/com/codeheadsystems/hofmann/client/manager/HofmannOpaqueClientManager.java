@@ -141,6 +141,10 @@ public class HofmannOpaqueClientManager {
   /**
    * Runs the full OPAQUE authentication flow for the given credential identifier and password.
    * Returns the server's auth finish response containing both the session key and a JWT token.
+   * <p>
+   * If the server indicates that key rotation is required (the credential was registered under
+   * an older server key version), this method automatically re-registers the credential via
+   * the change-password flow using the same password, so the migration is transparent to the caller.
    *
    * @param serverId             the server to authenticate against
    * @param credentialIdentifier raw bytes identifying the credential (e.g. UTF-8 email)
@@ -163,8 +167,16 @@ public class HofmannOpaqueClientManager {
     AuthResult authResult = clientFor(serverId).generateKE3(authState, null, null, startResp.ke2());
 
     // Step 3 — send KE3 to the server; throws SecurityException on 401
-    return accessor.authFinish(serverId,
+    AuthFinishResponse response = accessor.authFinish(serverId,
         new AuthFinishRequest(startResp.sessionToken(), authResult.ke3()));
+
+    // Step 4 — if key rotation required, silently re-register with the same password
+    if (Boolean.TRUE.equals(response.keyRotationRequired())) {
+      log.info("Key rotation required for credential — re-registering under current server keys");
+      changePassword(serverId, credentialIdentifier, password, response.token());
+    }
+
+    return response;
   }
 
   /**

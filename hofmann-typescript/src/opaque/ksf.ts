@@ -37,7 +37,7 @@ export function argon2idKsf(memoryKib: number, iterations: number, parallelism: 
     const { argon2id } = await import('hash-wasm');
     return argon2id({
       password: input,
-      salt: new Uint8Array(32),  // 32-byte zero salt per OPAQUE convention
+      salt: new Uint8Array(16),  // 16-byte zero salt per RFC 9807
       iterations,
       parallelism,
       memorySize: memoryKib,

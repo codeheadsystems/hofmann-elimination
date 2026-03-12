@@ -16,7 +16,7 @@ import org.slf4j.LoggerFactory;
 public class InMemoryCredentialStore implements CredentialStore {
 
   private static final Logger log = LoggerFactory.getLogger(InMemoryCredentialStore.class);
-  private final ConcurrentHashMap<ByteKey, RegistrationRecord> store = new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<ByteKey, VersionedCredential> store = new ConcurrentHashMap<>();
 
   /**
    * Instantiates a new In memory credential store.
@@ -28,12 +28,24 @@ public class InMemoryCredentialStore implements CredentialStore {
 
   @Override
   public void store(byte[] credentialIdentifier, RegistrationRecord record) {
-    store.put(new ByteKey(credentialIdentifier), record);
-    log.debug("Stored registration for credential identifier ({} bytes)", credentialIdentifier.length);
+    store(credentialIdentifier, record, 0);
+  }
+
+  @Override
+  public void store(byte[] credentialIdentifier, RegistrationRecord record, int keyVersion) {
+    store.put(new ByteKey(credentialIdentifier), new VersionedCredential(keyVersion, record));
+    log.debug("Stored registration for credential identifier ({} bytes), keyVersion={}",
+        credentialIdentifier.length, keyVersion);
   }
 
   @Override
   public Optional<RegistrationRecord> load(byte[] credentialIdentifier) {
+    VersionedCredential vc = store.get(new ByteKey(credentialIdentifier));
+    return vc == null ? Optional.empty() : Optional.of(vc.record());
+  }
+
+  @Override
+  public Optional<VersionedCredential> loadVersioned(byte[] credentialIdentifier) {
     return Optional.ofNullable(store.get(new ByteKey(credentialIdentifier)));
   }
 

@@ -68,10 +68,17 @@ public class InMemoryPendingSessionStore implements PendingSessionStore {
 
   @Override
   public void store(String sessionToken, ServerAuthState state, String credentialIdentifierBase64) {
+    store(sessionToken, state, credentialIdentifierBase64, 0);
+  }
+
+  @Override
+  public void store(String sessionToken, ServerAuthState state,
+                    String credentialIdentifierBase64, int keyVersion) {
     if (sessions.size() >= maxSessions) {
       throw new IllegalStateException("Too many pending sessions");
     }
-    sessions.put(sessionToken, new TimestampedEntry(state, credentialIdentifierBase64, Instant.now()));
+    sessions.put(sessionToken,
+        new TimestampedEntry(state, credentialIdentifierBase64, keyVersion, Instant.now()));
     log.debug("Stored pending session {}", sessionToken);
   }
 
@@ -84,7 +91,8 @@ public class InMemoryPendingSessionStore implements PendingSessionStore {
     if (entry.createdAt().isBefore(Instant.now().minusSeconds(ttlSeconds))) {
       return Optional.empty();
     }
-    return Optional.of(new PendingSession(entry.state(), entry.credentialIdentifierBase64()));
+    return Optional.of(new PendingSession(entry.state(), entry.credentialIdentifierBase64(),
+        entry.keyVersion()));
   }
 
   @Override
@@ -95,6 +103,7 @@ public class InMemoryPendingSessionStore implements PendingSessionStore {
   private record TimestampedEntry(
       ServerAuthState state,
       String credentialIdentifierBase64,
+      int keyVersion,
       Instant createdAt) {
   }
 }

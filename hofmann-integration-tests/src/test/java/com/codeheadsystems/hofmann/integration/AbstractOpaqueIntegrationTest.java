@@ -128,6 +128,47 @@ abstract class AbstractOpaqueIntegrationTest {
     assertThat(response.body()).contains("credentialIdentifier");
   }
 
+  // ── Change-password integration tests ───────────────────────────────────────
+
+  @Test
+  void changePassword_thenAuthenticateWithNewPassword() {
+    byte[] credId = uniqueCredId("change-pwd");
+    byte[] newPassword = "new-password-changed".getBytes(StandardCharsets.UTF_8);
+
+    manager.register(SERVER_ID, credId, PASSWORD);
+    AuthFinishResponse authResp = manager.authenticate(SERVER_ID, credId, PASSWORD);
+
+    manager.changePassword(SERVER_ID, credId, newPassword, authResp.token());
+
+    AuthFinishResponse newAuth = manager.authenticate(SERVER_ID, credId, newPassword);
+    assertThat(newAuth.token()).isNotEmpty();
+  }
+
+  @Test
+  void changePassword_oldPasswordFails() {
+    byte[] credId = uniqueCredId("change-pwd-old-fails");
+    byte[] newPassword = "new-password-changed2".getBytes(StandardCharsets.UTF_8);
+
+    manager.register(SERVER_ID, credId, PASSWORD);
+    AuthFinishResponse authResp = manager.authenticate(SERVER_ID, credId, PASSWORD);
+
+    manager.changePassword(SERVER_ID, credId, newPassword, authResp.token());
+
+    assertThatThrownBy(() -> manager.authenticate(SERVER_ID, credId, PASSWORD))
+        .isInstanceOf(SecurityException.class);
+  }
+
+  @Test
+  void changePassword_withoutToken_throwsSecurityException() {
+    byte[] credId = uniqueCredId("change-pwd-noauth");
+    manager.register(SERVER_ID, credId, PASSWORD);
+
+    byte[] newPassword = "new-password".getBytes(StandardCharsets.UTF_8);
+
+    assertThatThrownBy(() -> manager.changePassword(SERVER_ID, credId, newPassword, null))
+        .isInstanceOf(Exception.class);
+  }
+
   // ── Recovery integration tests ──────────────────────────────────────────────
 
   @Test

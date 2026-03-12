@@ -222,7 +222,7 @@ public record OpaqueConfig(
       Argon2Parameters params =
           new Argon2Parameters.Builder(
               Argon2Parameters.ARGON2_id)
-              .withSalt(new byte[Nn]) // 32-byte zero salt (nonce-length, suite-independent)
+              .withSalt(new byte[16]) // 16-byte zero salt per RFC 9807
               .withMemoryAsKB(config.argon2Memory())
               .withIterations(config.argon2Iterations())
               .withParallelism(config.argon2Parallelism())

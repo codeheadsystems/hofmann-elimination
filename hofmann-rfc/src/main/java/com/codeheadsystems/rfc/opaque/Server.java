@@ -54,7 +54,7 @@ public class Server {
   public static Server generate(OpaqueConfig config) {
     BigInteger sk = config.cipherSuite().oprfSuite().randomScalar();
     byte[] pk = config.cipherSuite().oprfSuite().groupSpec().scalarMultiplyGenerator(sk);
-    byte[] seed = config.randomProvider().randomBytes(config.Nok());
+    byte[] seed = config.randomProvider().randomBytes(config.Nh());
 
     byte[] skFixed = ByteUtils.scalarToFixedBytes(sk, config.Nsk());
     return new Server(skFixed, pk, seed, config);

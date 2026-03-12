@@ -78,7 +78,7 @@ public class HofmannSecurityConfig {
    *     source.registerCorsConfiguration("/**", config);
    *     return source;
    *   }
-   * }**</pre>
+   * }***</pre>
    *
    * @return the cors configuration source
    */

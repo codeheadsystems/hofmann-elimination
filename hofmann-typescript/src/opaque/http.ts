@@ -75,6 +75,7 @@ interface AuthFinishRequestDto {
 interface AuthFinishResponseDto {
   sessionKey: string;  // base64 — the shared session key
   token: string;       // JWT bearer token
+  keyRotationRequired?: boolean;  // true when credential needs re-registration under new server keys
 }
 
 interface RegistrationDeleteRequestDto {
@@ -222,6 +223,10 @@ export class OpaqueHttpClient {
   /**
    * Full authentication flow: KE1 → KE2 → KE3.
    *
+   * If the server indicates that key rotation is required (the credential was registered
+   * under an older server key version), this method automatically re-registers the
+   * credential via the change-password flow using the same password.
+   *
    * @param credentialId    Credential identifier
    * @param password        The user's password
    * @param serverIdentity  Optional explicit server identity
@@ -282,6 +287,11 @@ export class OpaqueHttpClient {
       `/opaque/auth/finish`,
       finalizeDto,
     );
+
+    // Step 5: If key rotation required, silently re-register with the same password
+    if (finalizeResp.keyRotationRequired) {
+      await this.changePassword(credentialId, password, finalizeResp.token, serverIdentity, clientIdentity);
+    }
 
     return finalizeResp.token;
   }

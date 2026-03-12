@@ -12,6 +12,8 @@ public class HofmannProperties {
   private String oprfCipherSuite = "P256_SHA256";
   private String serverKeySeedHex = "";
   private String oprfSeedHex = "";
+  private String previousServerKeySeedHex = "";
+  private String previousOprfSeedHex = "";
   private String oprfMasterKeyHex = "";
   private String oprfProcessorId = "hofmann-oprf-v1";
   private String context = "hofmann-opaque-v1";
@@ -94,6 +96,42 @@ public class HofmannProperties {
    */
   public void setOprfSeedHex(String oprfSeedHex) {
     this.oprfSeedHex = oprfSeedHex;
+  }
+
+  /**
+   * Gets previous server key seed hex.
+   *
+   * @return the previous server key seed hex
+   */
+  public String getPreviousServerKeySeedHex() {
+    return previousServerKeySeedHex;
+  }
+
+  /**
+   * Sets previous server key seed hex.
+   *
+   * @param previousServerKeySeedHex the previous server key seed hex
+   */
+  public void setPreviousServerKeySeedHex(String previousServerKeySeedHex) {
+    this.previousServerKeySeedHex = previousServerKeySeedHex;
+  }
+
+  /**
+   * Gets previous oprf seed hex.
+   *
+   * @return the previous oprf seed hex
+   */
+  public String getPreviousOprfSeedHex() {
+    return previousOprfSeedHex;
+  }
+
+  /**
+   * Sets previous oprf seed hex.
+   *
+   * @param previousOprfSeedHex the previous oprf seed hex
+   */
+  public void setPreviousOprfSeedHex(String previousOprfSeedHex) {
+    this.previousOprfSeedHex = previousOprfSeedHex;
   }
 
   /**

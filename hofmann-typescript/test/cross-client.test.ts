@@ -117,6 +117,26 @@ describe.skipIf(skip)('cross-client OPAQUE', () => {
     }
   }, 60_000);
 
+  it('authenticates and auto-migrates after key rotation', async () => {
+    const credId = readFile('opaque-rotation-cred.txt');
+    const password = readFile('opaque-rotation-pwd.txt');
+
+    if (!credId || !password) {
+      writeFile('opaque-ts-rotation-result.txt', 'skipped');
+      return;
+    }
+
+    try {
+      // authenticate() auto-calls changePassword when keyRotationRequired=true
+      const token = await client.authenticate(credId, password);
+      expect(token).toBeTruthy();
+      writeFile('opaque-ts-rotation-result.txt', 'success');
+    } catch (e) {
+      writeFile('opaque-ts-rotation-result.txt', `failed: ${e}`);
+      throw e;
+    }
+  }, 60_000);
+
   it('registers a credential for Java to authenticate with', async () => {
     const credId = readFile('opaque-ts-register-cred.txt');
     const password = readFile('opaque-ts-register-pwd.txt');

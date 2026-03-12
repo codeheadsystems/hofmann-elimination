@@ -59,6 +59,9 @@ public class OprfClientManager {
   public BlindedRequest eliminationRequest(final ClientHashingContext clientHashingContext) {
     log.trace("eliminationRequest(requestId={})", clientHashingContext.requestId());
     final byte[] hashedElement = groupSpec.hashToGroup(clientHashingContext.input(), suite.hashToGroupDst());
+    if (isIdentity(hashedElement)) {
+      throw new IllegalArgumentException("HashToGroup produced the identity element");
+    }
     final byte[] blindedElement = groupSpec.scalarMultiply(clientHashingContext.blindingFactor(), hashedElement);
     final String blindedPointHex = Hex.toHexString(blindedElement);
     return new BlindedRequest(blindedPointHex, clientHashingContext.requestId());
@@ -72,6 +75,13 @@ public class OprfClientManager {
    * @param clientHashingContext the original context that was used to generate the elimination request, which contains the necessary information for finalizing the hash.
    * @return a string that represents the final hash result.
    */
+  private static boolean isIdentity(byte[] element) {
+    for (byte b : element) {
+      if (b != 0) return false;
+    }
+    return true;
+  }
+
   public HashResult hashResult(final EvaluatedResponse evaluatedResponse, final ClientHashingContext clientHashingContext) {
     log.trace("hashResult(requestId={})", clientHashingContext.requestId());
     final byte[] evaluatedElement = Hex.decode(evaluatedResponse.evaluatedPoint());

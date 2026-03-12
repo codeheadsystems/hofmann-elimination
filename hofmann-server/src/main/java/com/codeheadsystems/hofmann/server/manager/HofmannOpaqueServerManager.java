@@ -21,6 +21,7 @@ import com.codeheadsystems.hofmann.server.store.InMemoryPendingSessionStore;
 import com.codeheadsystems.hofmann.server.store.InMemoryRecoveryTokenStore;
 import com.codeheadsystems.hofmann.server.store.PendingSessionStore;
 import com.codeheadsystems.hofmann.server.store.RecoveryTokenStore;
+import com.codeheadsystems.hofmann.server.store.VersionedCredential;
 import com.codeheadsystems.rfc.opaque.Server;
 import com.codeheadsystems.rfc.opaque.model.KE1;
 import com.codeheadsystems.rfc.opaque.model.RegistrationRecord;
@@ -28,6 +29,7 @@ import com.codeheadsystems.rfc.opaque.model.ServerKE2Result;
 import java.util.Base64;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,6 +40,11 @@ import org.slf4j.LoggerFactory;
  * framework-specific adapters ({@code OpaqueResource} for JAX-RS / Dropwizard,
  * {@code OpaqueController} for Spring Boot) can remain thin wrappers that only
  * translate exceptions into framework-specific HTTP error responses.
+ * <p>
+ * <strong>Key rotation:</strong> accepts a {@code Supplier<OpaqueServerKeyDetail>} to support
+ * multiple server key versions. Credentials registered under older key versions are authenticated
+ * using the corresponding old keys, and the response includes a {@code keyRotationRequired} flag
+ * so clients can re-register under the current keys via the change-password flow.
  * <p>
  * <strong>Exception contract</strong> (callers should map these to HTTP responses):
  * <ul>
@@ -52,7 +59,7 @@ public class HofmannOpaqueServerManager {
   private static final Logger log = LoggerFactory.getLogger(HofmannOpaqueServerManager.class);
   private static final Base64.Encoder B64 = Base64.getEncoder();
 
-  private final Server server;
+  private final Supplier<OpaqueServerKeyDetail> keyDetailSupplier;
   private final CredentialStore credentialStore;
   private final JwtManager jwtManager;
   private final RateLimiter authRateLimiter;
@@ -71,7 +78,7 @@ public class HofmannOpaqueServerManager {
    * @param jwtManager      the jwt manager
    */
   public HofmannOpaqueServerManager(Server server, CredentialStore credentialStore, JwtManager jwtManager) {
-    this(server, credentialStore, jwtManager,
+    this(() -> new OpaqueServerKeyDetail(server), credentialStore, jwtManager,
         new InMemoryRateLimiter(new RateLimitConfigSupplier.DefaultRateLimitConfigSupplier().authRateLimitConfig()),
         new InMemoryRateLimiter(new RateLimitConfigSupplier.DefaultRateLimitConfigSupplier().registrationRateLimitConfig()));
   }
@@ -80,15 +87,16 @@ public class HofmannOpaqueServerManager {
    * Instantiates a new Hofmann opaque server manager with custom rate limiters
    * and a default in-memory pending session store. Recovery is disabled.
    *
-   * @param server                  the server
+   * @param keyDetailSupplier       supplies the current and previous server keys
    * @param credentialStore         the credential store
    * @param jwtManager              the jwt manager
    * @param authRateLimiter         rate limiter for authentication endpoints (keyed by credential)
    * @param registrationRateLimiter rate limiter for registration endpoints (keyed by credential)
    */
-  public HofmannOpaqueServerManager(Server server, CredentialStore credentialStore, JwtManager jwtManager,
+  public HofmannOpaqueServerManager(Supplier<OpaqueServerKeyDetail> keyDetailSupplier,
+                                    CredentialStore credentialStore, JwtManager jwtManager,
                                     RateLimiter authRateLimiter, RateLimiter registrationRateLimiter) {
-    this(server, credentialStore, jwtManager, authRateLimiter, registrationRateLimiter,
+    this(keyDetailSupplier, credentialStore, jwtManager, authRateLimiter, registrationRateLimiter,
         new InMemoryPendingSessionStore());
   }
 
@@ -96,17 +104,18 @@ public class HofmannOpaqueServerManager {
    * Instantiates a new Hofmann opaque server manager with custom rate limiters
    * and a custom pending session store. Recovery is disabled.
    *
-   * @param server                  the server
+   * @param keyDetailSupplier       supplies the current and previous server keys
    * @param credentialStore         the credential store
    * @param jwtManager              the jwt manager
    * @param authRateLimiter         rate limiter for authentication endpoints (keyed by credential)
    * @param registrationRateLimiter rate limiter for registration endpoints (keyed by credential)
    * @param pendingSessionStore     store for in-flight authentication sessions
    */
-  public HofmannOpaqueServerManager(Server server, CredentialStore credentialStore, JwtManager jwtManager,
+  public HofmannOpaqueServerManager(Supplier<OpaqueServerKeyDetail> keyDetailSupplier,
+                                    CredentialStore credentialStore, JwtManager jwtManager,
                                     RateLimiter authRateLimiter, RateLimiter registrationRateLimiter,
                                     PendingSessionStore pendingSessionStore) {
-    this(server, credentialStore, jwtManager, authRateLimiter, registrationRateLimiter,
+    this(keyDetailSupplier, credentialStore, jwtManager, authRateLimiter, registrationRateLimiter,
         pendingSessionStore, null, null, null);
   }
 
@@ -117,7 +126,7 @@ public class HofmannOpaqueServerManager {
    * Pass {@code null} for {@code recoveryChallenger} to disable recovery endpoints (they
    * will throw {@link UnsupportedOperationException}).
    *
-   * @param server                  the server
+   * @param keyDetailSupplier       supplies the current and previous server keys
    * @param credentialStore         the credential store
    * @param jwtManager              the jwt manager
    * @param authRateLimiter         rate limiter for authentication endpoints (keyed by credential)
@@ -127,13 +136,14 @@ public class HofmannOpaqueServerManager {
    * @param recoveryTokenStore      store for recovery tokens, or null (defaults to in-memory if challenger is set)
    * @param recoveryRateLimiter     rate limiter for recovery endpoints, or null (defaults to in-memory if challenger is set)
    */
-  public HofmannOpaqueServerManager(Server server, CredentialStore credentialStore, JwtManager jwtManager,
+  public HofmannOpaqueServerManager(Supplier<OpaqueServerKeyDetail> keyDetailSupplier,
+                                    CredentialStore credentialStore, JwtManager jwtManager,
                                     RateLimiter authRateLimiter, RateLimiter registrationRateLimiter,
                                     PendingSessionStore pendingSessionStore,
                                     RecoveryChallenger recoveryChallenger,
                                     RecoveryTokenStore recoveryTokenStore,
                                     RateLimiter recoveryRateLimiter) {
-    this.server = server;
+    this.keyDetailSupplier = keyDetailSupplier;
     this.credentialStore = credentialStore;
     this.jwtManager = jwtManager;
     this.authRateLimiter = authRateLimiter;
@@ -150,6 +160,30 @@ public class HofmannOpaqueServerManager {
       this.recoveryTokenStore = null;
       this.recoveryRateLimiter = null;
     }
+  }
+
+  /**
+   * Backward-compatible full constructor that accepts a single {@link Server}.
+   *
+   * @param server                  the server
+   * @param credentialStore         the credential store
+   * @param jwtManager              the jwt manager
+   * @param authRateLimiter         rate limiter for authentication endpoints (keyed by credential)
+   * @param registrationRateLimiter rate limiter for registration endpoints (keyed by credential)
+   * @param pendingSessionStore     store for in-flight authentication sessions
+   * @param recoveryChallenger      out-of-band challenge sender/verifier, or null to disable recovery
+   * @param recoveryTokenStore      store for recovery tokens, or null
+   * @param recoveryRateLimiter     rate limiter for recovery endpoints, or null
+   */
+  public HofmannOpaqueServerManager(Server server, CredentialStore credentialStore, JwtManager jwtManager,
+                                    RateLimiter authRateLimiter, RateLimiter registrationRateLimiter,
+                                    PendingSessionStore pendingSessionStore,
+                                    RecoveryChallenger recoveryChallenger,
+                                    RecoveryTokenStore recoveryTokenStore,
+                                    RateLimiter recoveryRateLimiter) {
+    this(() -> new OpaqueServerKeyDetail(server), credentialStore, jwtManager,
+        authRateLimiter, registrationRateLimiter, pendingSessionStore,
+        recoveryChallenger, recoveryTokenStore, recoveryRateLimiter);
   }
 
   /**
@@ -215,6 +249,7 @@ public class HofmannOpaqueServerManager {
     if (bearerToken != null && !bearerToken.isBlank()) {
       validateRecoveryToken(bearerToken, req.credentialIdentifierBase64());
     }
+    Server server = keyDetailSupplier.get().currentServer();
     return new RegistrationStartResponse(
         server.createRegistrationResponse(req.registrationRequest(), req.credentialIdentifier()));
   }
@@ -253,7 +288,8 @@ public class HofmannOpaqueServerManager {
       credentialStore.delete(req.credentialIdentifier());
       jwtManager.revokeByCredentialIdentifier(req.credentialIdentifierBase64());
     }
-    credentialStore.store(req.credentialIdentifier(), req.registrationRecord());
+    int currentVersion = keyDetailSupplier.get().currentVersion();
+    credentialStore.store(req.credentialIdentifier(), req.registrationRecord(), currentVersion);
   }
 
   /**
@@ -311,6 +347,7 @@ public class HofmannOpaqueServerManager {
     if (!registrationRateLimiter.tryConsume(req.credentialIdentifierBase64())) {
       throw new RateLimitExceededException();
     }
+    Server server = keyDetailSupplier.get().currentServer();
     return new RegistrationStartResponse(
         server.createRegistrationResponse(req.registrationRequest(), req.credentialIdentifier()));
   }
@@ -336,7 +373,8 @@ public class HofmannOpaqueServerManager {
     }
     credentialStore.delete(req.credentialIdentifier());
     jwtManager.revokeByCredentialIdentifier(req.credentialIdentifierBase64());
-    credentialStore.store(req.credentialIdentifier(), req.registrationRecord());
+    int currentVersion = keyDetailSupplier.get().currentVersion();
+    credentialStore.store(req.credentialIdentifier(), req.registrationRecord(), currentVersion);
   }
 
   // ── Recovery ───────────────────────────────────────────────────────────
@@ -417,20 +455,42 @@ public class HofmannOpaqueServerManager {
     byte[] credentialIdentifier = req.credentialIdentifier();
     KE1 ke1 = req.ke1();
 
-    Optional<RegistrationRecord> record = credentialStore.load(credentialIdentifier);
-    ServerKE2Result ke2Result = record
-        .map(r -> server.generateKE2(null, r, credentialIdentifier, ke1, null))
-        .orElseGet(() -> server.generateFakeKE2(ke1, credentialIdentifier, null, null));
+    OpaqueServerKeyDetail keyDetail = keyDetailSupplier.get();
+    Optional<VersionedCredential> versioned = credentialStore.loadVersioned(credentialIdentifier);
+
+    ServerKE2Result ke2Result;
+    int keyVersion;
+    if (versioned.isPresent()) {
+      VersionedCredential vc = versioned.get();
+      keyVersion = vc.keyVersion();
+      Server server = keyDetail.serverForVersion(keyVersion);
+      if (server == null) {
+        log.warn("No server key for version {} — credential cannot be authenticated", keyVersion);
+        // Fall through to fake KE2 to avoid leaking that the credential exists but is unmigrated
+        server = keyDetail.currentServer();
+        ke2Result = server.generateFakeKE2(ke1, credentialIdentifier, null, null);
+        keyVersion = keyDetail.currentVersion();
+      } else {
+        ke2Result = server.generateKE2(null, vc.record(), credentialIdentifier, ke1, null);
+      }
+    } else {
+      keyVersion = keyDetail.currentVersion();
+      ke2Result = keyDetail.currentServer().generateFakeKE2(ke1, credentialIdentifier, null, null);
+    }
 
     String sessionToken = UUID.randomUUID().toString();
     pendingSessionStore.store(sessionToken, ke2Result.serverAuthState(),
-        req.credentialIdentifierBase64());
+        req.credentialIdentifierBase64(), keyVersion);
 
     return new AuthStartResponse(sessionToken, ke2Result.ke2());
   }
 
   /**
    * AKE phase 2: verifies the client MAC and returns the session key.
+   * <p>
+   * When the credential was authenticated with an older server key version,
+   * the response includes {@code keyRotationRequired=true} so the client
+   * can re-register via the change-password flow.
    *
    * @param req the req
    * @return the auth finish response
@@ -441,9 +501,17 @@ public class HofmannOpaqueServerManager {
     log.debug("authFinish(sessionToken={})", req.sessionToken());
     PendingSessionStore.PendingSession pending = pendingSessionStore.remove(req.sessionToken())
         .orElseThrow(() -> new SecurityException("Session not found or expired"));
+
+    OpaqueServerKeyDetail keyDetail = keyDetailSupplier.get();
+    Server server = keyDetail.serverForVersion(pending.keyVersion());
+    if (server == null) {
+      server = keyDetail.currentServer();
+    }
     byte[] sessionKey = server.serverFinish(pending.state(), req.ke3());
     String sessionKeyBase64 = B64.encodeToString(sessionKey);
     String token = jwtManager.issueToken(pending.credentialIdentifierBase64(), sessionKeyBase64);
-    return new AuthFinishResponse(sessionKeyBase64, token);
+
+    Boolean rotationRequired = pending.keyVersion() < keyDetail.currentVersion() ? Boolean.TRUE : null;
+    return new AuthFinishResponse(sessionKeyBase64, token, rotationRequired);
   }
 }

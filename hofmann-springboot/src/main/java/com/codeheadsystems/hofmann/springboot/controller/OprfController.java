@@ -56,7 +56,8 @@ public class OprfController {
   /**
    * Evaluate oprf response.
    *
-   * @param request the request
+   * @param request     the request
+   * @param httpRequest the http request
    * @return the oprf response
    */
   @PostMapping

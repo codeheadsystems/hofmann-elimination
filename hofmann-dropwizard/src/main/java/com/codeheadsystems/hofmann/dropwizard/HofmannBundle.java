@@ -8,6 +8,7 @@ import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
 import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
 import com.codeheadsystems.hofmann.server.manager.JwtKeyDetail;
 import com.codeheadsystems.hofmann.server.manager.JwtManager;
+import com.codeheadsystems.hofmann.server.manager.OpaqueServerKeyDetail;
 import com.codeheadsystems.hofmann.server.ratelimit.InMemoryRateLimiter;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfigSupplier;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfig;
@@ -97,6 +98,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
   private final boolean ephemeralKey;
   private SecureRandom secureRandom = new SecureRandom();
   private Supplier<JwtKeyDetail> jwtKeyDetailSupplier;
+  private Supplier<OpaqueServerKeyDetail> opaqueServerKeyDetailSupplier;
   private RecoveryChallenger recoveryChallenger;
   private RecoveryTokenStore recoveryTokenStore;
 
@@ -214,6 +216,24 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
   }
 
   /**
+   * Sets a custom {@link Supplier Supplier&lt;OpaqueServerKeyDetail&gt;} for OPAQUE server
+   * key rotation. When set, credentials registered under older key versions are authenticated
+   * using the corresponding old keys, and the {@code keyRotationRequired} flag in the auth
+   * response triggers client-side re-registration.
+   * <p>
+   * When set, {@code serverKeySeedHex}, {@code oprfSeedHex}, {@code previousServerKeySeedHex},
+   * and {@code previousOprfSeedHex} in the configuration are ignored.
+   *
+   * @param opaqueServerKeyDetailSupplier the opaque server key detail supplier
+   * @return {@code this}, for fluent chaining
+   */
+  public HofmannBundle<C> withOpaqueServerKeyDetailSupplier(
+      Supplier<OpaqueServerKeyDetail> opaqueServerKeyDetailSupplier) {
+    this.opaqueServerKeyDetailSupplier = opaqueServerKeyDetailSupplier;
+    return this;
+  }
+
+  /**
    * Enables account recovery with the given {@link RecoveryChallenger} and a default
    * in-memory {@link RecoveryTokenStore}.
    *
@@ -258,6 +278,8 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     OpaqueConfig opaqueConfig = buildOpaqueConfig(configuration);
     Server server = buildServer(configuration, opaqueConfig);
     JwtManager jwtManager = buildJwtManager(configuration);
+    Supplier<OpaqueServerKeyDetail> keySupplier = buildOpaqueServerKeyDetailSupplier(
+        configuration, server, opaqueConfig);
 
     OpaqueClientConfigResponse opaqueClientConfig = new OpaqueClientConfigResponse(
         configuration.getOpaqueCipherSuite(),
@@ -271,7 +293,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     RateLimiter recoveryRateLimiter = recoveryChallenger != null
         ? rateLimiterFunction.apply(rateLimitConfigSupplier.recoveryRateLimitConfig()) : null;
     HofmannOpaqueServerManager hofmannOpaqueServerManager = new HofmannOpaqueServerManager(
-        server, credentialStore, jwtManager, authRateLimiter, registrationRateLimiter, pendingSessionStore,
+        keySupplier, credentialStore, jwtManager, authRateLimiter, registrationRateLimiter, pendingSessionStore,
         recoveryChallenger, recoveryTokenStore, recoveryRateLimiter);
     environment.jersey().register(new OpaqueResource(hofmannOpaqueServerManager, opaqueClientConfig));
     environment.healthChecks().register("opaque-server", new OpaqueServerHealthCheck(server));
@@ -356,6 +378,47 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     }
     return new JwtManager(supplier, configuration.getJwtIssuer(),
         configuration.getJwtTtlSeconds(), sessionStore);
+  }
+
+  private Supplier<OpaqueServerKeyDetail> buildOpaqueServerKeyDetailSupplier(
+      C configuration, Server currentServer, OpaqueConfig opaqueConfig) {
+    if (opaqueServerKeyDetailSupplier != null) {
+      return opaqueServerKeyDetailSupplier;
+    }
+
+    String prevKeySeedHex = configuration.getPreviousServerKeySeedHex();
+    String prevOprfSeedHex = configuration.getPreviousOprfSeedHex();
+
+    boolean hasPrevKeySeed = prevKeySeedHex != null && !prevKeySeedHex.isEmpty();
+    boolean hasPrevOprfSeed = prevOprfSeedHex != null && !prevOprfSeedHex.isEmpty();
+
+    if (hasPrevKeySeed != hasPrevOprfSeed) {
+      throw new IllegalStateException(
+          "Both previousServerKeySeedHex and previousOprfSeedHex must be configured together "
+              + "(or both omitted when no key rotation is in progress).");
+    }
+
+    if (!hasPrevKeySeed) {
+      OpaqueServerKeyDetail detail = new OpaqueServerKeyDetail(currentServer);
+      return () -> detail;
+    }
+
+    Server previousServer = buildServerFromSeeds(prevKeySeedHex, prevOprfSeedHex, opaqueConfig);
+    OpaqueServerKeyDetail detail = new OpaqueServerKeyDetail(
+        1, currentServer, java.util.Map.of(0, previousServer));
+    return () -> detail;
+  }
+
+  private Server buildServerFromSeeds(String keySeedHex, String oprfSeedHex, OpaqueConfig opaqueConfig) {
+    HexFormat hex = HexFormat.of();
+    OpaqueCipherSuite suite = opaqueConfig.cipherSuite();
+    byte[] keySeed = hex.parseHex(keySeedHex);
+    byte[] oprfSeed = hex.parseHex(oprfSeedHex);
+    OpaqueCipherSuite.AkeKeyPair keyPair = suite.deriveAkeKeyPair(keySeed);
+    BigInteger sk = keyPair.privateKey();
+    byte[] pk = keyPair.publicKeyBytes();
+    byte[] skFixed = ByteUtils.scalarToFixedBytes(sk, opaqueConfig.Nsk());
+    return new Server(skFixed, pk, oprfSeed, opaqueConfig);
   }
 
   private OpaqueConfig buildOpaqueConfig(C configuration) {

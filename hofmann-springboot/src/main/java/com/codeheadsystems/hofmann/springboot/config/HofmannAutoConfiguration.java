@@ -5,6 +5,7 @@ import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
 import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
 import com.codeheadsystems.hofmann.server.manager.JwtKeyDetail;
 import com.codeheadsystems.hofmann.server.manager.JwtManager;
+import com.codeheadsystems.hofmann.server.manager.OpaqueServerKeyDetail;
 import com.codeheadsystems.hofmann.server.ratelimit.InMemoryRateLimiter;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfigSupplier;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
@@ -57,7 +58,7 @@ public class HofmannAutoConfiguration {
    *   public SecureRandom secureRandom() {
    *     return SecureRandom.getInstance("NativePRNG");
    *   }
-   * }**</pre>
+   * }***</pre>
    *
    * @return the secure random
    */
@@ -151,6 +152,55 @@ public class HofmannAutoConfiguration {
               + "(or both omitted for dev mode).");
     }
 
+    return buildServer(keySeedHex, oprfSeedHex, opaqueConfig);
+  }
+
+  /**
+   * Default {@link OpaqueServerKeyDetail} supplier that reads the current and optional
+   * previous server keys from configuration.
+   * <p>
+   * Override this bean to implement dynamic key rotation (e.g. from a secrets manager):
+   * <pre>{@code
+   *   @Bean
+   *   public Supplier<OpaqueServerKeyDetail> opaqueServerKeyDetailSupplier() {
+   *     return () -> keyRotationService.currentOpaqueKeyDetail();
+   *   }
+   * }***</pre>
+   *
+   * @param props        the props
+   * @param server       the current server
+   * @param opaqueConfig the opaque config
+   * @return the supplier
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public Supplier<OpaqueServerKeyDetail> opaqueServerKeyDetailSupplier(HofmannProperties props,
+                                                                       Server server,
+                                                                       OpaqueConfig opaqueConfig) {
+    String prevKeySeedHex = props.getPreviousServerKeySeedHex();
+    String prevOprfSeedHex = props.getPreviousOprfSeedHex();
+
+    boolean hasPrevKeySeed = prevKeySeedHex != null && !prevKeySeedHex.isEmpty();
+    boolean hasPrevOprfSeed = prevOprfSeedHex != null && !prevOprfSeedHex.isEmpty();
+
+    if (hasPrevKeySeed != hasPrevOprfSeed) {
+      throw new IllegalStateException(
+          "Both previousServerKeySeedHex and previousOprfSeedHex must be configured together "
+              + "(or both omitted when no key rotation is in progress).");
+    }
+
+    if (!hasPrevKeySeed) {
+      OpaqueServerKeyDetail detail = new OpaqueServerKeyDetail(server);
+      return () -> detail;
+    }
+
+    Server previousServer = buildServer(prevKeySeedHex, prevOprfSeedHex, opaqueConfig);
+    OpaqueServerKeyDetail detail = new OpaqueServerKeyDetail(
+        1, server, java.util.Map.of(0, previousServer));
+    return () -> detail;
+  }
+
+  private Server buildServer(String keySeedHex, String oprfSeedHex, OpaqueConfig opaqueConfig) {
     HexFormat hex = HexFormat.of();
     OpaqueCipherSuite suite = opaqueConfig.cipherSuite();
     byte[] keySeed = hex.parseHex(keySeedHex);
@@ -175,7 +225,7 @@ public class HofmannAutoConfiguration {
    *   public Supplier<JwtKeyDetail> jwtKeyDetailSupplier() {
    *     return () -> keyRotationService.currentJwtKeyDetail();
    *   }
-   * }**</pre>
+   * }***</pre>
    *
    * @param props        the props
    * @param secureRandom the secure random
@@ -238,6 +288,7 @@ public class HofmannAutoConfiguration {
    * Rate limiter for OPAQUE authentication endpoints (keyed by credential identifier).
    * Override this bean to supply a custom implementation (e.g. Redis-backed).
    *
+   * @param rateLimitConfigSupplier the rate limit config supplier
    * @return the auth rate limiter
    */
   @Bean(destroyMethod = "shutdown")
@@ -250,6 +301,7 @@ public class HofmannAutoConfiguration {
    * Rate limiter for OPAQUE registration endpoints (keyed by credential identifier).
    * Override this bean to supply a custom implementation (e.g. Redis-backed).
    *
+   * @param rateLimitConfigSupplier the rate limit config supplier
    * @return the registration rate limiter
    */
   @Bean(destroyMethod = "shutdown")
@@ -262,6 +314,7 @@ public class HofmannAutoConfiguration {
    * Rate limiter for the standalone OPRF endpoint (keyed by client IP).
    * Override this bean to supply a custom implementation (e.g. Redis-backed).
    *
+   * @param rateLimitConfigSupplier the rate limit config supplier
    * @return the oprf rate limiter
    */
   @Bean(destroyMethod = "shutdown")
@@ -318,20 +371,21 @@ public class HofmannAutoConfiguration {
   /**
    * Opaque server manager hofmann opaque server manager.
    *
-   * @param server                  the server
-   * @param credentialStore         the credential store
-   * @param jwtManager              the jwt manager
-   * @param authRateLimiter         the auth rate limiter
-   * @param registrationRateLimiter the registration rate limiter
-   * @param pendingSessionStore     the pending session store
-   * @param recoveryChallenger      optional recovery challenger (null if not configured)
-   * @param recoveryTokenStore      optional recovery token store (null if not configured)
-   * @param recoveryRateLimiter     optional recovery rate limiter (null if not configured)
+   * @param opaqueServerKeyDetailSupplier the opaque server key detail supplier
+   * @param credentialStore               the credential store
+   * @param jwtManager                    the jwt manager
+   * @param authRateLimiter               the auth rate limiter
+   * @param registrationRateLimiter       the registration rate limiter
+   * @param pendingSessionStore           the pending session store
+   * @param recoveryChallenger            optional recovery challenger (null if not configured)
+   * @param recoveryTokenStore            optional recovery token store (null if not configured)
+   * @param recoveryRateLimiter           optional recovery rate limiter (null if not configured)
    * @return the hofmann opaque server manager
    */
   @Bean(destroyMethod = "shutdown")
   @ConditionalOnMissingBean
-  public HofmannOpaqueServerManager opaqueServerManager(Server server, CredentialStore credentialStore,
+  public HofmannOpaqueServerManager opaqueServerManager(Supplier<OpaqueServerKeyDetail> opaqueServerKeyDetailSupplier,
+                                                        CredentialStore credentialStore,
                                                         JwtManager jwtManager,
                                                         @Qualifier("authRateLimiter") RateLimiter authRateLimiter,
                                                         @Qualifier("registrationRateLimiter") RateLimiter registrationRateLimiter,
@@ -339,7 +393,7 @@ public class HofmannAutoConfiguration {
                                                         @Autowired(required = false) RecoveryChallenger recoveryChallenger,
                                                         @Autowired(required = false) RecoveryTokenStore recoveryTokenStore,
                                                         @Autowired(required = false) @Qualifier("recoveryRateLimiter") RateLimiter recoveryRateLimiter) {
-    return new HofmannOpaqueServerManager(server, credentialStore, jwtManager,
+    return new HofmannOpaqueServerManager(opaqueServerKeyDetailSupplier, credentialStore, jwtManager,
         authRateLimiter, registrationRateLimiter, pendingSessionStore,
         recoveryChallenger, recoveryTokenStore, recoveryRateLimiter);
   }
@@ -384,7 +438,7 @@ public class HofmannAutoConfiguration {
    *   public Supplier<ServerProcessorDetail> serverProcessorDetailSupplier() {
    *     return () -> keyRotationService.currentDetail();
    *   }
-   * }**</pre>
+   * }***</pre>
    *
    * @param props the props
    * @return the supplier

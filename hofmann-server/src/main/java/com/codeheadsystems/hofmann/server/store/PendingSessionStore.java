@@ -31,6 +31,24 @@ public interface PendingSessionStore {
   void store(String sessionToken, ServerAuthState state, String credentialIdentifierBase64);
 
   /**
+   * Stores a pending authentication session with key version information.
+   * <p>
+   * The key version records which server key pair was used to generate the KE2,
+   * so that authFinish can determine whether the credential needs migration to
+   * the current key version.
+   *
+   * @param sessionToken              unique token identifying this session
+   * @param state                     the server-side auth state to retain
+   * @param credentialIdentifierBase64 base64-encoded credential identifier
+   * @param keyVersion                the server key version used for this authentication
+   * @throws IllegalStateException if the store has reached its capacity limit
+   */
+  default void store(String sessionToken, ServerAuthState state,
+                     String credentialIdentifierBase64, int keyVersion) {
+    store(sessionToken, state, credentialIdentifierBase64);
+  }
+
+  /**
    * Retrieves and atomically removes a pending session.
    * <p>
    * Returns empty if the session token is not found or has expired.
@@ -53,7 +71,18 @@ public interface PendingSessionStore {
    *
    * @param state                     the server auth state
    * @param credentialIdentifierBase64 base64-encoded credential identifier
+   * @param keyVersion                the server key version used for this session
    */
-  record PendingSession(ServerAuthState state, String credentialIdentifierBase64) {
+  record PendingSession(ServerAuthState state, String credentialIdentifierBase64, int keyVersion) {
+
+    /**
+     * Backward-compatible constructor (defaults to key version 0).
+     *
+     * @param state                     the server auth state
+     * @param credentialIdentifierBase64 base64-encoded credential identifier
+     */
+    public PendingSession(ServerAuthState state, String credentialIdentifierBase64) {
+      this(state, credentialIdentifierBase64, 0);
+    }
   }
 }
