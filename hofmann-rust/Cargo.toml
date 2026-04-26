@@ -1,6 +1,6 @@
 [package]
 name = "hofmann-rfc"
-version = "1.3.2"
+version = "1.4.0"
 edition = "2021"
 description = "Rust implementation of RFC 9380 (Hash-to-Curve), RFC 9497 (OPRF), and RFC 9807 (OPAQUE)"
 license = "Apache-2.0"
@@ -27,7 +27,7 @@ hkdf = "0.12"
 argon2 = "0.5"
 
 # Random number generation
-rand = "0.9"
+rand = "0.8"
 rand_core = "0.6"
 
 # Ristretto255 / Curve25519

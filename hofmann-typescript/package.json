@@ -1,6 +1,6 @@
 {
   "name": "@codeheadsystems/hofmann-typescript",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "description": "RFC 9497 (OPRF) and RFC 9807 (OPAQUE-3DH) browser client",
   "repository": {
     "type": "git",

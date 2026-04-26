@@ -116,7 +116,7 @@ The `Cargo.toml` already includes the required metadata (`description`, `license
 
 ```toml
 [dependencies]
-hofmann-rfc = "1.3.0"
+hofmann-rfc = "1.4.0"
 ```
 
 ## Security
