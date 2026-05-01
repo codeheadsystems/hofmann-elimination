@@ -16,7 +16,7 @@ plugins {
     // Apply the foojay-resolver plugin to allow automatic download of JDKs
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
     // Nmcp plugin for publishing to Maven Central via Central Portal
-    id("com.gradleup.nmcp.settings") version "1.4.4"
+    id("com.gradleup.nmcp.settings") version "1.5.0"
 }
 
 rootProject.name = "hofmann-elimination"
