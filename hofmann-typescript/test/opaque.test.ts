@@ -5,9 +5,9 @@
  * These match the Java OpaqueVectorsTest exactly.
  */
 import { describe, it, expect } from 'vitest';
-import { p256 } from '@noble/curves/p256';
-import { sha256 } from '@noble/hashes/sha256';
-import { hmac } from '@noble/hashes/hmac';
+import { p256 } from '@noble/curves/nist.js';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { hmac } from '@noble/hashes/hmac.js';
 
 import { OpaqueClient, deriveRandomizedPwd } from '../src/opaque/client.js';
 import { storeEnvelope, serializeEnvelope } from '../src/opaque/envelope.js';
@@ -81,7 +81,7 @@ function serverDeriveOprfKey(credId: Uint8Array): bigint {
 /** Server evaluates the OPRF: oprfKey * blindedElement. */
 function serverEvaluate(blindedElement: Uint8Array, credId: Uint8Array): Uint8Array {
   const oprfKey = serverDeriveOprfKey(credId);
-  return p256.ProjectivePoint.fromHex(blindedElement).multiply(oprfKey).toRawBytes(true);
+  return p256.Point.fromBytes(blindedElement).multiply(oprfKey).toBytes(true);
 }
 
 /** Build a RegistrationResponse from the server. */
@@ -151,11 +151,11 @@ function serverBuildKE2(
   // dh1 = clientAkePk * serverAkeSk
   // dh2 = clientAkePk * serverSk
   // dh3 = clientLongTermPk * serverAkeSk
-  const clientAkePkPt = p256.ProjectivePoint.fromHex(clientAkePk);
-  const clientLtPkPt  = p256.ProjectivePoint.fromHex(record.clientPublicKey);
-  const dh1 = clientAkePkPt.multiply(serverAkeSk).toRawBytes(true);
-  const dh2 = clientAkePkPt.multiply(serverSkScalar).toRawBytes(true);
-  const dh3 = clientLtPkPt.multiply(serverAkeSk).toRawBytes(true);
+  const clientAkePkPt = p256.Point.fromBytes(clientAkePk);
+  const clientLtPkPt  = p256.Point.fromBytes(record.clientPublicKey);
+  const dh1 = clientAkePkPt.multiply(serverAkeSk).toBytes(true);
+  const dh2 = clientAkePkPt.multiply(serverSkScalar).toBytes(true);
+  const dh3 = clientLtPkPt.multiply(serverAkeSk).toBytes(true);
   const ikm  = concat(dh1, dh2, dh3);
 
   const prk             = hkdfExtract(undefined, ikm);
@@ -294,7 +294,7 @@ async function opaqueRoundTrip(suite: CipherSuite): Promise<void> {
   const serverSk     = suite.deriveKeyPair(serverSkSeed, strToBytes('server-lt-key'), suite.DERIVE_KEY_PAIR_DST);
   const serverPk     = suite.getPublicKey(serverSk);
 
-  const oprfSeed = new Uint8Array(suite.Nsk).fill(0x22);
+  const oprfSeed = new Uint8Array(suite.Nh).fill(0x22);
 
   function deriveOprfKey(): bigint {
     const info = concat(credId, strToBytes('OprfKey'));

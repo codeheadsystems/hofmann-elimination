@@ -87,24 +87,24 @@ describe('OPRF Test Vector 1 (RFC 9497 A.1.1)', () => {
   });
 
   it('evaluatedElement (server-side scalar multiply) matches', () => {
-    const { p256 } = require('@noble/curves/p256');
+    const { p256 } = require('@noble/curves/nist.js');
     const { blindedElement } = blind(input, blindScalar);
 
     // Server evaluates: skS * blindedElement
-    const Z = p256.ProjectivePoint.fromHex(blindedElement);
-    const evaluated = Z.multiply(SK_S).toRawBytes(true);
+    const Z = p256.Point.fromBytes(blindedElement);
+    const evaluated = Z.multiply(SK_S).toBytes(true);
     expect(toHex(evaluated)).toBe(
       '030de02ffec47a1fd53efcdd1c6faf5bdc270912b8749e783c7ca75bb412958832'
     );
   });
 
   it('finalize output matches RFC 9497 A.1.1', () => {
-    const { p256 } = require('@noble/curves/p256');
+    const { p256 } = require('@noble/curves/nist.js');
     const { blind: r, blindedElement } = blind(input, blindScalar);
 
     // Server evaluation
-    const Z = p256.ProjectivePoint.fromHex(blindedElement);
-    const evaluatedElement = Z.multiply(SK_S).toRawBytes(true);
+    const Z = p256.Point.fromBytes(blindedElement);
+    const evaluatedElement = Z.multiply(SK_S).toBytes(true);
 
     const output = finalize(input, r, evaluatedElement);
     expect(toHex(output)).toBe(
@@ -122,10 +122,10 @@ describe('OPRF Test Vector 2 (RFC 9497 A.1.1)', () => {
   const SK_S = BigInt('0x159749d750713afe245d2d39ccfaae8381c53ce92d098a9375ee70739c7ac0bf');
 
   it('finalize output matches RFC 9497 A.1.1', () => {
-    const { p256 } = require('@noble/curves/p256');
+    const { p256 } = require('@noble/curves/nist.js');
     const { blind: r, blindedElement } = blind(input, blindScalar);
-    const Z = p256.ProjectivePoint.fromHex(blindedElement);
-    const evaluatedElement = Z.multiply(SK_S).toRawBytes(true);
+    const Z = p256.Point.fromBytes(blindedElement);
+    const evaluatedElement = Z.multiply(SK_S).toBytes(true);
     const output = finalize(input, r, evaluatedElement);
     expect(toHex(output)).toBe(
       'c748ca6dd327f0ce85f4ae3a8cd6d4d5390bbb804c9e12dcf94f853fece3dcce'
@@ -260,7 +260,7 @@ describe('OPRF round-trip per suite', () => {
 
 // ── ristretto255-SHA512 ─────────────────────────────────────────────────────
 
-import { bytesToNumberLE } from '@noble/curves/abstract/utils';
+import { bytesToNumberLE } from '@noble/curves/utils.js';
 
 describe('ristretto255-SHA512 suite constants', () => {
   it('contextString = "OPRFV1-\\x00-ristretto255-SHA512"', () => {

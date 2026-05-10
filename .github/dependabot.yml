@@ -28,6 +28,26 @@ updates:
         applies-to: version-updates
         patterns:
           - "*"
+    # RustCrypto ecosystem alignment: p256/p384/p521/elliptic-curve are still
+    # on the 0.13 line, which depends on the older sha2/hmac/digest/hkdf/rand
+    # majors. The 0.14 line of the curve crates only exists as -rc.* on
+    # crates.io. Re-enable these once elliptic-curve 0.14 ships stable.
+    # Tracking: watch https://github.com/RustCrypto/elliptic-curves/releases
+    ignore:
+      - dependency-name: "sha2"
+        versions: [">=0.11"]
+      - dependency-name: "hmac"
+        versions: [">=0.13"]
+      - dependency-name: "digest"
+        versions: [">=0.11"]
+      - dependency-name: "hkdf"
+        versions: [">=0.13"]
+      - dependency-name: "rand"
+        versions: [">=0.9"]
+      - dependency-name: "rand_core"
+        versions: [">=0.7"]
+      - dependency-name: "generic-array"
+        versions: [">=1.0"]
 
   - package-ecosystem: "npm"
     directory: "/hofmann-typescript"

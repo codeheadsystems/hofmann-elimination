@@ -1,6 +1,6 @@
 [package]
 name = "hofmann-rfc"
-version = "1.4.0"
+version = "1.4.1"
 edition = "2021"
 description = "Rust implementation of RFC 9380 (Hash-to-Curve), RFC 9497 (OPRF), and RFC 9807 (OPAQUE)"
 license = "Apache-2.0"
@@ -16,19 +16,19 @@ p521 = { version = "0.13", features = ["hash2curve", "arithmetic"] }
 elliptic-curve = { version = "0.13", features = ["sec1", "hash2curve", "arithmetic"] }
 
 # Hashing and MAC
-sha2 = "0.11"
-hmac = "0.13"
-digest = "0.11"
+sha2 = "0.10"
+hmac = "0.12"
+digest = "0.10"
 
 # HKDF
-hkdf = "0.13"
+hkdf = "0.12"
 
 # Argon2id
 argon2 = "0.5"
 
 # Random number generation
-rand = "0.10"
-rand_core = "0.10"
+rand = "0.8"
+rand_core = "0.6"
 
 # Ristretto255 / Curve25519
 curve25519-dalek = { version = "4", features = ["rand_core"] }
@@ -37,7 +37,7 @@ curve25519-dalek = { version = "4", features = ["rand_core"] }
 subtle = "2.6"
 
 # Serialization helpers
-generic-array = "1.4"
+generic-array = "0.14"
 zeroize = { version = "1", features = ["derive"] }
 
 [dev-dependencies]

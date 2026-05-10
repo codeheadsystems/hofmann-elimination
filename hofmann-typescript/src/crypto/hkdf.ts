@@ -1,8 +1,8 @@
 /**
  * HKDF wrappers over @noble/hashes (RFC 5869).
  */
-import { extract, expand } from '@noble/hashes/hkdf';
-import { sha256 } from '@noble/hashes/sha256';
+import { extract, expand } from '@noble/hashes/hkdf.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { concat, i2osp } from './primitives.js';
 import { strToBytes } from './encoding.js';
 

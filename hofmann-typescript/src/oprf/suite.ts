@@ -5,17 +5,18 @@
  * Each suite encapsulates all curve-specific constants and operations so that the
  * rest of the library can be written generically against the CipherSuite interface.
  */
-import { p256, hashToCurve as p256HashToCurve } from '@noble/curves/p256';
-import { p384, hashToCurve as p384HashToCurve } from '@noble/curves/p384';
-import { p521, hashToCurve as p521HashToCurve } from '@noble/curves/p521';
-import { ristretto255, ristretto255_hasher } from '@noble/curves/ed25519';
-import { numberToBytesLE, bytesToNumberLE } from '@noble/curves/abstract/utils';
-import { invert } from '@noble/curves/abstract/modular';
-import { sha256 } from '@noble/hashes/sha256';
-import { sha384, sha512 } from '@noble/hashes/sha512';
-import { hmac as nobleHmac } from '@noble/hashes/hmac';
-import { extract, expand } from '@noble/hashes/hkdf';
-import { expand_message_xmd } from '@noble/curves/abstract/hash-to-curve';
+import { p256, p256_hasher, p384, p384_hasher, p521, p521_hasher } from '@noble/curves/nist.js';
+import { ristretto255, ristretto255_hasher } from '@noble/curves/ed25519.js';
+import { numberToBytesLE, bytesToNumberLE, bytesToNumberBE } from '@noble/curves/utils.js';
+import { invert } from '@noble/curves/abstract/modular.js';
+import { sha256, sha384, sha512 } from '@noble/hashes/sha2.js';
+import { hmac as nobleHmac } from '@noble/hashes/hmac.js';
+import { extract, expand } from '@noble/hashes/hkdf.js';
+import { expand_message_xmd } from '@noble/curves/abstract/hash-to-curve.js';
+
+const p256HashToCurve = p256_hasher.hashToCurve;
+const p384HashToCurve = p384_hasher.hashToCurve;
+const p521HashToCurve = p521_hasher.hashToCurve;
 import { concat, i2osp, fromHex } from '../crypto/primitives.js';
 import { strToBytes } from '../crypto/encoding.js';
 
@@ -128,7 +129,7 @@ function createSuite(
 ): CipherSuite {
   const contextString = buildContextString(name);
   const { HASH_TO_GROUP_DST, HASH_TO_SCALAR_DST, DERIVE_KEY_PAIR_DST } = buildDsts(contextString);
-  const ORDER: bigint = curve.CURVE.n;
+  const ORDER: bigint = curve.Point.Fn.ORDER;
 
   function bigintToBytes(n: bigint): Uint8Array {
     const hex = n.toString(16).padStart(nsk * 2, '0');
@@ -153,22 +154,22 @@ function createSuite(
     DERIVE_KEY_PAIR_DST,
 
     randomScalar(): bigint {
-      return curve.utils.normPrivateKeyToScalar(curve.utils.randomPrivateKey());
+      return bytesToNumberBE(curve.utils.randomSecretKey()) % ORDER || 1n;
     },
 
     blind(input: Uint8Array, r?: bigint): { blind: bigint; blindedElement: Uint8Array } {
       const scalar = r ?? suite.randomScalar();
       const h2c = hashToCurveFn(input, { DST: HASH_TO_GROUP_DST });
       // fromAffine: H2CPoint is structurally compatible with AffinePoint at runtime
-      const P = curve.ProjectivePoint.fromAffine(h2c.toAffine());
+      const P = curve.Point.fromAffine(h2c.toAffine());
       const blindedPoint = P.multiply(scalar);
-      return { blind: scalar, blindedElement: blindedPoint.toRawBytes(true) };
+      return { blind: scalar, blindedElement: blindedPoint.toBytes(true) };
     },
 
     finalize(input: Uint8Array, blindScalar: bigint, evaluatedElement: Uint8Array): Uint8Array {
-      const Z = curve.ProjectivePoint.fromHex(evaluatedElement);
+      const Z = curve.Point.fromBytes(evaluatedElement);
       const N = Z.multiply(invert(blindScalar, ORDER));
-      const unblinded = N.toRawBytes(true); // Npk bytes compressed
+      const unblinded = N.toBytes(true); // Npk bytes compressed
       const hashInput = concat(
         i2osp(input.length, 2),
         input,
@@ -197,7 +198,7 @@ function createSuite(
     },
 
     dhMultiply(pointBytes: Uint8Array, scalar: bigint): Uint8Array {
-      return curve.ProjectivePoint.fromHex(pointBytes).multiply(scalar).toRawBytes(true);
+      return curve.Point.fromBytes(pointBytes).multiply(scalar).toBytes(true);
     },
 
     bigintToBytes,
@@ -310,7 +311,7 @@ function createRistrettoSuite(): CipherSuite {
     },
 
     finalize(input: Uint8Array, blindScalar: bigint, evaluatedElement: Uint8Array): Uint8Array {
-      const Z = ristretto255.Point.fromHex(evaluatedElement);
+      const Z = ristretto255.Point.fromBytes(evaluatedElement);
       const N = Z.multiply(invert(blindScalar, ORDER));
       const unblinded = N.toBytes();
       const hashInput = concat(
@@ -341,7 +342,7 @@ function createRistrettoSuite(): CipherSuite {
     },
 
     dhMultiply(pointBytes: Uint8Array, scalar: bigint): Uint8Array {
-      return ristretto255.Point.fromHex(pointBytes).multiply(scalar).toBytes();
+      return ristretto255.Point.fromBytes(pointBytes).multiply(scalar).toBytes();
     },
 
     bigintToBytes,
