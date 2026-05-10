@@ -19,3 +19,23 @@ updates:
         patterns:
           - "*"       # Yolo!
 
+  - package-ecosystem: "cargo"
+    directory: "/hofmann-rust"
+    schedule:
+      interval: "daily"
+    groups:
+      dev-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directory: "/hofmann-typescript"
+    schedule:
+      interval: "daily"
+    groups:
+      dev-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
+
