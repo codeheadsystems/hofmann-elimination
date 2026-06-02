@@ -73,7 +73,7 @@ impl<'a> OpaqueServer<'a> {
         &self,
         request: &RegistrationRequest,
         credential_identifier: &[u8],
-    ) -> RegistrationResponse {
+    ) -> Result<RegistrationResponse, &'static str> {
         opaque_credentials::create_registration_response(
             self.config,
             request,
@@ -94,7 +94,7 @@ impl<'a> OpaqueServer<'a> {
         ke1: &KE1,
         client_identity: Option<&[u8]>,
         rng: &mut dyn rand_core::CryptoRngCore,
-    ) -> ServerKE2Result {
+    ) -> Result<ServerKE2Result, &'static str> {
         opaque_ake::generate_ke2(
             self.config,
             server_identity,
@@ -131,7 +131,7 @@ impl<'a> OpaqueServer<'a> {
         server_identity: Option<&[u8]>,
         client_identity: Option<&[u8]>,
         rng: &mut dyn rand_core::CryptoRngCore,
-    ) -> ServerKE2Result {
+    ) -> Result<ServerKE2Result, &'static str> {
         let fake_record = self.create_fake_record(credential_identifier);
         opaque_ake::generate_ke2(
             self.config,
@@ -190,7 +190,7 @@ impl<'a> OpaqueServer<'a> {
         masking_nonce: &[u8],
         server_ake_key_seed: &[u8],
         server_nonce: &[u8],
-    ) -> ServerKE2Result {
+    ) -> Result<ServerKE2Result, &'static str> {
         opaque_ake::generate_ke2_deterministic(
             self.config,
             server_identity,

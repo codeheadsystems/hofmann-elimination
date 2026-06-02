@@ -92,7 +92,7 @@ pub fn generate_ke2_deterministic(
     masking_nonce: &[u8],
     server_ake_key_seed: &[u8],
     server_nonce: &[u8],
-) -> ServerKE2Result {
+) -> Result<ServerKE2Result, &'static str> {
     let suite = config.cipher_suite();
 
     let s_id = server_identity.unwrap_or(server_public_key);
@@ -109,7 +109,7 @@ pub fn generate_ke2_deterministic(
         credential_identifier,
         oprf_seed,
         masking_nonce,
-    );
+    )?;
 
     let server_ake_kp = suite.derive_ake_key_pair(server_ake_key_seed);
     let server_ake_sk = server_ake_kp.private_key;
@@ -125,10 +125,12 @@ pub fn generate_ke2_deterministic(
         &server_ake_pk,
     );
 
+    // dh1/dh2 multiply the client-supplied AKE public key, so a malformed or
+    // identity key returns Err instead of panicking the server thread.
     let gs = suite.oprf_suite().group_spec();
-    let dh1 = gs.scalar_multiply(&server_ake_sk, &ke1.client_ake_public_key);
-    let dh2 = gs.scalar_multiply(server_private_key, &ke1.client_ake_public_key);
-    let dh3 = gs.scalar_multiply(&server_ake_sk, &record.client_public_key);
+    let dh1 = gs.scalar_multiply(&server_ake_sk, &ke1.client_ake_public_key)?;
+    let dh2 = gs.scalar_multiply(server_private_key, &ke1.client_ake_public_key)?;
+    let dh3 = gs.scalar_multiply(&server_ake_sk, &record.client_public_key)?;
     let ikm = concat(&[&dh1, &dh2, &dh3]);
 
     let mut keys = derive_keys(config, &ikm, &preamble);
@@ -148,10 +150,10 @@ pub fn generate_ke2_deterministic(
         server_mac,
     };
 
-    ServerKE2Result {
+    Ok(ServerKE2Result {
         server_auth_state: auth_state,
         ke2,
-    }
+    })
 }
 
 /// Server GenerateKE2 with random nonces.
@@ -167,7 +169,7 @@ pub fn generate_ke2(
     ke1: &KE1,
     client_identity: Option<&[u8]>,
     rng: &mut dyn rand_core::CryptoRngCore,
-) -> ServerKE2Result {
+) -> Result<ServerKE2Result, &'static str> {
     let mut masking_nonce = vec![0u8; NN];
     rng.fill_bytes(&mut masking_nonce);
     let mut server_ake_key_seed = vec![0u8; NN];
@@ -227,13 +229,16 @@ pub fn generate_ke3(
         &ke2.server_ake_public_key,
     );
 
+    // These multiply server-supplied public keys (the ephemeral key from KE2 and
+    // the static key recovered from the masked credential response), so a
+    // malformed or identity element returns Err instead of panicking the client.
     let gs = suite.oprf_suite().group_spec();
-    let dh1 = gs.scalar_multiply(&state.client_ake_private_key, &ke2.server_ake_public_key);
+    let dh1 = gs.scalar_multiply(&state.client_ake_private_key, &ke2.server_ake_public_key)?;
     let dh2 = gs.scalar_multiply(
         &state.client_ake_private_key,
         &recovered.cleartext_credentials.server_public_key,
-    );
-    let dh3 = gs.scalar_multiply(&recovered.client_private_key, &ke2.server_ake_public_key);
+    )?;
+    let dh3 = gs.scalar_multiply(&recovered.client_private_key, &ke2.server_ake_public_key)?;
     let ikm = concat(&[&dh1, &dh2, &dh3]);
 
     let mut keys = derive_keys(config, &ikm, &preamble);

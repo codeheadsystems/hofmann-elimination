@@ -36,15 +36,15 @@ pub fn create_registration_response(
     server_public_key: &[u8],
     credential_identifier: &[u8],
     oprf_seed: &[u8],
-) -> RegistrationResponse {
+) -> Result<RegistrationResponse, &'static str> {
     let oprf_key =
         opaque_oprf::derive_oprf_key(config.cipher_suite(), oprf_seed, credential_identifier);
     let evaluated_element =
-        opaque_oprf::blind_evaluate(config.cipher_suite(), &oprf_key, &request.blinded_element);
-    RegistrationResponse {
+        opaque_oprf::blind_evaluate(config.cipher_suite(), &oprf_key, &request.blinded_element)?;
+    Ok(RegistrationResponse {
         evaluated_element,
         server_public_key: server_public_key.to_vec(),
-    }
+    })
 }
 
 /// Client finalizes registration: derives randomized_pwd, stores envelope.
@@ -55,7 +55,7 @@ pub fn finalize_registration(
     client_identity: Option<&[u8]>,
     config: &OpaqueConfig,
     rng: &mut dyn rand_core::CryptoRngCore,
-) -> RegistrationRecord {
+) -> Result<RegistrationRecord, &'static str> {
     let mut nonce = vec![0u8; NN];
     rng.fill_bytes(&mut nonce);
     finalize_registration_with_nonce(
@@ -76,13 +76,13 @@ pub fn finalize_registration_with_nonce(
     client_identity: Option<&[u8]>,
     config: &OpaqueConfig,
     envelope_nonce: &[u8],
-) -> RegistrationRecord {
+) -> Result<RegistrationRecord, &'static str> {
     let randomized_pwd = derive_randomized_pwd(
         &state.password,
         &state.blind,
         &response.evaluated_element,
         config,
-    );
+    )?;
 
     let stored = opaque_envelope::store(
         config,
@@ -93,11 +93,11 @@ pub fn finalize_registration_with_nonce(
         envelope_nonce,
     );
 
-    RegistrationRecord {
+    Ok(RegistrationRecord {
         client_public_key: stored.client_public_key,
         masking_key: stored.masking_key,
         envelope: stored.envelope,
-    }
+    })
 }
 
 /// Server creates a credential response for authentication.
@@ -109,11 +109,11 @@ pub fn create_credential_response_with_nonce(
     credential_identifier: &[u8],
     oprf_seed: &[u8],
     masking_nonce: &[u8],
-) -> CredentialResponse {
+) -> Result<CredentialResponse, &'static str> {
     let oprf_key =
         opaque_oprf::derive_oprf_key(config.cipher_suite(), oprf_seed, credential_identifier);
     let evaluated_element =
-        opaque_oprf::blind_evaluate(config.cipher_suite(), &oprf_key, &request.blinded_element);
+        opaque_oprf::blind_evaluate(config.cipher_suite(), &oprf_key, &request.blinded_element)?;
 
     // pad = HKDF-Expand(masking_key, masking_nonce || "CredentialResponsePad", Npk + Nn + Nm)
     let pad_info = concat(&[masking_nonce, b"CredentialResponsePad"]);
@@ -127,11 +127,11 @@ pub fn create_credential_response_with_nonce(
     let plaintext = concat(&[server_public_key, &record.envelope.serialize()]);
     let masked_response = xor(&pad, &plaintext);
 
-    CredentialResponse {
+    Ok(CredentialResponse {
         evaluated_element,
         masking_nonce: masking_nonce.to_vec(),
         masked_response,
-    }
+    })
 }
 
 /// Client recovers credentials from the credential response during authentication.
@@ -144,7 +144,7 @@ pub fn recover_credentials(
     config: &OpaqueConfig,
 ) -> Result<RecoverResult, &'static str> {
     let randomized_pwd =
-        derive_randomized_pwd(password, blind, &response.evaluated_element, config);
+        derive_randomized_pwd(password, blind, &response.evaluated_element, config)?;
 
     // Recover masking_key = Expand(randomized_pwd, "MaskingKey", Nh)
     let masking_key =
@@ -175,16 +175,19 @@ pub fn recover_credentials(
 }
 
 /// Derives randomized password from OPRF output.
+///
+/// Returns `Err` if `evaluated_element` (from the server) is not a valid
+/// non-identity group element.
 pub fn derive_randomized_pwd(
     password: &[u8],
     blind: &[u8],
     evaluated_element: &[u8],
     config: &OpaqueConfig,
-) -> Vec<u8> {
+) -> Result<Vec<u8>, &'static str> {
     let oprf_output =
-        opaque_oprf::finalize(config.cipher_suite(), password, blind, evaluated_element);
+        opaque_oprf::finalize(config.cipher_suite(), password, blind, evaluated_element)?;
     let stretched_output = config.stretch_password(&oprf_output);
-    config
+    Ok(config
         .cipher_suite()
-        .hkdf_extract(&[], &concat(&[&oprf_output, &stretched_output]))
+        .hkdf_extract(&[], &concat(&[&oprf_output, &stretched_output])))
 }

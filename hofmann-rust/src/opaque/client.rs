@@ -53,7 +53,7 @@ impl<'a> OpaqueClient<'a> {
         server_identity: Option<&[u8]>,
         client_identity: Option<&[u8]>,
         rng: &mut dyn rand_core::CryptoRngCore,
-    ) -> RegistrationRecord {
+    ) -> Result<RegistrationRecord, &'static str> {
         opaque_credentials::finalize_registration(
             state,
             response,
@@ -115,7 +115,7 @@ impl<'a> OpaqueClient<'a> {
         server_identity: Option<&[u8]>,
         client_identity: Option<&[u8]>,
         envelope_nonce: &[u8],
-    ) -> RegistrationRecord {
+    ) -> Result<RegistrationRecord, &'static str> {
         opaque_credentials::finalize_registration_with_nonce(
             state,
             response,

@@ -31,14 +31,18 @@
 //!
 //! // --- Registration ---
 //! let reg_state = client.create_registration_request(b"password", &mut rng);
-//! let reg_response = server.create_registration_response(&reg_state.request, b"user@example.com");
-//! let record = client.finalize_registration(&reg_state, &reg_response, None, None, &mut rng);
+//! let reg_response = server
+//!     .create_registration_response(&reg_state.request, b"user@example.com")
+//!     .unwrap();
+//! let record = client
+//!     .finalize_registration(&reg_state, &reg_response, None, None, &mut rng)
+//!     .unwrap();
 //!
 //! // --- Authentication ---
 //! let auth_state = client.generate_ke1(b"password", &mut rng);
 //! let ke2_result = server.generate_ke2(
 //!     None, &record, b"user@example.com", &auth_state.ke1, None, &mut rng,
-//! );
+//! ).unwrap();
 //! let auth_result = client.generate_ke3(&auth_state, None, None, &ke2_result.ke2).unwrap();
 //! let session_key = server.server_finish(&ke2_result.server_auth_state, &auth_result.ke3).unwrap();
 //!

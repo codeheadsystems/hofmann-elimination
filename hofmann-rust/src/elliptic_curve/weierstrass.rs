@@ -127,28 +127,28 @@ impl GroupSpec for WeierstrassGroupSpec {
         }
     }
 
-    fn scalar_multiply(&self, scalar: &[u8], element: &[u8]) -> Vec<u8> {
+    fn scalar_multiply(&self, scalar: &[u8], element: &[u8]) -> Result<Vec<u8>, &'static str> {
         match self.curve_type {
             CurveType::P256 => {
-                let point = decode_point_p256(element);
+                let point = decode_point_p256(element)?;
                 let s = decode_scalar_p256(scalar);
                 let result = point * s;
                 let affine: AffinePoint<p256::NistP256> = result.to_affine();
-                affine.to_encoded_point(true).as_bytes().to_vec()
+                Ok(affine.to_encoded_point(true).as_bytes().to_vec())
             }
             CurveType::P384 => {
-                let point = decode_point_p384(element);
+                let point = decode_point_p384(element)?;
                 let s = decode_scalar_p384(scalar);
                 let result = point * s;
                 let affine: AffinePoint<p384::NistP384> = result.to_affine();
-                affine.to_encoded_point(true).as_bytes().to_vec()
+                Ok(affine.to_encoded_point(true).as_bytes().to_vec())
             }
             CurveType::P521 => {
-                let point = decode_point_p521(element);
+                let point = decode_point_p521(element)?;
                 let s = decode_scalar_p521(scalar);
                 let result = point * s;
                 let affine: AffinePoint<p521::NistP521> = result.to_affine();
-                affine.to_encoded_point(true).as_bytes().to_vec()
+                Ok(affine.to_encoded_point(true).as_bytes().to_vec())
             }
         }
     }
@@ -250,19 +250,21 @@ fn decode_scalar_p256(bytes: &[u8]) -> p256::Scalar {
 
 /// Decodes a compressed SEC1 P-256 point into projective coordinates.
 ///
-/// Rejects the identity element per RFC 9497 §2.1.
-fn decode_point_p256(bytes: &[u8]) -> ProjectivePoint<p256::NistP256> {
-    let encoded = p256::EncodedPoint::from_bytes(bytes).expect("invalid P-256 encoded point");
+/// Returns `Err` (rather than panicking) on any attacker-controllable failure:
+/// a malformed encoding, an off-curve point, or the identity element
+/// (rejected per RFC 9497 §2.1).
+fn decode_point_p256(bytes: &[u8]) -> Result<ProjectivePoint<p256::NistP256>, &'static str> {
+    let encoded =
+        p256::EncodedPoint::from_bytes(bytes).map_err(|_| "invalid P-256 point encoding")?;
     let affine = AffinePoint::<p256::NistP256>::from_encoded_point(&encoded);
     if bool::from(affine.is_none()) {
-        panic!("invalid P-256 point");
+        return Err("P-256 point is not on the curve");
     }
     let pt: ProjectivePoint<p256::NistP256> = affine.unwrap().into();
-    assert!(
-        !bool::from(pt.is_identity()),
-        "identity element rejected per RFC 9497 §2.1"
-    );
-    pt
+    if bool::from(pt.is_identity()) {
+        return Err("identity element rejected per RFC 9497 §2.1");
+    }
+    Ok(pt)
 }
 
 // --- P-384 helpers ---
@@ -276,19 +278,21 @@ fn decode_scalar_p384(bytes: &[u8]) -> p384::Scalar {
 
 /// Decodes a compressed SEC1 P-384 point into projective coordinates.
 ///
-/// Rejects the identity element per RFC 9497 §2.1.
-fn decode_point_p384(bytes: &[u8]) -> ProjectivePoint<p384::NistP384> {
-    let encoded = p384::EncodedPoint::from_bytes(bytes).expect("invalid P-384 encoded point");
+/// Returns `Err` (rather than panicking) on any attacker-controllable failure:
+/// a malformed encoding, an off-curve point, or the identity element
+/// (rejected per RFC 9497 §2.1).
+fn decode_point_p384(bytes: &[u8]) -> Result<ProjectivePoint<p384::NistP384>, &'static str> {
+    let encoded =
+        p384::EncodedPoint::from_bytes(bytes).map_err(|_| "invalid P-384 point encoding")?;
     let affine = AffinePoint::<p384::NistP384>::from_encoded_point(&encoded);
     if bool::from(affine.is_none()) {
-        panic!("invalid P-384 point");
+        return Err("P-384 point is not on the curve");
     }
     let pt: ProjectivePoint<p384::NistP384> = affine.unwrap().into();
-    assert!(
-        !bool::from(pt.is_identity()),
-        "identity element rejected per RFC 9497 §2.1"
-    );
-    pt
+    if bool::from(pt.is_identity()) {
+        return Err("identity element rejected per RFC 9497 §2.1");
+    }
+    Ok(pt)
 }
 
 // --- P-521 helpers ---
@@ -317,19 +321,21 @@ fn decode_scalar_p521(bytes: &[u8]) -> p521::Scalar {
 
 /// Decodes a compressed SEC1 P-521 point into projective coordinates.
 ///
-/// Rejects the identity element per RFC 9497 §2.1.
-fn decode_point_p521(bytes: &[u8]) -> ProjectivePoint<p521::NistP521> {
-    let encoded = p521::EncodedPoint::from_bytes(bytes).expect("invalid P-521 encoded point");
+/// Returns `Err` (rather than panicking) on any attacker-controllable failure:
+/// a malformed encoding, an off-curve point, or the identity element
+/// (rejected per RFC 9497 §2.1).
+fn decode_point_p521(bytes: &[u8]) -> Result<ProjectivePoint<p521::NistP521>, &'static str> {
+    let encoded =
+        p521::EncodedPoint::from_bytes(bytes).map_err(|_| "invalid P-521 point encoding")?;
     let affine = AffinePoint::<p521::NistP521>::from_encoded_point(&encoded);
     if bool::from(affine.is_none()) {
-        panic!("invalid P-521 point");
+        return Err("P-521 point is not on the curve");
     }
     let pt: ProjectivePoint<p521::NistP521> = affine.unwrap().into();
-    assert!(
-        !bool::from(pt.is_identity()),
-        "identity element rejected per RFC 9497 §2.1"
-    );
-    pt
+    if bool::from(pt.is_identity()) {
+        return Err("identity element rejected per RFC 9497 §2.1");
+    }
+    Ok(pt)
 }
 
 #[cfg(test)]

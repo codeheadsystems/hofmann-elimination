@@ -68,11 +68,11 @@ impl GroupSpec for Ristretto255GroupSpec {
         scalar.to_bytes().to_vec()
     }
 
-    fn scalar_multiply(&self, scalar: &[u8], element: &[u8]) -> Vec<u8> {
-        let point = decompress_point(element);
+    fn scalar_multiply(&self, scalar: &[u8], element: &[u8]) -> Result<Vec<u8>, &'static str> {
+        let point = decompress_point(element)?;
         let s = decode_scalar(scalar);
         let result = s * point;
-        result.compress().to_bytes().to_vec()
+        Ok(result.compress().to_bytes().to_vec())
     }
 
     fn scalar_multiply_generator(&self, scalar: &[u8]) -> Vec<u8> {
@@ -120,17 +120,19 @@ fn decode_scalar(bytes: &[u8]) -> Scalar {
 
 /// Decompresses a 32-byte canonical ristretto255 encoding into a group element.
 ///
-/// Rejects the identity element per RFC 9497 §2.1.
-fn decompress_point(bytes: &[u8]) -> RistrettoPoint {
-    assert!(
-        bytes.len() != 32 || bytes.iter().any(|&b| b != 0),
-        "identity element rejected per RFC 9497 §2.1"
-    );
-    let compressed = CompressedRistretto::from_slice(bytes)
-        .expect("invalid ristretto255 encoding length");
+/// Returns `Err` (rather than panicking) on any attacker-controllable failure:
+/// a wrong-length or non-canonical encoding, or the identity element. The
+/// ristretto255 identity is the all-zero 32-byte encoding, which `decompress`
+/// would otherwise accept, so it is rejected explicitly per RFC 9497 §2.1.
+fn decompress_point(bytes: &[u8]) -> Result<RistrettoPoint, &'static str> {
+    if bytes.len() == 32 && bytes.iter().all(|&b| b == 0) {
+        return Err("identity element rejected per RFC 9497 §2.1");
+    }
+    let compressed =
+        CompressedRistretto::from_slice(bytes).map_err(|_| "invalid ristretto255 encoding length")?;
     compressed
         .decompress()
-        .expect("invalid ristretto255 point encoding")
+        .ok_or("invalid ristretto255 point encoding")
 }
 
 #[cfg(test)]
@@ -199,7 +201,7 @@ mod tests {
 
         // Multiply by inverse should give back the generator
         let inv = gs.scalar_inverse(&scalar);
-        let recovered = gs.scalar_multiply(&inv, &point);
+        let recovered = gs.scalar_multiply(&inv, &point).unwrap();
 
         let expected = RISTRETTO_BASEPOINT_POINT.compress().to_bytes();
         assert_eq!(recovered, expected.to_vec());
