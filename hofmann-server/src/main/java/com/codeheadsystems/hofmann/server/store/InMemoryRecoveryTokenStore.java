@@ -72,7 +72,10 @@ public class InMemoryRecoveryTokenStore implements RecoveryTokenStore {
       throw new IllegalStateException("Too many pending recovery tokens");
     }
     tokens.put(token, new TimestampedEntry(credentialIdentifierBase64, Instant.now()));
-    log.debug("Stored recovery token {}", token);
+    // Do not log the raw recovery token: it is a single-use bearer credential that
+    // authorizes account re-registration, so logging it (even at DEBUG) would let anyone
+    // with log access take over the account. Log only the non-secret credential identifier.
+    log.debug("Stored recovery token for credential {}", credentialIdentifierBase64);
   }
 
   @Override
