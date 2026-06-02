@@ -110,6 +110,8 @@ public class OpaqueController {
     try {
       manager.registrationFinish(req, extractBearerToken(authHeader));
       return ResponseEntity.noContent().build();
+    } catch (RateLimitExceededException e) {
+      throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Rate limit exceeded");
     } catch (SecurityException e) {
       log.debug("registrationFinish auth failed: {}", e.getMessage());
       throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);

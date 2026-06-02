@@ -285,6 +285,30 @@ public class HofmannOpaqueServerManager {
   public void registrationFinish(RegistrationFinishRequest req, String bearerToken) {
     log.debug("registrationFinish()");
     if (bearerToken != null && !bearerToken.isBlank()) {
+      if (recoveryTokenStore == null) {
+        // A recovery token was supplied but recovery is not configured: treat as invalid.
+        throw new SecurityException("Invalid or expired recovery token");
+      }
+      // Rate-limit recovery-token consumption to throttle online token guessing. The token is a
+      // single-use bearer credential that authorizes account re-registration; registrationStart is
+      // throttled per credential identifier but finish was previously unthrottled, leaving the
+      // token-guessing gate wide open. We reuse the recovery rate limiter (keyed by credential
+      // identifier, consistent with the rest of the design), so an attacker's guesses against any
+      // single account are bounded. Checked before consuming the token so every attempt counts
+      // whether or not the token turns out to be valid. Note: a legitimate recovery now draws two
+      // tokens from this bucket (recoveryStart + registrationFinish), which the default capacity
+      // (maxTokens=3) accommodates; size the recovery limit accordingly if you tune it.
+      if (recoveryRateLimiter != null
+          && !recoveryRateLimiter.tryConsume(req.credentialIdentifierBase64())) {
+        throw new RateLimitExceededException();
+      }
+      // Recovery-token lifecycle: registrationStart only peeks the token (non-consuming) so the
+      // client can safely retry start after a network failure. This finish step is the single,
+      // atomic consume gate: remove() returns the bound credential id exactly once, so the
+      // account-mutating work below (delete old record, revoke sessions, store new record) runs
+      // at most once per token. A second finish with the same token gets Optional.empty() and is
+      // rejected. TTL/expiry is re-checked here by the store, so there is no TOCTOU against the
+      // earlier peek.
       String credId = recoveryTokenStore.remove(bearerToken)
           .orElseThrow(() -> new SecurityException("Invalid or expired recovery token"));
       if (!credId.equals(req.credentialIdentifierBase64())) {
@@ -471,6 +495,11 @@ public class HofmannOpaqueServerManager {
     if (recoveryTokenStore == null) {
       throw new SecurityException("Invalid or expired recovery token");
     }
+    // Intentionally non-consuming (peek): registrationStart performs no persistent state change
+    // (it only returns a registration response), so a token may validate multiple start calls
+    // within its TTL. This keeps start idempotent and retryable if the client loses the response.
+    // Single use is enforced by the atomic remove() in registrationFinish, which is the only step
+    // that mutates account state. See registrationFinish for the full lifecycle.
     String credId = recoveryTokenStore.peek(token)
         .orElseThrow(() -> new SecurityException("Invalid or expired recovery token"));
     if (!credId.equals(expectedCredentialIdentifierBase64)) {

@@ -114,6 +114,9 @@ public class OpaqueResource {
     try {
       manager.registrationFinish(req, extractBearerToken(authHeader));
       return Response.noContent().build();
+    } catch (RateLimitExceededException e) {
+      throw new WebApplicationException(Response.status(429)
+          .header("Retry-After", "60").entity("Rate limit exceeded").build());
     } catch (SecurityException e) {
       log.debug("registrationFinish auth failed: {}", e.getMessage());
       throw new WebApplicationException(Response.Status.UNAUTHORIZED);
