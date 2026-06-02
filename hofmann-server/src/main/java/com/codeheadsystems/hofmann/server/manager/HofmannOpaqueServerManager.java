@@ -59,6 +59,12 @@ public class HofmannOpaqueServerManager {
   private static final Logger log = LoggerFactory.getLogger(HofmannOpaqueServerManager.class);
   private static final Base64.Encoder B64 = Base64.getEncoder();
 
+  /**
+   * Minimum wall-clock time {@link #recoveryVerify} takes, regardless of outcome, so that the
+   * latency of the call does not reveal whether the credential exists. See {@link #recoveryVerify}.
+   */
+  private static final long RECOVERY_VERIFY_MIN_NANOS = 250L * 1_000_000L; // 250 ms
+
   private final Supplier<OpaqueServerKeyDetail> keyDetailSupplier;
   private final CredentialStore credentialStore;
   private final JwtManager jwtManager;
@@ -424,13 +430,41 @@ public class HofmannOpaqueServerManager {
     if (recoveryChallenger == null) {
       throw new UnsupportedOperationException("Account recovery is not configured");
     }
-    if (!recoveryChallenger.verifyResponse(
-        req.credentialIdentifier(), req.validatedChallengeResponse())) {
-      throw new SecurityException("Recovery verification failed");
+    // Enforce a constant-time floor over the whole verification. A RecoveryChallenger may
+    // short-circuit (return false instantly) for an unknown credential while doing real
+    // comparison work for a known one. Without this floor that latency difference is a
+    // user-enumeration oracle that defeats OPAQUE's enumeration resistance: recoveryStart
+    // always returns 202, but an attacker could distinguish existing from non-existing
+    // accounts by timing recoveryVerify. The floor (applied to both the success and the
+    // failure path) bounds the observable timing to its jitter. Implementations should still
+    // use constant-time comparison; if a challenger's verification can exceed the floor for
+    // existing accounts, raise RECOVERY_VERIFY_MIN_NANOS accordingly.
+    final long deadlineNanos = System.nanoTime() + RECOVERY_VERIFY_MIN_NANOS;
+    try {
+      if (!recoveryChallenger.verifyResponse(
+          req.credentialIdentifier(), req.validatedChallengeResponse())) {
+        throw new SecurityException("Recovery verification failed");
+      }
+      String token = UUID.randomUUID().toString();
+      recoveryTokenStore.store(token, req.credentialIdentifierBase64());
+      return new RecoveryVerifyResponse(token);
+    } finally {
+      sleepUntil(deadlineNanos);
     }
-    String token = UUID.randomUUID().toString();
-    recoveryTokenStore.store(token, req.credentialIdentifierBase64());
-    return new RecoveryVerifyResponse(token);
+  }
+
+  /** Busy-free wait until {@code deadlineNanos} (from {@link System#nanoTime()}) has passed. */
+  private static void sleepUntil(final long deadlineNanos) {
+    long remaining = deadlineNanos - System.nanoTime();
+    while (remaining > 0) {
+      try {
+        Thread.sleep(remaining / 1_000_000L, (int) (remaining % 1_000_000L));
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        return;
+      }
+      remaining = deadlineNanos - System.nanoTime();
+    }
   }
 
   private void validateRecoveryToken(String token, String expectedCredentialIdentifierBase64) {
