@@ -74,10 +74,13 @@ class OpaqueIntegrationTest {
    */
   @Test
   void authenticateTwice_producesDifferentSessionKeys() {
-    hofmannOpaqueClientManager.register(SERVER_ID, CREDENTIAL_ID, PASSWORD);
+    // Unique credential id: the shared app/credential store persists across test methods and
+    // normal registration no longer overwrites an existing record.
+    byte[] credId = "auth-twice@example.com".getBytes(StandardCharsets.UTF_8);
+    hofmannOpaqueClientManager.register(SERVER_ID, credId, PASSWORD);
 
-    AuthFinishResponse resp1 = hofmannOpaqueClientManager.authenticate(SERVER_ID, CREDENTIAL_ID, PASSWORD);
-    AuthFinishResponse resp2 = hofmannOpaqueClientManager.authenticate(SERVER_ID, CREDENTIAL_ID, PASSWORD);
+    AuthFinishResponse resp1 = hofmannOpaqueClientManager.authenticate(SERVER_ID, credId, PASSWORD);
+    AuthFinishResponse resp2 = hofmannOpaqueClientManager.authenticate(SERVER_ID, credId, PASSWORD);
 
     assertThat(resp1.sessionKeyBase64()).isNotEqualTo(resp2.sessionKeyBase64());
     assertThat(resp1.token()).isNotEqualTo(resp2.token());

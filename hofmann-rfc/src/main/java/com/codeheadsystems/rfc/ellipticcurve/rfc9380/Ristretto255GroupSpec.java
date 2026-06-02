@@ -369,23 +369,54 @@ public class Ristretto255GroupSpec implements GroupSpec {
   }
 
   /**
-   * Scalar multiplication k*P using right-to-left double-and-add.
-   * Scalar is reduced mod L before use.
+   * Scalar multiplication k*P. The scalar is reduced mod L before use.
+   *
+   * <p>Implemented as a Montgomery ladder so that the sequence of group
+   * operations (exactly one addition and one doubling per bit) and the loop
+   * iteration count (always {@code L.bitLength()}) are independent of the value
+   * of the secret scalar. The previous right-to-left double-and-add branched on
+   * each scalar bit ({@code if (k.testBit(i)) result = addPoints(...)}) and
+   * looped over {@code k.bitLength()}, leaking the scalar's Hamming weight and
+   * bit length through timing. Because this routine runs server-side with the
+   * long-term OPRF/OPAQUE secret key, a remote attacker submitting chosen
+   * points and measuring response latency could recover that key. The
+   * conditional swap performs identical arithmetic regardless of the bit value,
+   * so register selection no longer depends on a data-dependent branch.
+   *
+   * <p>Note: the underlying {@link BigInteger} field arithmetic is not itself
+   * fully constant-time; this change removes the dominant, directly exploitable
+   * operation-sequence leak. Closing the residual microarchitectural channel
+   * would require a constant-time field implementation.
    */
   static BigInteger[] scalarMul(BigInteger[] pt, BigInteger k) {
     k = k.mod(L);
-    if (k.signum() == 0) {
-      return neutralElement();
+    BigInteger[] r0 = neutralElement();
+    BigInteger[] r1 = pt.clone();
+    for (int i = L.bitLength() - 1; i >= 0; i--) {
+      int bit = k.testBit(i) ? 1 : 0;
+      cswap(bit, r0, r1);
+      r1 = addPoints(r0, r1);
+      r0 = doublePoint(r0);
+      cswap(bit, r0, r1);
     }
-    BigInteger[] result = neutralElement();
-    BigInteger[] addend = pt;
-    for (int i = 0; i < k.bitLength(); i++) {
-      if (k.testBit(i)) {
-        result = addPoints(result, addend);
-      }
-      addend = doublePoint(addend);
+    return r0;
+  }
+
+  /**
+   * Conditionally swaps the contents of two extended-coordinate points without
+   * branching on {@code swap}. {@code swap} must be 0 or 1; when 1 the two
+   * coordinate arrays are exchanged. Uses a two's-complement mask
+   * ({@code -swap} is 0 or all-ones) so the same operations execute regardless
+   * of the (secret) swap bit. Coordinates are non-negative field elements, so
+   * the XOR/AND mask trick is well-defined.
+   */
+  private static void cswap(final int swap, final BigInteger[] a, final BigInteger[] b) {
+    final BigInteger mask = BigInteger.valueOf(swap).negate();
+    for (int i = 0; i < a.length; i++) {
+      final BigInteger t = a[i].xor(b[i]).and(mask);
+      a[i] = a[i].xor(t);
+      b[i] = b[i].xor(t);
     }
-    return result;
   }
 
   // ─── Endianness utilities ─────────────────────────────────────────────────

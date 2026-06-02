@@ -46,6 +46,11 @@ public class OpaqueOprf {
    * @return evaluatedElement as a serialized group element
    */
   public static byte[] blindEvaluate(OpaqueCipherSuite suite, BigInteger oprfKey, byte[] blindedElement) {
+    // RFC 9497 §3.3.2: reject the identity element (all-zero ristretto255 encoding) supplied
+    // by the client, mirroring the client-side check in blind().
+    if (ByteUtils.isAllZero(blindedElement)) {
+      throw new IllegalArgumentException("Blinded element is the identity element");
+    }
     return suite.oprfSuite().groupSpec().scalarMultiply(oprfKey, blindedElement);
   }
 
