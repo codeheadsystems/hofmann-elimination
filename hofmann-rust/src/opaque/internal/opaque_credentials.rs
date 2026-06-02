@@ -152,6 +152,14 @@ pub fn recover_credentials(
             .cipher_suite()
             .hkdf_expand(&randomized_pwd, b"MaskingKey", config.nh());
 
+    // The masked response is supplied by the (untrusted) server. Validate its
+    // length before unmasking so a short value cannot panic the client: xor
+    // requires equal lengths, and the subsequent slices assume the full layout
+    // server_public_key (Npk) || envelope_nonce (Nn) || auth_tag (Nm).
+    if response.masked_response.len() != config.masked_response_size() {
+        return Err("invalid masked response length");
+    }
+
     // Unmask
     let pad_info = concat(&[&response.masking_nonce, b"CredentialResponsePad"]);
     let pad =
@@ -162,7 +170,7 @@ pub fn recover_credentials(
 
     // Extract server_public_key || envelope
     let server_public_key = plaintext[..config.npk()].to_vec();
-    let envelope = Envelope::deserialize(&plaintext, config.npk(), NN, config.nm());
+    let envelope = Envelope::deserialize(&plaintext, config.npk(), NN, config.nm())?;
 
     opaque_envelope::recover(
         config,

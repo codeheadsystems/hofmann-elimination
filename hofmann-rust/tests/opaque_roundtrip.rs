@@ -145,6 +145,41 @@ fn test_opaque_server_rejects_malformed_request() {
     );
 }
 
+/// A malicious server can return a credential response with a truncated masked
+/// response. The client must reject it with an error rather than panicking while
+/// unmasking/slicing. Regression test for the client-side bounds-check fix.
+#[test]
+fn test_opaque_client_rejects_truncated_credential_response() {
+    let config = OpaqueConfig::for_testing();
+    let mut rng = rand::thread_rng();
+    let credential_id = b"user@example.com";
+
+    let server = OpaqueServer::generate(&config, &mut rng);
+    let client = OpaqueClient::new(&config);
+
+    let reg_state = client.create_registration_request(b"pw", &mut rng);
+    let reg_response = server
+        .create_registration_response(&reg_state.request, credential_id)
+        .unwrap();
+    let record = client
+        .finalize_registration(&reg_state, &reg_response, None, None, &mut rng)
+        .unwrap();
+
+    let auth_state = client.generate_ke1(b"pw", &mut rng);
+    let mut ke2_result = server
+        .generate_ke2(None, &record, credential_id, &auth_state.ke1, None, &mut rng)
+        .unwrap();
+
+    // Truncate the server-supplied masked response.
+    ke2_result.ke2.credential_response.masked_response.truncate(3);
+
+    let result = client.generate_ke3(&auth_state, None, None, &ke2_result.ke2);
+    assert!(
+        result.is_err(),
+        "client must reject a truncated credential response without panicking"
+    );
+}
+
 #[test]
 fn test_opaque_wrong_password_fails() {
     let config = OpaqueConfig::for_testing();
