@@ -13,15 +13,21 @@ pub fn blind(suite: &OpaqueCipherSuite, password: &[u8], blind_scalar: &[u8]) ->
         !gs.is_identity_element(&h),
         "InvalidInputError: HashToGroup returned identity element (RFC 9497 §3.3.1)"
     );
+    // `h` is a freshly hashed, non-identity point this library just produced, so
+    // scalar_multiply cannot fail here; the input is not attacker-controlled.
     gs.scalar_multiply(blind_scalar, &h)
+        .expect("blind: hashed point must be a valid group element")
 }
 
 /// Server OPRF evaluation: multiplies the blinded element by the OPRF key.
+///
+/// Returns `Err` if `blinded_element` (supplied by the client) is not a valid
+/// non-identity group element, so a malicious client cannot panic the server.
 pub fn blind_evaluate(
     suite: &OpaqueCipherSuite,
     oprf_key: &[u8],
     blinded_element: &[u8],
-) -> Vec<u8> {
+) -> Result<Vec<u8>, &'static str> {
     suite
         .oprf_suite()
         .group_spec()
@@ -29,12 +35,15 @@ pub fn blind_evaluate(
 }
 
 /// Client OPRF finalize: unblinds the evaluated element and hashes to produce OPRF output.
+///
+/// Returns `Err` if `evaluated_element` (from the server) is not a valid
+/// non-identity group element.
 pub fn finalize(
     suite: &OpaqueCipherSuite,
     password: &[u8],
     blind_scalar: &[u8],
     evaluated_element: &[u8],
-) -> Vec<u8> {
+) -> Result<Vec<u8>, &'static str> {
     suite
         .oprf_suite()
         .finalize(password, blind_scalar, evaluated_element)

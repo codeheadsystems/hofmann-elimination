@@ -190,11 +190,20 @@ impl OprfCipherSuite {
     }
 
     /// RFC 9497 §3.3.1 Finalize: unblind the evaluated element and produce the OPRF output.
-    pub fn finalize(&self, input: &[u8], blind: &[u8], evaluated_element: &[u8]) -> Vec<u8> {
+    ///
+    /// Returns `Err` if `evaluated_element` (supplied by the server) is not a
+    /// valid non-identity group element, so a malicious or buggy server cannot
+    /// panic the client or collapse the output to a key-independent value.
+    pub fn finalize(
+        &self,
+        input: &[u8],
+        blind: &[u8],
+        evaluated_element: &[u8],
+    ) -> Result<Vec<u8>, &'static str> {
         let inverse_blind = self.group_spec.scalar_inverse(blind);
         let unblinded_element = self
             .group_spec
-            .scalar_multiply(&inverse_blind, evaluated_element);
+            .scalar_multiply(&inverse_blind, evaluated_element)?;
 
         let hash_input = concat(&[
             &i2osp(input.len() as u32, 2),
@@ -204,7 +213,7 @@ impl OprfCipherSuite {
             b"Finalize",
         ]);
 
-        self.hash(&hash_input)
+        Ok(self.hash(&hash_input))
     }
 
     /// Computes Hash(data) using the suite's hash algorithm.

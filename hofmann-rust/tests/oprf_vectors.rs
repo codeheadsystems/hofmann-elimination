@@ -69,19 +69,19 @@ mod p256_sha256 {
         let blind = hex("3338fa65ec36e0290022b48eb562889d89dbfa691d1cde91517fa222ed7ad364");
 
         let hashed = gs.hash_to_group(&input, oprf.hash_to_group_dst());
-        let blinded = gs.scalar_multiply(&blind, &hashed);
+        let blinded = gs.scalar_multiply(&blind, &hashed).unwrap();
         assert_eq!(
             blinded,
             hex("03723a1e5c09b8b9c18d1dcbca29e8007e95f14f4732d9346d490ffc195110368d")
         );
 
-        let evaluated = gs.scalar_multiply(&sk_s, &blinded);
+        let evaluated = gs.scalar_multiply(&sk_s, &blinded).unwrap();
         assert_eq!(
             evaluated,
             hex("030de02ffec47a1fd53efcdd1c6faf5bdc270912b8749e783c7ca75bb412958832")
         );
 
-        let output = oprf.finalize(&input, &blind, &evaluated);
+        let output = oprf.finalize(&input, &blind, &evaluated).unwrap();
         assert_eq!(
             output,
             hex("a0b34de5fa4c5b6da07e72af73cc507cceeb48981b97b7285fc375345fe495dd")
@@ -98,10 +98,10 @@ mod p256_sha256 {
         let blind = hex("e6d0f1d89ad552e859d708177054aca4695ef33b5d89d4d3f9a2c376e08a1450");
 
         let hashed = gs.hash_to_group(&input, oprf.hash_to_group_dst());
-        let blinded = gs.scalar_multiply(&blind, &hashed);
-        let evaluated = gs.scalar_multiply(&sk_s, &blinded);
+        let blinded = gs.scalar_multiply(&blind, &hashed).unwrap();
+        let evaluated = gs.scalar_multiply(&sk_s, &blinded).unwrap();
 
-        let output = oprf.finalize(&input, &blind, &evaluated);
+        let output = oprf.finalize(&input, &blind, &evaluated).unwrap();
         assert_eq!(
             output,
             hex("c748ca6dd327f0ce85f4ae3a8cd6d4d5390bbb804c9e12dcf94f853fece3dcce")
@@ -144,19 +144,19 @@ mod p384_sha384 {
         let blind = hex("504650f53df8f16f6861633388936ea23338fa65ec36e0290022b48eb562889d89dbfa691d1cde91517fa222ed7ad364");
 
         let hashed = gs.hash_to_group(&input, oprf.hash_to_group_dst());
-        let blinded = gs.scalar_multiply(&blind, &hashed);
+        let blinded = gs.scalar_multiply(&blind, &hashed).unwrap();
         assert_eq!(
             blinded,
             hex("02a36bc90e6db34096346eaf8b7bc40ee1113582155ad3797003ce614c835a874343701d3f2debbd80d97cbe45de6e5f1f")
         );
 
-        let evaluated = gs.scalar_multiply(&sk_s, &blinded);
+        let evaluated = gs.scalar_multiply(&sk_s, &blinded).unwrap();
         assert_eq!(
             evaluated,
             hex("03af2a4fc94770d7a7bf3187ca9cc4faf3732049eded2442ee50fbddda58b70ae2999366f72498cdbc43e6f2fc184afe30")
         );
 
-        let output = oprf.finalize(&input, &blind, &evaluated);
+        let output = oprf.finalize(&input, &blind, &evaluated).unwrap();
         assert_eq!(
             output,
             hex("ed84ad3f31a552f0456e58935fcc0a3039db42e7f356dcb32aa6d487b6b815a07d5813641fb1398c03ddab5763874357")
@@ -173,19 +173,19 @@ mod p384_sha384 {
         let blind = hex("504650f53df8f16f6861633388936ea23338fa65ec36e0290022b48eb562889d89dbfa691d1cde91517fa222ed7ad364");
 
         let hashed = gs.hash_to_group(&input, oprf.hash_to_group_dst());
-        let blinded = gs.scalar_multiply(&blind, &hashed);
+        let blinded = gs.scalar_multiply(&blind, &hashed).unwrap();
         assert_eq!(
             blinded,
             hex("02def6f418e3484f67a124a2ce1bfb19de7a4af568ede6a1ebb2733882510ddd43d05f2b1ab5187936a55e50a847a8b900")
         );
 
-        let evaluated = gs.scalar_multiply(&sk_s, &blinded);
+        let evaluated = gs.scalar_multiply(&sk_s, &blinded).unwrap();
         assert_eq!(
             evaluated,
             hex("034e9b9a2960b536f2ef47d8608b21597ba400d5abfa1825fd21c36b75f927f396bf3716c96129d1fa4a77fa1d479c8d7b")
         );
 
-        let output = oprf.finalize(&input, &blind, &evaluated);
+        let output = oprf.finalize(&input, &blind, &evaluated).unwrap();
         assert_eq!(
             output,
             hex("dd4f29da869ab9355d60617b60da0991e22aaab243a3460601e48b075859d1c526d36597326f1b985778f781a1682e75")
@@ -228,19 +228,19 @@ mod p521_sha512 {
         let blind = hex("00d1dccf7a51bafaf75d4a866d53d8cafe4d504650f53df8f16f6861633388936ea23338fa65ec36e0290022b48eb562889d89dbfa691d1cde91517fa222ed7ad364");
 
         let hashed = gs.hash_to_group(&input, oprf.hash_to_group_dst());
-        let blinded = gs.scalar_multiply(&blind, &hashed);
+        let blinded = gs.scalar_multiply(&blind, &hashed).unwrap();
         assert_eq!(
             blinded,
             hex("0300e78bf846b0e1e1a3c320e353d758583cd876df56100a3a1e62bacba470fa6e0991be1be80b721c50c5fd0c672ba764457acc18c6200704e9294fbf28859d916351")
         );
 
-        let evaluated = gs.scalar_multiply(&sk_s, &blinded);
+        let evaluated = gs.scalar_multiply(&sk_s, &blinded).unwrap();
         assert_eq!(
             evaluated,
             hex("030166371cf827cb2fb9b581f97907121a16e2dc5d8b10ce9f0ede7f7d76a0d047657735e8ad07bcda824907b3e5479bd72cdef6b839b967ba5c58b118b84d26f2ba07")
         );
 
-        let output = oprf.finalize(&input, &blind, &evaluated);
+        let output = oprf.finalize(&input, &blind, &evaluated).unwrap();
         assert_eq!(
             output,
             hex("26232de6fff83f812adadadb6cc05d7bbeee5dca043dbb16b03488abb9981d0a1ef4351fad52dbd7e759649af393348f7b9717566c19a6b8856284d69375c809")
@@ -257,19 +257,19 @@ mod p521_sha512 {
         let blind = hex("00d1dccf7a51bafaf75d4a866d53d8cafe4d504650f53df8f16f6861633388936ea23338fa65ec36e0290022b48eb562889d89dbfa691d1cde91517fa222ed7ad364");
 
         let hashed = gs.hash_to_group(&input, oprf.hash_to_group_dst());
-        let blinded = gs.scalar_multiply(&blind, &hashed);
+        let blinded = gs.scalar_multiply(&blind, &hashed).unwrap();
         assert_eq!(
             blinded,
             hex("0300c28e57e74361d87e0c1874e5f7cc1cc796d61f9cad50427cf54655cdb455613368d42b27f94bf66f59f53c816db3e95e68e1b113443d66a99b3693bab88afb556b")
         );
 
-        let evaluated = gs.scalar_multiply(&sk_s, &blinded);
+        let evaluated = gs.scalar_multiply(&sk_s, &blinded).unwrap();
         assert_eq!(
             evaluated,
             hex("0301ad453607e12d0cc11a3359332a40c3a254eaa1afc64296528d55bed07ba322e72e22cf3bcb50570fd913cb54f7f09c17aff8787af75f6a7faf5640cbb2d9620a6e")
         );
 
-        let output = oprf.finalize(&input, &blind, &evaluated);
+        let output = oprf.finalize(&input, &blind, &evaluated).unwrap();
         assert_eq!(
             output,
             hex("ad1f76ef939042175e007738906ac0336bbd1d51e287ebaa66901abdd324ea3ffa40bfc5a68e7939c2845e0fd37a5a6e76dadb9907c6cc8579629757fd4d04ba")
@@ -312,19 +312,19 @@ mod ristretto255_sha512 {
         let blind = hex("64d37aed22a27f5191de1c1d69fadb899d8862b58eb4220029e036ec4c1f6706");
 
         let hashed = gs.hash_to_group(&input, oprf.hash_to_group_dst());
-        let blinded = gs.scalar_multiply(&blind, &hashed);
+        let blinded = gs.scalar_multiply(&blind, &hashed).unwrap();
         assert_eq!(
             blinded,
             hex("609a0ae68c15a3cf6903766461307e5c8bb2f95e7e6550e1ffa2dc99e412803c")
         );
 
-        let evaluated = gs.scalar_multiply(&sk_s, &blinded);
+        let evaluated = gs.scalar_multiply(&sk_s, &blinded).unwrap();
         assert_eq!(
             evaluated,
             hex("7ec6578ae5120958eb2db1745758ff379e77cb64fe77b0b2d8cc917ea0869c7e")
         );
 
-        let output = oprf.finalize(&input, &blind, &evaluated);
+        let output = oprf.finalize(&input, &blind, &evaluated).unwrap();
         assert_eq!(
             output,
             hex("527759c3d9366f277d8c6020418d96bb393ba2afb20ff90df23fb7708264e2f3ab9135e3bd69955851de4b1f9fe8a0973396719b7912ba9ee8aa7d0b5e24bcf6")
@@ -341,19 +341,19 @@ mod ristretto255_sha512 {
         let blind = hex("64d37aed22a27f5191de1c1d69fadb899d8862b58eb4220029e036ec4c1f6706");
 
         let hashed = gs.hash_to_group(&input, oprf.hash_to_group_dst());
-        let blinded = gs.scalar_multiply(&blind, &hashed);
+        let blinded = gs.scalar_multiply(&blind, &hashed).unwrap();
         assert_eq!(
             blinded,
             hex("da27ef466870f5f15296299850aa088629945a17d1f5b7f5ff043f76b3c06418")
         );
 
-        let evaluated = gs.scalar_multiply(&sk_s, &blinded);
+        let evaluated = gs.scalar_multiply(&sk_s, &blinded).unwrap();
         assert_eq!(
             evaluated,
             hex("b4cbf5a4f1eeda5a63ce7b77c7d23f461db3fcab0dd28e4e17cecb5c90d02c25")
         );
 
-        let output = oprf.finalize(&input, &blind, &evaluated);
+        let output = oprf.finalize(&input, &blind, &evaluated).unwrap();
         assert_eq!(
             output,
             hex("f4a74c9c592497375e796aa837e907b1a045d34306a749db9f34221f7e750cb4f2a6413a6bf6fa5e19ba6348eb673934a722a7ede2e7621306d18951e7cf2c73")

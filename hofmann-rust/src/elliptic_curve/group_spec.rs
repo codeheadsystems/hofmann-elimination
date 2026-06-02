@@ -48,8 +48,12 @@ pub trait GroupSpec: Send + Sync {
 
     /// Multiplies a serialized group element by a scalar.
     ///
-    /// Performs point validation before the operation.
-    fn scalar_multiply(&self, scalar: &[u8], element: &[u8]) -> Vec<u8>;
+    /// `element` is typically attacker-controllable (a peer's blinded element or
+    /// ephemeral public key), so it is validated before the operation: a
+    /// malformed encoding, an off-curve point, or the identity element returns
+    /// `Err` instead of panicking. This lets a server reject a malicious request
+    /// rather than aborting the handling thread (RFC 9497 §2.1).
+    fn scalar_multiply(&self, scalar: &[u8], element: &[u8]) -> Result<Vec<u8>, &'static str>;
 
     /// Multiplies the group generator **G** by a scalar.
     fn scalar_multiply_generator(&self, scalar: &[u8]) -> Vec<u8>;

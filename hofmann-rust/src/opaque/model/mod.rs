@@ -139,11 +139,28 @@ impl Envelope {
         concat(&[&self.envelope_nonce, &self.auth_tag])
     }
 
-    pub fn deserialize(data: &[u8], offset: usize, nonce_len: usize, tag_len: usize) -> Self {
-        Self {
+    /// Deserializes an envelope from `data` starting at `offset`.
+    ///
+    /// Returns `Err` (rather than panicking) if `data` is too short to contain
+    /// `nonce_len + tag_len` bytes at `offset`, since the input is derived from
+    /// an untrusted server response.
+    pub fn deserialize(
+        data: &[u8],
+        offset: usize,
+        nonce_len: usize,
+        tag_len: usize,
+    ) -> Result<Self, &'static str> {
+        let end = offset
+            .checked_add(nonce_len)
+            .and_then(|x| x.checked_add(tag_len))
+            .ok_or("envelope length overflow")?;
+        if data.len() < end {
+            return Err("envelope data too short");
+        }
+        Ok(Self {
             envelope_nonce: data[offset..offset + nonce_len].to_vec(),
             auth_tag: data[offset + nonce_len..offset + nonce_len + tag_len].to_vec(),
-        }
+        })
     }
 }
 

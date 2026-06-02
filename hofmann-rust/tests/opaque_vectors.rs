@@ -164,14 +164,14 @@ fn do_registration(
     client_identity: Option<&[u8]>,
 ) -> (ClientRegistrationState, RegistrationResponse, RegistrationRecord) {
     let state = client.create_registration_request_deterministic(&password(), &blind_registration());
-    let response = server.create_registration_response(&state.request, &credential_identifier());
+    let response = server.create_registration_response(&state.request, &credential_identifier()).unwrap();
     let record = client.finalize_registration_deterministic(
         &state,
         &response,
         server_identity,
         client_identity,
         &envelope_nonce(),
-    );
+    ).unwrap();
     (state, response, record)
 }
 
@@ -200,7 +200,7 @@ fn do_full_auth(
         &masking_nonce(),
         &server_keyshare_seed(),
         &server_nonce(),
-    );
+    ).unwrap();
 
     let auth_result = client
         .generate_ke3(&auth_state, client_identity, server_identity, &ke2_result.ke2)
@@ -234,7 +234,7 @@ fn vector1_registration_response() {
     let server = make_server(&config);
 
     let state = client.create_registration_request_deterministic(&password(), &blind_registration());
-    let response = server.create_registration_response(&state.request, &credential_identifier());
+    let response = server.create_registration_response(&state.request, &credential_identifier()).unwrap();
 
     let actual = [
         response.evaluated_element.as_slice(),
@@ -314,7 +314,7 @@ fn vector1_ke2() {
         &masking_nonce(),
         &server_keyshare_seed(),
         &server_nonce(),
-    );
+    ).unwrap();
 
     assert_eq!(
         serialize_ke2(&ke2_result.ke2),

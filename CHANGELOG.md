@@ -7,6 +7,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.0.0] - 2026-06-01
+
+> **Breaking change (Rust + TypeScript only).** The Rust crate (`hofmann-rfc`) and the
+> TypeScript package (`@codeheadsystems/hofmann-typescript`) change several public
+> signatures to harden against malformed input — see **Changed** for the migration. The
+> Java artifacts (`hofmann-*`) have no breaking API changes; the major version bump keeps
+> all artifacts on one version line.
+
+### Security
+
+#### Java server (`hofmann-rfc`, `hofmann-server`, `hofmann-springboot`, `hofmann-dropwizard`)
+
+- **Timing side-channel in ristretto255 scalar multiplication** — replaced the variable-time
+  right-to-left double-and-add (which branched on each secret-key bit and looped over the
+  scalar's bit length) with a constant-time Montgomery ladder. The routine runs server-side
+  with the long-term OPRF/OPAQUE key, so the previous leak was remotely exploitable to
+  recover that key.
+- **Account takeover via registration overwrite** — unauthenticated `registrationFinish` no
+  longer overwrites an existing credential (last-write-wins). An attacker who knew a victim's
+  credential identifier could previously replace their record. Existing credentials must be
+  updated through the authenticated change-password or recovery flow.
+- **User enumeration via `recoveryVerify` timing** — `recoveryVerify` now enforces a minimum
+  wall-clock time (`RECOVERY_VERIFY_MIN_NANOS`, 250 ms) on both success and failure paths,
+  closing the latency oracle that distinguished existing from non-existing accounts.
+- **Server-side identity (neutral) element rejection** — the OPRF `blindEvaluate` paths and
+  each OPAQUE AKE DH output now reject the all-zero/identity element, matching the existing
+  client-side checks (RFC 9497 §3.3.2, RFC 9807).
+- **Recovery token no longer logged** — `InMemoryRecoveryTokenStore` no longer writes the raw
+  single-use recovery token to the DEBUG log.
+- **Recovery-token consumption rate-limited** — `registrationFinish` (where the recovery token
+  is consumed) is now throttled by the per-credential recovery rate limiter;
+  `RateLimitExceededException` maps to HTTP 429, and a token supplied when recovery is
+  unconfigured is treated as invalid instead of throwing.
+
+#### TypeScript client (`@codeheadsystems/hofmann-typescript`)
+
+- **Identity (neutral) element rejection** — `CipherSuite.finalize` rejects an identity OPRF
+  evaluated element (RFC 9497 §2.1) and `CipherSuite.dhMultiply` rejects an identity peer DH
+  contribution and result (RFC 9807 §6.3), for both the NIST and ristretto255 suites.
+  `@noble/curves` already rejects the identity for the NIST suites, but **accepts** the
+  all-zero ristretto255 encoding, so a malicious server could previously collapse the OPRF
+  output to a fixed, key-independent value (degrading the OPRF to an unsalted hash of the
+  input) or strip its contribution from the OPAQUE-3DH transcript.
+
+#### Rust library (`hofmann-rfc`)
+
+- **No panics on malformed/identity elements** — point decoding and `GroupSpec::scalar_multiply`
+  now return errors instead of panicking on attacker-controlled bytes (a wrong-length or
+  off-curve encoding, or the identity element). The OPRF/OPAQUE server paths feed the
+  client-supplied blinded element and AKE public key straight into `scalar_multiply`, so a
+  malformed request previously panicked the handling thread — a remote, unauthenticated denial
+  of service now that the crate can build a server directly.
+- **Bounds-checked credential response** — the OPAQUE client validates the (untrusted)
+  `masked_response` length before unmasking and `Envelope::deserialize` rejects short input,
+  so a malicious server can no longer panic the client while unmasking/slicing.
+
+### Changed
+
+- **Rust (breaking): point operations return `Result`.** `GroupSpec::scalar_multiply`,
+  `OprfCipherSuite::finalize`, `Envelope::deserialize`, and the OPAQUE flow that builds on them
+  — `OpaqueServer::create_registration_response` / `generate_ke2` / `generate_fake_ke2` /
+  `generate_ke2_deterministic`, `OpaqueClient::finalize_registration[_deterministic]`, and the
+  internal `blind_evaluate` / `create_*_response` / `finalize_registration*` /
+  `derive_randomized_pwd` helpers — now return `Result<_, &'static str>`. Add `?` or `.unwrap()`
+  at call sites. `scalar_multiply_generator`, `scalar_inverse`, `hash_to_group`, and `blind` are
+  unchanged (they only ever see internally-derived, trusted inputs).
+- **TypeScript (breaking): standalone HKDF helpers take the hash explicitly.** `hkdfExtract`,
+  `hkdfExpand`, and `hkdfExpandLabel` (exported from the package index) now take the hash
+  function as their first argument instead of hard-coding SHA-256, which silently produced
+  incompatible, truncated key material for the P-384/P-521/ristretto255 suites. Prefer the
+  suite-aware `CipherSuite.hkdf*` methods. A `HashFn` type is exported.
+
+---
+
 ## [1.3.0] - 2026-03-09
 
 ### Added
@@ -314,6 +388,7 @@ First stable release.
 
 ---
 
+[2.0.0]: https://github.com/codeheadsystems/hofmann-elimination/compare/v1.4.1...v2.0.0
 [1.3.0]: https://github.com/codeheadsystems/hofmann-elimination/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/codeheadsystems/hofmann-elimination/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/codeheadsystems/hofmann-elimination/compare/v1.1.0...v1.2.0
