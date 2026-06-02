@@ -105,6 +105,21 @@ function os2ip(bytes: Uint8Array): bigint {
   return r;
 }
 
+/**
+ * True if every byte is zero.
+ *
+ * The ristretto255 identity (neutral) element is the all-zero 32-byte encoding,
+ * and any group element multiplied down to the identity also serializes to all
+ * zeros. We use this to reject the identity element on server-supplied points,
+ * mirroring the checks in the Rust/Java implementations.
+ */
+function isAllZero(bytes: Uint8Array): boolean {
+  for (const b of bytes) {
+    if (b !== 0) return false;
+  }
+  return true;
+}
+
 
 // Structural type for noble/curves Weierstrass curve instances.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -167,6 +182,13 @@ function createSuite(
     },
 
     finalize(input: Uint8Array, blindScalar: bigint, evaluatedElement: Uint8Array): Uint8Array {
+      // RFC 9497 §2.1: DeserializeElement MUST reject the identity element.
+      // For NIST suites noble already rejects it at fromBytes (the identity has
+      // no valid compressed SEC1 encoding), but we reject the all-zero encoding
+      // explicitly so the guarantee is uniform and cannot regress.
+      if (isAllZero(evaluatedElement)) {
+        throw new Error('finalize: identity evaluated element rejected (RFC 9497 §2.1)');
+      }
       const Z = curve.Point.fromBytes(evaluatedElement);
       const N = Z.multiply(invert(blindScalar, ORDER));
       const unblinded = N.toBytes(true); // Npk bytes compressed
@@ -198,7 +220,17 @@ function createSuite(
     },
 
     dhMultiply(pointBytes: Uint8Array, scalar: bigint): Uint8Array {
-      return curve.Point.fromBytes(pointBytes).multiply(scalar).toBytes(true);
+      // RFC 9807 §6.3: reject the identity element as a peer DH contribution.
+      // NIST suites reject it at fromBytes; the explicit checks make the
+      // guarantee uniform and also cover a result that collapses to identity.
+      if (isAllZero(pointBytes)) {
+        throw new Error('dhMultiply: identity element rejected (RFC 9807 §6.3)');
+      }
+      const result = curve.Point.fromBytes(pointBytes).multiply(scalar).toBytes(true);
+      if (isAllZero(result)) {
+        throw new Error('dhMultiply: identity DH result rejected (RFC 9807 §6.3)');
+      }
+      return result;
     },
 
     bigintToBytes,
@@ -311,6 +343,14 @@ function createRistrettoSuite(): CipherSuite {
     },
 
     finalize(input: Uint8Array, blindScalar: bigint, evaluatedElement: Uint8Array): Uint8Array {
+      // RFC 9497 §2.1: DeserializeElement MUST reject the identity element.
+      // noble's ristretto255 ACCEPTS the all-zero (identity) encoding, so we
+      // must reject it here — otherwise a malicious server returning identity
+      // collapses the unblinded element to a fixed value and the OPRF output
+      // degrades to an unsalted hash of the input, independent of the key.
+      if (isAllZero(evaluatedElement)) {
+        throw new Error('finalize: identity evaluated element rejected (RFC 9497 §2.1)');
+      }
       const Z = ristretto255.Point.fromBytes(evaluatedElement);
       const N = Z.multiply(invert(blindScalar, ORDER));
       const unblinded = N.toBytes();
@@ -342,7 +382,18 @@ function createRistrettoSuite(): CipherSuite {
     },
 
     dhMultiply(pointBytes: Uint8Array, scalar: bigint): Uint8Array {
-      return ristretto255.Point.fromBytes(pointBytes).multiply(scalar).toBytes();
+      // RFC 9807 §6.3: reject the identity element as a peer DH contribution.
+      // noble's ristretto255 ACCEPTS the all-zero (identity) encoding and
+      // multiplying it yields the all-zero result, stripping that peer's
+      // contribution from the transcript — so reject it on input and output.
+      if (isAllZero(pointBytes)) {
+        throw new Error('dhMultiply: identity element rejected (RFC 9807 §6.3)');
+      }
+      const result = ristretto255.Point.fromBytes(pointBytes).multiply(scalar).toBytes();
+      if (isAllZero(result)) {
+        throw new Error('dhMultiply: identity DH result rejected (RFC 9807 §6.3)');
+      }
+      return result;
     },
 
     bigintToBytes,

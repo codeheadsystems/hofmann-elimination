@@ -258,6 +258,25 @@ describe('OPRF round-trip per suite', () => {
   it('ristretto255-SHA512', () => oprfRoundTrip(RISTRETTO255_SHA512));
 });
 
+// Regression: the identity (neutral) element must be rejected on server-supplied
+// elements (RFC 9497 §2.1 / RFC 9807 §6.3). noble accepts the all-zero ristretto255
+// encoding, so without an explicit guard the OPRF output would collapse to a fixed,
+// key-independent value.
+describe('OPRF rejects the identity element', () => {
+  for (const suite of [P256_SHA256, P384_SHA384, P521_SHA512, RISTRETTO255_SHA512]) {
+    const identity = new Uint8Array(suite.Npk); // all-zero encoding
+    const { blind: r } = suite.blind(strToBytes('input'), 1n);
+
+    it(`${suite.name}: finalize rejects identity evaluatedElement`, () => {
+      expect(() => suite.finalize(strToBytes('input'), r, identity)).toThrow(/identity/i);
+    });
+
+    it(`${suite.name}: dhMultiply rejects identity element`, () => {
+      expect(() => suite.dhMultiply(identity, 12345n)).toThrow(/identity/i);
+    });
+  }
+});
+
 // ── ristretto255-SHA512 ─────────────────────────────────────────────────────
 
 import { bytesToNumberLE } from '@noble/curves/utils.js';
