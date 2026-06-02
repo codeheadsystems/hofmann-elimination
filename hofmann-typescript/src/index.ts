@@ -9,7 +9,10 @@
 // ── Crypto utilities ────────────────────────────────────────────────────────
 export { i2osp, concat, xor, constantTimeEqual, fromHex, toHex } from './crypto/primitives.js';
 export { base64Encode, base64Decode, strToBytes, bytesToStr } from './crypto/encoding.js';
-export { hkdfExtract, hkdfExpand, hkdfExpandLabel } from './crypto/hkdf.js';
+// Standalone HKDF helpers take the hash function explicitly (sha256/sha384/sha512)
+// so they stay correct across cipher suites; prefer the suite-aware
+// CipherSuite.hkdf* methods for per-suite operations.
+export { hkdfExtract, hkdfExpand, hkdfExpandLabel, type HashFn } from './crypto/hkdf.js';
 
 // ── OPRF cipher suites ───────────────────────────────────────────────────────
 export type { CipherSuite } from './oprf/suite.js';

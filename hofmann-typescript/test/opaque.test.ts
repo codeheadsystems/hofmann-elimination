@@ -74,7 +74,7 @@ const EXPECTED_REG_UPLOAD_V2 = fromHex(
  */
 function serverDeriveOprfKey(credId: Uint8Array): bigint {
   const info = concat(credId, strToBytes('OprfKey'));
-  const seed = hkdfExpand(OPRF_SEED, info, 32);
+  const seed = hkdfExpand(sha256, OPRF_SEED, info, 32);
   return deriveKeyPair(seed, strToBytes('OPAQUE-DeriveKeyPair'), DERIVE_KEY_PAIR_DST);
 }
 
@@ -95,7 +95,7 @@ function serverRegistrationResponse(blindedElement: Uint8Array): RegistrationRes
 /** Build the masked credential response for KE2. */
 function serverBuildMaskedResponse(record: RegistrationRecord): Uint8Array {
   const padInfo = concat(MASKING_NONCE, strToBytes('CredentialResponsePad'));
-  const pad = hkdfExpand(record.maskingKey, padInfo, 97); // Npk(33) + 64
+  const pad = hkdfExpand(sha256, record.maskingKey, padInfo, 97); // Npk(33) + 64
   const plaintext = concat(SERVER_PK, record.envelope.nonce, record.envelope.authTag);
   const result = new Uint8Array(97);
   for (let i = 0; i < 97; i++) result[i] = pad[i] ^ plaintext[i];
@@ -158,10 +158,10 @@ function serverBuildKE2(
   const dh3 = clientLtPkPt.multiply(serverAkeSk).toBytes(true);
   const ikm  = concat(dh1, dh2, dh3);
 
-  const prk             = hkdfExtract(undefined, ikm);
+  const prk             = hkdfExtract(sha256, undefined, ikm);
   const preambleHash    = sha256(preamble);
-  const handshakeSecret = hkdfExpandLabel(prk, 'HandshakeSecret', preambleHash, 32);
-  const km2             = hkdfExpandLabel(handshakeSecret, 'ServerMAC', new Uint8Array(0), 32);
+  const handshakeSecret = hkdfExpandLabel(sha256, prk, 'HandshakeSecret', preambleHash, 32);
+  const km2             = hkdfExpandLabel(sha256, handshakeSecret, 'ServerMAC', new Uint8Array(0), 32);
   const serverMac       = hmac(sha256, km2, preambleHash);
 
   return {
