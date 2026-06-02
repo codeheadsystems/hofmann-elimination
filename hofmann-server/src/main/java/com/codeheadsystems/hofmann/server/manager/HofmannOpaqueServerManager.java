@@ -287,6 +287,15 @@ public class HofmannOpaqueServerManager {
       log.info("Recovery re-registration for credential {}", req.credentialIdentifierBase64());
       credentialStore.delete(req.credentialIdentifier());
       jwtManager.revokeByCredentialIdentifier(req.credentialIdentifierBase64());
+    } else if (credentialStore.loadVersioned(req.credentialIdentifier()).isPresent()) {
+      // Normal (non-recovery) registration must not overwrite an existing record.
+      // registrationStart/Finish are unauthenticated, so without this guard anyone
+      // who knows a victim's credential identifier could re-register it with their
+      // own password and take over the account. Existing credentials must be
+      // updated through the authenticated change-password flow or the recovery flow
+      // (which deletes the old record above before storing the new one).
+      throw new IllegalArgumentException(
+          "Credential already registered; use change-password or recovery to update it");
     }
     int currentVersion = keyDetailSupplier.get().currentVersion();
     credentialStore.store(req.credentialIdentifier(), req.registrationRecord(), currentVersion);
