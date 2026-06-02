@@ -154,6 +154,13 @@ public class OpaqueAke {
     byte[] dh1 = gs.scalarMultiply(serverAkeSk, ke1.clientAkePublicKey());
     byte[] dh2 = gs.scalarMultiply(serverPrivateKey, ke1.clientAkePublicKey());
     byte[] dh3 = gs.scalarMultiply(serverAkeSk, record.clientPublicKey());
+    // OPAQUE requires DH outputs to be non-identity. For ristretto255 the identity is the
+    // all-zero encoding (which decodes successfully), so a peer supplying the identity as its
+    // ephemeral key would force these DH values to a fixed all-zero value, removing its
+    // contribution to the transcript. Reject that.
+    if (ByteUtils.isAllZero(dh1) || ByteUtils.isAllZero(dh2) || ByteUtils.isAllZero(dh3)) {
+      throw new IllegalArgumentException("AKE Diffie-Hellman produced the identity element");
+    }
     byte[] ikm = ByteUtils.concat(dh1, dh2, dh3);
     Arrays.fill(dh1, (byte) 0);
     Arrays.fill(dh2, (byte) 0);
@@ -206,6 +213,11 @@ public class OpaqueAke {
     byte[] dh1 = gs.scalarMultiply(state.clientAkePrivateKey(), ke2.serverAkePublicKey());
     byte[] dh2 = gs.scalarMultiply(state.clientAkePrivateKey(), recovered.cleartextCredentials().serverPublicKey());
     byte[] dh3 = gs.scalarMultiply(clientSk, ke2.serverAkePublicKey());
+    // OPAQUE requires DH outputs to be non-identity; reject the all-zero (ristretto255
+    // identity) case, which a malicious server supplying the identity ephemeral would force.
+    if (ByteUtils.isAllZero(dh1) || ByteUtils.isAllZero(dh2) || ByteUtils.isAllZero(dh3)) {
+      throw new IllegalArgumentException("AKE Diffie-Hellman produced the identity element");
+    }
     byte[] ikm = ByteUtils.concat(dh1, dh2, dh3);
     Arrays.fill(dh1, (byte) 0);
     Arrays.fill(dh2, (byte) 0);

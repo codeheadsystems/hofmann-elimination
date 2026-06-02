@@ -1,5 +1,6 @@
 package com.codeheadsystems.rfc.oprf.manager;
 
+import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.ellipticcurve.rfc9380.GroupSpec;
 import com.codeheadsystems.rfc.oprf.model.BlindedRequest;
 import com.codeheadsystems.rfc.oprf.model.EvaluatedResponse;
@@ -38,6 +39,14 @@ public class OprfServerManager {
    */
   public EvaluatedResponse process(final BlindedRequest blindedRequest) {
     byte[] q = Hex.decode(blindedRequest.blindedPoint());
+    // RFC 9497 §3.3.2: BlindEvaluate must reject the identity element. For ristretto255
+    // the identity is the all-zero encoding, which decodes successfully, so without this
+    // check a malicious client could submit it and receive the identity back, stripping a
+    // contributory-behaviour guarantee the protocol relies on. The client already rejects
+    // the identity; mirror that on the server.
+    if (ByteUtils.isAllZero(q)) {
+      throw new IllegalArgumentException("Blinded element is the identity element");
+    }
     byte[] result = groupSpec.scalarMultiply(supplier.get().masterKey(), q);
     return new EvaluatedResponse(Hex.toHexString(result), supplier.get().processorIdentifier());
   }

@@ -84,6 +84,27 @@ public class ByteUtils {
   }
 
   /**
+   * Returns true if every byte of {@code element} is zero.
+   * <p>
+   * For ristretto255 the all-zero 32-byte string is the canonical encoding of the
+   * identity (neutral) element, which {@code decodeRistretto255} accepts. Callers use
+   * this to reject the identity as a group-element input, as required by RFC 9497
+   * (BlindEvaluate) and OPAQUE (DH outputs must be non-identity). It is also safe to
+   * apply to other suites, whose valid encodings are never all-zero.
+   *
+   * @param element a serialized group element
+   * @return true if {@code element} is all zero bytes
+   */
+  public static boolean isAllZero(byte[] element) {
+    for (byte b : element) {
+      if (b != 0) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
    * XOR two byte arrays of equal length.
    *
    * @param a the a
