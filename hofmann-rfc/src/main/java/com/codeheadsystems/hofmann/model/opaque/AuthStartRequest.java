@@ -40,6 +40,14 @@ public record AuthStartRequest(
   private static final Base64.Decoder B64D = Base64.getDecoder();
 
   /**
+   * Upper bound on the encoded length of any single field. The largest legitimate value is a
+   * base64-encoded P-521 point (~180 chars); credential identifiers are application-defined.
+   * This cap blocks unbounded allocation from attacker-supplied fields (e.g. a megabyte-long
+   * credentialIdentifier that would be retained as a rate-limiter / store map key).
+   */
+  private static final int MAX_ENCODED_FIELD_LENGTH = 4096;
+
+  /**
    * Instantiates a new Auth start request.
    *
    * @param credentialIdentifier the credential identifier
@@ -55,6 +63,9 @@ public record AuthStartRequest(
   private static byte[] decode(String value, String fieldName) {
     if (value == null || value.isBlank()) {
       throw new IllegalArgumentException("Missing required field: " + fieldName);
+    }
+    if (value.length() > MAX_ENCODED_FIELD_LENGTH) {
+      throw new IllegalArgumentException("Field too large: " + fieldName);
     }
     try {
       return B64D.decode(value);

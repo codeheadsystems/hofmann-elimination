@@ -295,9 +295,10 @@ public class HofmannOpaqueServerManager {
       // token-guessing gate wide open. We reuse the recovery rate limiter (keyed by credential
       // identifier, consistent with the rest of the design), so an attacker's guesses against any
       // single account are bounded. Checked before consuming the token so every attempt counts
-      // whether or not the token turns out to be valid. Note: a legitimate recovery now draws two
-      // tokens from this bucket (recoveryStart + registrationFinish), which the default capacity
-      // (maxTokens=3) accommodates; size the recovery limit accordingly if you tune it.
+      // whether or not the token turns out to be valid. Note: a legitimate recovery draws three
+      // tokens from this bucket (recoveryStart + recoveryVerify + registrationFinish), which the
+      // default capacity (maxTokens=6) accommodates with retry headroom; size the recovery limit
+      // accordingly if you tune it.
       if (recoveryRateLimiter != null
           && !recoveryRateLimiter.tryConsume(req.credentialIdentifierBase64())) {
         throw new RateLimitExceededException();
@@ -453,6 +454,14 @@ public class HofmannOpaqueServerManager {
     log.debug("recoveryVerify()");
     if (recoveryChallenger == null) {
       throw new UnsupportedOperationException("Account recovery is not configured");
+    }
+    // Throttle every verification attempt (not just recoveryStart). Without this the OOB
+    // challenge code can be brute-forced at request rate, and the unconditional 250ms floor
+    // below turns each unthrottled call into a thread-exhaustion DoS. Rate-limit rejection
+    // depends only on the credential identifier, not on whether the account exists, so it is
+    // not itself an enumeration oracle.
+    if (!recoveryRateLimiter.tryConsume(req.credentialIdentifierBase64())) {
+      throw new RateLimitExceededException();
     }
     // Enforce a constant-time floor over the whole verification. A RecoveryChallenger may
     // short-circuit (return false instantly) for an unknown credential while doing real

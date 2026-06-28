@@ -152,6 +152,14 @@ public class HofmannConfiguration extends Configuration {
   private long maxRequestBodyBytes = 65536;
 
   /**
+   * Whether to derive the OPRF rate-limit client IP from the {@code X-Forwarded-For} header.
+   * Only enable this when the server runs behind a trusted reverse proxy that overwrites the
+   * header; otherwise it is attacker-controlled and the rate limit on the unauthenticated OPRF
+   * endpoint can be trivially bypassed. Defaults to {@code false} (use the real socket address).
+   */
+  private boolean trustForwardedHeaders = false;
+
+  /**
    * Gets opaque cipher suite.
    *
    * @return the opaque cipher suite
@@ -469,6 +477,26 @@ public class HofmannConfiguration extends Configuration {
   @JsonProperty
   public void setMaxRequestBodyBytes(long maxRequestBodyBytes) {
     this.maxRequestBodyBytes = maxRequestBodyBytes;
+  }
+
+  /**
+   * Whether the OPRF rate-limit client IP is derived from the {@code X-Forwarded-For} header.
+   *
+   * @return true if forwarded headers are trusted
+   */
+  @JsonProperty
+  public boolean isTrustForwardedHeaders() {
+    return trustForwardedHeaders;
+  }
+
+  /**
+   * Sets whether to trust forwarded headers for client-IP extraction.
+   *
+   * @param trustForwardedHeaders the trust forwarded headers flag
+   */
+  @JsonProperty
+  public void setTrustForwardedHeaders(boolean trustForwardedHeaders) {
+    this.trustForwardedHeaders = trustForwardedHeaders;
   }
 
   /**

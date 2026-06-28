@@ -213,7 +213,8 @@ public record OpaqueConfig(
 
   /**
    * Argon2id KSF. Uses the config's Argon2id parameters.
-   * The salt is a 32-byte all-zero array per OPAQUE convention.
+   * The salt is a 16-byte all-zero array per RFC 9807, matching the
+   * TypeScript and Rust implementations for cross-implementation interop.
    */
   public static class Argon2idKsf implements KeyStretchingFunction {
     @Override

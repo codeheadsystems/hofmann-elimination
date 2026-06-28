@@ -37,6 +37,9 @@ public class InMemorySessionStore implements SessionStore {
     }
     if (data.expiresAt().isBefore(Instant.now())) {
       store.remove(jti);
+      // Keep the reverse index in sync on lazy expiry, otherwise stale jtis
+      // accumulate unbounded for sessions that expire without an explicit revoke.
+      removeFromIndex(data.credentialIdentifier(), jti);
       return Optional.empty();
     }
     return Optional.of(data);
@@ -46,12 +49,20 @@ public class InMemorySessionStore implements SessionStore {
   public void revoke(String jti) {
     SessionData data = store.remove(jti);
     if (data != null) {
-      Set<String> jtis = credentialToJtis.get(data.credentialIdentifier());
-      if (jtis != null) {
-        jtis.remove(jti);
-      }
+      removeFromIndex(data.credentialIdentifier(), jti);
     }
     log.debug("Revoked session jti={}", jti);
+  }
+
+  /**
+   * Removes a jti from the reverse index, dropping the credential's set entirely
+   * once it becomes empty so the index does not grow without bound.
+   */
+  private void removeFromIndex(String credentialIdentifier, String jti) {
+    credentialToJtis.computeIfPresent(credentialIdentifier, (k, jtis) -> {
+      jtis.remove(jti);
+      return jtis.isEmpty() ? null : jtis;
+    });
   }
 
   @Override

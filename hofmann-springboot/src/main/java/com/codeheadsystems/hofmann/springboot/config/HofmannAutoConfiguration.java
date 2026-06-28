@@ -411,6 +411,20 @@ public class HofmannAutoConfiguration {
   }
 
   /**
+   * Request body size limit filter. Rejects request bodies larger than
+   * {@code hofmann.max-request-body-bytes} (default 64 KiB), mirroring the Dropwizard adapter and
+   * guarding the OPAQUE/OPRF endpoints against large-payload memory-amplification DoS.
+   *
+   * @param props the props
+   * @return the body size limit filter
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public BodySizeLimitFilter bodySizeLimitFilter(HofmannProperties props) {
+    return new BodySizeLimitFilter(props.getMaxRequestBodyBytes());
+  }
+
+  /**
    * OPAQUE client config response bean.
    *
    * @param props the props

@@ -59,11 +59,14 @@ public class InMemoryPendingSessionStore implements PendingSessionStore {
       t.setDaemon(true);
       return t;
     });
+    // Guard the reaper period so a short TTL (e.g. 1-3s in tests) cannot produce a
+    // zero period, which scheduleAtFixedRate rejects with IllegalArgumentException.
+    long reaperPeriod = Math.max(1, ttlSeconds / 4);
     reaper.scheduleAtFixedRate(
         () -> {
           Instant cutoff = Instant.now().minusSeconds(ttlSeconds);
           sessions.entrySet().removeIf(e -> e.getValue().createdAt().isBefore(cutoff));
-        }, ttlSeconds, ttlSeconds / 4, TimeUnit.SECONDS);
+        }, ttlSeconds, reaperPeriod, TimeUnit.SECONDS);
   }
 
   @Override

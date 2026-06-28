@@ -42,9 +42,13 @@ import io.dropwizard.core.setup.Environment;
 import io.dropwizard.servlets.assets.AssetServlet;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
+import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.core.Response;
+import java.io.FilterInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
@@ -322,7 +326,8 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
         configuration.getOprfCipherSuite());
     OprfServerManager oprfServerManager = new OprfServerManager(oprfSuite, oprfSupplier);
     RateLimiter oprfRateLimiter = rateLimiterFunction.apply(rateLimitConfigSupplier.oprfRateLimitConfig());
-    environment.jersey().register(new OprfResource(oprfServerManager, oprfClientConfig, oprfRateLimiter));
+    environment.jersey().register(new OprfResource(oprfServerManager, oprfClientConfig, oprfRateLimiter,
+        configuration.isTrustForwardedHeaders()));
 
     // Shutdown lifecycle for manager and rate limiters
     environment.lifecycle().manage(new io.dropwizard.lifecycle.Managed() {
@@ -346,9 +351,56 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
         ctx.abortWith(Response.status(Response.Status.REQUEST_ENTITY_TOO_LARGE)
             .entity("Request body exceeds maximum allowed size")
             .build());
+        return;
       }
+      // Content-Length is -1 for chunked transfer encoding, so the check above does not catch a
+      // streamed oversized body. Bound the entity stream as well so the limit is enforced as the
+      // body is read regardless of how it is framed.
+      ctx.setEntityStream(new BoundedInputStream(ctx.getEntityStream(), maxBytes));
     };
     environment.jersey().register(filter);
+  }
+
+  /**
+   * Wraps an entity stream and aborts with HTTP 413 once more than {@code maxBytes} have been
+   * read, defending against oversized chunked request bodies that carry no Content-Length.
+   */
+  private static final class BoundedInputStream extends FilterInputStream {
+    private final long maxBytes;
+    private long count;
+
+    BoundedInputStream(InputStream in, long maxBytes) {
+      super(in);
+      this.maxBytes = maxBytes;
+    }
+
+    @Override
+    public int read() throws IOException {
+      int b = super.read();
+      if (b != -1) {
+        increment(1);
+      }
+      return b;
+    }
+
+    @Override
+    public int read(byte[] b, int off, int len) throws IOException {
+      int n = super.read(b, off, len);
+      if (n > 0) {
+        increment(n);
+      }
+      return n;
+    }
+
+    private void increment(int read) {
+      count += read;
+      if (count > maxBytes) {
+        throw new WebApplicationException(
+            Response.status(Response.Status.REQUEST_ENTITY_TOO_LARGE)
+                .entity("Request body exceeds maximum allowed size")
+                .build());
+      }
+    }
   }
 
   private JwtManager buildJwtManager(C configuration) {

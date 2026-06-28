@@ -6,6 +6,7 @@ import com.codeheadsystems.hofmann.model.oprf.OprfResponse;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
 import com.codeheadsystems.rfc.oprf.manager.OprfServerManager;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import com.codeheadsystems.rfc.oprf.model.BlindedRequest;
 import com.codeheadsystems.rfc.oprf.model.EvaluatedResponse;
 import jakarta.servlet.http.HttpServletRequest;
@@ -24,23 +25,35 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/oprf")
 public class OprfController {
 
+  /** Generous upper bound on the hex-encoded EC point (a P-521 uncompressed point is ~267 chars). */
+  private static final int MAX_EC_POINT_HEX_LENGTH = 4096;
+  /** Generous upper bound on the client-supplied request id. */
+  private static final int MAX_REQUEST_ID_LENGTH = 512;
+
   private final OprfServerManager oprfServerManager;
   private final OprfClientConfigResponse clientConfig;
   private final RateLimiter rateLimiter;
+  private final boolean trustForwardedHeaders;
 
   /**
    * Instantiates a new Oprf controller.
    *
-   * @param oprfServerManager the oprf server manager
-   * @param clientConfig      the client config response to expose via GET /oprf/config
-   * @param rateLimiter       rate limiter for the OPRF evaluate endpoint (keyed by client IP)
+   * @param oprfServerManager     the oprf server manager
+   * @param clientConfig          the client config response to expose via GET /oprf/config
+   * @param rateLimiter           rate limiter for the OPRF evaluate endpoint (keyed by client IP)
+   * @param trustForwardedHeaders when true ({@code hofmann.trust-forwarded-headers}), derive the
+   *                              client IP from {@code X-Forwarded-For} (only safe behind a trusted
+   *                              proxy that overwrites it); when false (default), use the real
+   *                              socket peer address and ignore the spoofable header
    */
   public OprfController(OprfServerManager oprfServerManager,
                         OprfClientConfigResponse clientConfig,
-                        @Qualifier("oprfRateLimiter") RateLimiter rateLimiter) {
+                        @Qualifier("oprfRateLimiter") RateLimiter rateLimiter,
+                        @Value("${hofmann.trust-forwarded-headers:false}") boolean trustForwardedHeaders) {
     this.oprfServerManager = oprfServerManager;
     this.clientConfig = clientConfig;
     this.rateLimiter = rateLimiter;
+    this.trustForwardedHeaders = trustForwardedHeaders;
   }
 
   /**
@@ -69,8 +82,14 @@ public class OprfController {
     if (request.ecPoint() == null || request.ecPoint().isBlank()) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing required field: ecPoint");
     }
+    if (request.ecPoint().length() > MAX_EC_POINT_HEX_LENGTH) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Field too large: ecPoint");
+    }
     if (request.requestId() == null || request.requestId().isBlank()) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing required field: requestId");
+    }
+    if (request.requestId().length() > MAX_REQUEST_ID_LENGTH) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Field too large: requestId");
     }
     try {
       BlindedRequest blindedRequest = request.blindedRequest();
@@ -81,10 +100,15 @@ public class OprfController {
     }
   }
 
-  private static String extractClientIp(HttpServletRequest request) {
-    String forwarded = request.getHeader("X-Forwarded-For");
-    if (forwarded != null && !forwarded.isBlank()) {
-      return forwarded.split(",")[0].trim();
+  private String extractClientIp(HttpServletRequest request) {
+    // Only honour X-Forwarded-For when explicitly configured to be behind a trusted proxy;
+    // otherwise the spoofable header lets a client rotate it to mint unlimited rate-limit
+    // buckets against this unauthenticated OPRF oracle.
+    if (trustForwardedHeaders) {
+      String forwarded = request.getHeader("X-Forwarded-For");
+      if (forwarded != null && !forwarded.isBlank()) {
+        return forwarded.split(",")[0].trim();
+      }
     }
     return request.getRemoteAddr();
   }

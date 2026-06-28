@@ -11,6 +11,7 @@ jackson = '2.22.0'
 jackson-annotations = '2.22'
 tools-jackson = '3.2.0'
 jakarta-rs-api = '4.0.0'
+jakarta-servlet-api = '6.1.0'
 junit-jupiter = "6.1.0"
 mockito = '5.23.0'
 slf4j = '2.0.18'
@@ -33,6 +34,7 @@ jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", ver
 tools-jackson-core = { module = "tools.jackson.core:jackson-core", version.ref = "tools-jackson" }
 tools-jackson-databind = { module = "tools.jackson.core:jackson-databind", version.ref = "tools-jackson" }
 jakarta-rs-api = { module = "jakarta.ws.rs:jakarta.ws.rs-api", version.ref = "jakarta-rs-api" }
+jakarta-servlet-api = { module = "jakarta.servlet:jakarta.servlet-api", version.ref = "jakarta-servlet-api" }
 javax-inject = { module = "javax.inject:javax.inject", version = "1" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
 mockito-junit-jupiter = { module = "org.mockito:mockito-junit-jupiter", version.ref = "mockito" }
