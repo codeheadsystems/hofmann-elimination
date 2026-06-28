@@ -7,7 +7,11 @@ import jakarta.servlet.ServletInputStream;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
@@ -56,6 +60,15 @@ public class BodySizeLimitFilter extends OncePerRequestFilter {
     @Override
     public ServletInputStream getInputStream() throws IOException {
       return new BoundedServletInputStream(super.getInputStream(), maxBytes);
+    }
+
+    @Override
+    public BufferedReader getReader() throws IOException {
+      // Route reader-based body access through the bounded input stream too; otherwise
+      // HttpServletRequestWrapper.getReader() would delegate to the original (unbounded) request.
+      String encoding = getCharacterEncoding();
+      Charset charset = encoding != null ? Charset.forName(encoding) : StandardCharsets.UTF_8;
+      return new BufferedReader(new InputStreamReader(getInputStream(), charset));
     }
   }
 
