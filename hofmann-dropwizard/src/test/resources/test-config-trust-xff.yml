@@ -1,0 +1,21 @@
+# Hofmann test configuration with trusted forwarded headers enabled, for the OPRF
+# rate-limit / client-IP integration test. Identity KSF and ephemeral keys for speed.
+# NOT for production use.
+
+context: "hofmann-test"
+
+# Behind a trusted proxy: derive the OPRF rate-limit client IP from X-Forwarded-For.
+trustForwardedHeaders: true
+
+argon2MemoryKib: 0
+allowIdentityKsf: true
+
+serverKeySeedHex: ""
+oprfSeedHex: ""
+
+oprfMasterKeyHex: ""
+oprfProcessorId: "test-processor"
+
+jwtSecretHex: ""
+jwtTtlSeconds: 3600
+jwtIssuer: "hofmann-test"
