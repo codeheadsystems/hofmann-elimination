@@ -1,6 +1,7 @@
 package com.codeheadsystems.rfc.opaque.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
 import java.util.Arrays;
@@ -84,5 +85,38 @@ class KE2Test {
     assertThat(ke2.serverNonce()).hasSize(nn);
     assertThat(ke2.serverAkePublicKey()).hasSize(npk);
     assertThat(ke2.serverMac()).hasSize(nm);
+  }
+
+  /**
+   * An empty buffer is shorter than the expected wire length and must be rejected with a length
+   * error rather than an ArrayIndexOutOfBoundsException that could leak message structure.
+   */
+  @Test
+  void deserialize_emptyBuffer_throwsTooShort() {
+    assertThatThrownBy(() -> KE2.deserialize(CONFIG, new byte[0]))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("too short");
+  }
+
+  /**
+   * A buffer one byte short of the expected length must also be rejected.
+   */
+  @Test
+  void deserialize_oneByteShort_throwsTooShort() {
+    int expectedLen = CONFIG.Noe() + OpaqueConfig.Nn + CONFIG.maskedResponseSize()
+        + OpaqueConfig.Nn + CONFIG.Npk() + CONFIG.Nm();
+    assertThatThrownBy(() -> KE2.deserialize(CONFIG, new byte[expectedLen - 1]))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("too short");
+  }
+
+  /**
+   * A null buffer must be rejected with the same length error.
+   */
+  @Test
+  void deserialize_nullBuffer_throwsTooShort() {
+    assertThatThrownBy(() -> KE2.deserialize(CONFIG, null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("too short");
   }
 }

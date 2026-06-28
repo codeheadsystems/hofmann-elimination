@@ -41,6 +41,9 @@ class OprfResourceTest {
   @Mock private ContainerRequestContext ctx;
   private OprfResource resource;
 
+  private static final java.util.concurrent.atomic.AtomicInteger LAST_STATUS =
+      new java.util.concurrent.atomic.AtomicInteger(-1);
+
   /**
    * Install runtime delegate.
    */
@@ -48,15 +51,31 @@ class OprfResourceTest {
   static void installRuntimeDelegate() {
     // WebApplicationException constructor requires a JAX-RS RuntimeDelegate implementation.
     // Since tests only have the API jar (no container), we install a mock delegate so that
-    // WebApplicationException can be constructed and its HTTP status can be verified.
+    // WebApplicationException can be constructed and its HTTP status can be verified. The mock
+    // records the status passed to the builder so both 400 and 429 mappings can be asserted.
     RuntimeDelegate mockRd = mock(RuntimeDelegate.class);
     Response.ResponseBuilder mockBuilder = mock(Response.ResponseBuilder.class, Mockito.RETURNS_SELF);
-    Response mock400 = mock(Response.class);
+    Response mockResponse = mock(Response.class);
 
     when(mockRd.createResponseBuilder()).thenReturn(mockBuilder);
-    when(mockBuilder.status(anyInt(), anyString())).thenReturn(mockBuilder);
-    when(mockBuilder.build()).thenReturn(mock400);
-    when(mock400.getStatus()).thenReturn(Response.Status.BAD_REQUEST.getStatusCode());
+    when(mockBuilder.status(anyInt())).thenAnswer(inv -> {
+      LAST_STATUS.set(inv.getArgument(0));
+      return mockBuilder;
+    });
+    when(mockBuilder.status(anyInt(), Mockito.nullable(String.class))).thenAnswer(inv -> {
+      LAST_STATUS.set(inv.getArgument(0));
+      return mockBuilder;
+    });
+    when(mockBuilder.status(Mockito.any(Response.StatusType.class))).thenAnswer(inv -> {
+      LAST_STATUS.set(((Response.StatusType) inv.getArgument(0)).getStatusCode());
+      return mockBuilder;
+    });
+    when(mockBuilder.build()).thenReturn(mockResponse);
+    when(mockResponse.getStatus()).thenAnswer(inv -> LAST_STATUS.get());
+    // WebApplicationException(Response) derives its message from getStatusInfo(); return a real
+    // Status so message computation does not NPE on the rate-limit (429) path.
+    when(mockResponse.getStatusInfo())
+        .thenAnswer(inv -> Response.Status.fromStatusCode(LAST_STATUS.get()));
 
     RuntimeDelegate.setInstance(mockRd);
   }
@@ -74,7 +93,8 @@ class OprfResourceTest {
    */
   @BeforeEach
   void setUp() {
-    when(rateLimiter.tryConsume(anyString())).thenReturn(true);
+    // lenient: the rate-limit-exceeded test re-stubs tryConsume to return false.
+    Mockito.lenient().when(rateLimiter.tryConsume(anyString())).thenReturn(true);
     resource = new OprfResource(oprfServerManager, new OprfClientConfigResponse("P256_SHA256"), rateLimiter);
   }
 
@@ -143,6 +163,20 @@ class OprfResourceTest {
         .isInstanceOf(WebApplicationException.class)
         .satisfies(e -> assertThat(((WebApplicationException) e).getResponse().getStatus())
             .isEqualTo(Response.Status.BAD_REQUEST.getStatusCode()));
+  }
+
+  /**
+   * Evaluate when rate limiter denies the request maps to HTTP 429.
+   */
+  @Test
+  void evaluate_rateLimited_throwsTooManyRequests() {
+    when(rateLimiter.tryConsume(anyString())).thenReturn(false);
+    OprfRequest request = new OprfRequest(EC_POINT, REQUEST_ID);
+
+    assertThatThrownBy(() -> resource.evaluate(request, ctx))
+        .isInstanceOf(WebApplicationException.class)
+        .satisfies(e -> assertThat(((WebApplicationException) e).getResponse().getStatus())
+            .isEqualTo(429));
   }
 
   /**
