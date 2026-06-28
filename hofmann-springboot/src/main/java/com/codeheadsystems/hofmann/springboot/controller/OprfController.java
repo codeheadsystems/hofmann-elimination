@@ -105,11 +105,33 @@ public class OprfController {
     // otherwise the spoofable header lets a client rotate it to mint unlimited rate-limit
     // buckets against this unauthenticated OPRF oracle.
     if (trustForwardedHeaders) {
-      String forwarded = request.getHeader("X-Forwarded-For");
-      if (forwarded != null && !forwarded.isBlank()) {
-        return forwarded.split(",")[0].trim();
+      String clientIp = rightmostForwardedFor(request.getHeader("X-Forwarded-For"));
+      if (clientIp != null) {
+        return clientIp;
       }
     }
     return request.getRemoteAddr();
+  }
+
+  /**
+   * Returns the right-most entry of an {@code X-Forwarded-For} header, or {@code null} if absent.
+   * <p>
+   * The right-most entry is the address appended by the immediate (trusted) proxy and is the only
+   * value an external client cannot forge: proxies that <em>append</em> to XFF (the common default,
+   * e.g. HAProxy {@code option forwardfor}) place attacker-supplied values to the left, so taking
+   * the left-most entry would let a client spoof its rate-limit key even in trusted-proxy mode.
+   */
+  private static String rightmostForwardedFor(String header) {
+    if (header == null || header.isBlank()) {
+      return null;
+    }
+    String[] parts = header.split(",");
+    for (int i = parts.length - 1; i >= 0; i--) {
+      String entry = parts[i].trim();
+      if (!entry.isEmpty()) {
+        return entry;
+      }
+    }
+    return null;
   }
 }

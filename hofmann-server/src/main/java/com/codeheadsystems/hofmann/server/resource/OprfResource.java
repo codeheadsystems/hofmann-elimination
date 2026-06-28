@@ -137,9 +137,9 @@ public class OprfResource {
     // fresh rate-limit bucket every time, defeating the only control on this unauthenticated
     // OPRF oracle.
     if (trustForwardedHeaders) {
-      String forwarded = ctx.getHeaderString("X-Forwarded-For");
-      if (forwarded != null && !forwarded.isBlank()) {
-        return forwarded.split(",")[0].trim();
+      String clientIp = rightmostForwardedFor(ctx.getHeaderString("X-Forwarded-For"));
+      if (clientIp != null) {
+        return clientIp;
       }
     }
     if (httpServletRequest != null) {
@@ -148,5 +148,27 @@ public class OprfResource {
     // No servlet context available (e.g. a unit test constructing the resource directly).
     // Never fall back to the spoofable header here.
     return "unknown";
+  }
+
+  /**
+   * Returns the right-most entry of an {@code X-Forwarded-For} header, or {@code null} if absent.
+   * <p>
+   * The right-most entry is the address appended by the immediate (trusted) proxy and is the only
+   * value an external client cannot forge: proxies that <em>append</em> to XFF (the common default,
+   * e.g. HAProxy {@code option forwardfor}) place attacker-supplied values to the left, so taking
+   * the left-most entry would let a client spoof its rate-limit key even in trusted-proxy mode.
+   */
+  private static String rightmostForwardedFor(final String header) {
+    if (header == null || header.isBlank()) {
+      return null;
+    }
+    final String[] parts = header.split(",");
+    for (int i = parts.length - 1; i >= 0; i--) {
+      final String entry = parts[i].trim();
+      if (!entry.isEmpty()) {
+        return entry;
+      }
+    }
+    return null;
   }
 }

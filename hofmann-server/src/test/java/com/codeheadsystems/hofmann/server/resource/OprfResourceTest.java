@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -177,6 +179,27 @@ class OprfResourceTest {
         .isInstanceOf(WebApplicationException.class)
         .satisfies(e -> assertThat(((WebApplicationException) e).getResponse().getStatus())
             .isEqualTo(429));
+  }
+
+  /**
+   * When trusting forwarded headers, the rate-limit key is the right-most (proxy-appended)
+   * X-Forwarded-For entry, not the left-most attacker-supplied one.
+   */
+  @Test
+  void evaluate_trustForwardedHeaders_usesRightmostXffEntry() {
+    OprfResource trusting = new OprfResource(
+        oprfServerManager, new OprfClientConfigResponse("P256_SHA256"), rateLimiter, true);
+    // A client spoofs "1.1.1.1"; the trusted proxy appends the real peer "7.7.7.7" on the right.
+    when(ctx.getHeaderString("X-Forwarded-For")).thenReturn("1.1.1.1, 8.8.8.8, 7.7.7.7");
+    OprfRequest request = new OprfRequest(EC_POINT, REQUEST_ID);
+    when(oprfServerManager.process(request.blindedRequest()))
+        .thenReturn(new EvaluatedResponse(EVALUATED_POINT, PROCESS_ID));
+
+    trusting.evaluate(request, ctx);
+
+    ArgumentCaptor<String> key = ArgumentCaptor.forClass(String.class);
+    verify(rateLimiter).tryConsume(key.capture());
+    assertThat(key.getValue()).isEqualTo("7.7.7.7");
   }
 
   /**
