@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.0] - 2026-06-28
+
+> Backward-compatible hardening and bug-fix release; no breaking API changes to the Java
+> artifacts. **Rust note:** the `hofmann-rfc` crate's Argon2id KSF salt is corrected from 32 to
+> 16 bytes to match the Java and TypeScript implementations and RFC 9807. A Rust 2.0.0 server
+> using Argon2id derived a different `randomized_pwd`, so credentials registered against a Rust
+> 2.0.0 server with Argon2id must be re-registered after upgrading — and cross-implementation
+> (Java/TypeScript ↔ Rust) OPAQUE interop with Argon2id now works.
+
+### Security
+
+#### OPRF endpoint rate limiting (`hofmann-server`, `hofmann-springboot`, `hofmann-dropwizard`)
+
+- **Spoofable `X-Forwarded-For` rate-limit bypass** — the unauthenticated OPRF endpoint keyed its
+  rate limiter on the attacker-controlled left-most `X-Forwarded-For` value (and the Dropwizard
+  adapter collapsed every client to the literal `"unknown"` when the header was absent). An
+  attacker could rotate the header per request to mint unlimited buckets, or trigger a single
+  shared-bucket self-DoS. The client IP is now taken from the real socket peer by default;
+  `X-Forwarded-For` is honoured only when the new opt-in `trustForwardedHeaders` /
+  `hofmann.trust-forwarded-headers` is enabled, and in that mode the **right-most**
+  (proxy-appended) entry is used so an appending proxy cannot be tricked into trusting a spoofed
+  value.
+- **Unthrottled `recoveryVerify`** — account-recovery challenge verification consumed no rate-limit
+  token yet ran an unconditional 250&nbsp;ms latency floor on the request thread, enabling online
+  challenge-code brute-forcing and a thread-exhaustion DoS. Every attempt is now throttled by the
+  per-credential recovery rate limiter (default capacity raised 3 → 6 to fit a full legitimate
+  recovery plus retry headroom), and a throttled attempt returns HTTP 429.
+- **Unbounded request bodies (memory-amplification DoS)** — request-body size is now enforced
+  regardless of framing. The Dropwizard adapter bounds the entity stream (its previous
+  `Content-Length` check was bypassable via chunked transfer encoding), and the Spring Boot adapter
+  gained a `BodySizeLimitFilter` (it previously had no body-size limit at all) covering both
+  `getInputStream()` and `getReader()`. The OPAQUE/OPRF wire DTOs additionally cap each encoded
+  field length.
+
+### Fixed
+
+- **Rust Argon2id salt length** (`hofmann-rfc`) — corrected from 32 to 16 bytes to match the
+  Java/TypeScript implementations and RFC 9807, fixing cross-implementation OPAQUE interop when
+  Argon2id is enabled (see the release note above).
+- **`InMemorySessionStore` memory leak** (`hofmann-server`) — the credential → JTI reverse index is
+  now kept in sync when sessions expire lazily, instead of accumulating stale entries unbounded.
+- **`InMemoryPendingSessionStore` startup crash on short TTLs** (`hofmann-server`) — the reaper
+  period is now guarded so a TTL of 1–3 seconds no longer throws `IllegalArgumentException` at
+  construction.
+
+### Changed
+
+- **Dependencies** — Dropwizard 5.0.1 → 5.0.2, Spring Boot 4.0.6 → 4.1.0, Jackson 2.21.4 → 2.22.0,
+  tools-jackson 3.1.3 → 3.2.0, Gradle wrapper 9.5.1 → 9.6.0; added `jakarta.servlet-api` (6.1.0,
+  `compileOnly`) for socket-peer access in the OPRF resource.
+- **New configuration options** — `trustForwardedHeaders` (Dropwizard) /
+  `hofmann.trust-forwarded-headers` (Spring; default `false`), and `hofmann.max-request-body-bytes`
+  (Spring; default 64&nbsp;KiB, mirroring the existing Dropwizard `maxRequestBodyBytes`).
+
+### Tests
+
+- Added cross-implementation OPAQUE conformance vectors asserting the Java implementation matches
+  the independent Rust implementation byte-for-byte for P-384, P-521, and Ristretto255 — the suites
+  with no published CFRG known-answer vectors.
+- Expanded coverage of security-property branches: enumeration-resistant fake KE2, the
+  duplicate-registration takeover guard, single-use pending sessions, rate-limit 429 paths, the
+  Spring `BodySizeLimitFilter`, and a Dropwizard integration test proving per-client OPRF
+  rate-limit bucket isolation.
+
+---
+
 ## [2.0.0] - 2026-06-01
 
 > **Breaking change (Rust + TypeScript only).** The Rust crate (`hofmann-rfc`) and the
@@ -388,6 +454,7 @@ First stable release.
 
 ---
 
+[2.1.0]: https://github.com/codeheadsystems/hofmann-elimination/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/codeheadsystems/hofmann-elimination/compare/v1.4.1...v2.0.0
 [1.3.0]: https://github.com/codeheadsystems/hofmann-elimination/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/codeheadsystems/hofmann-elimination/compare/v1.2.0...v1.2.1
