@@ -245,6 +245,9 @@ public class OpaqueResource {
       return manager.recoveryVerify(req);
     } catch (UnsupportedOperationException e) {
       throw new WebApplicationException(Response.Status.NOT_FOUND);
+    } catch (RateLimitExceededException e) {
+      throw new WebApplicationException(Response.status(429)
+          .header("Retry-After", "60").entity("Rate limit exceeded").build());
     } catch (SecurityException e) {
       log.debug("recoveryVerify failed: {}", e.getMessage());
       throw new WebApplicationException(Response.Status.UNAUTHORIZED);

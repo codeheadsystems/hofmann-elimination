@@ -196,6 +196,12 @@ class OpaqueResourceTest {
     assertStatus(() -> resource.recoveryVerify(null), Response.Status.UNAUTHORIZED.getStatusCode());
   }
 
+  @Test
+  void recoveryVerify_rateLimit_mapsTo429() {
+    when(manager.recoveryVerify(any())).thenThrow(new RateLimitExceededException());
+    assertStatus(() -> resource.recoveryVerify(null), 429);
+  }
+
   // ── changePassword ─────────────────────────────────────────────────────────
 
   @Test

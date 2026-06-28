@@ -236,6 +236,8 @@ public class OpaqueController {
       return manager.recoveryVerify(req);
     } catch (UnsupportedOperationException e) {
       throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+    } catch (RateLimitExceededException e) {
+      throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Rate limit exceeded");
     } catch (SecurityException e) {
       log.debug("recoveryVerify failed: {}", e.getMessage());
       throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
