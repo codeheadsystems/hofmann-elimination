@@ -253,6 +253,23 @@ class WeierstrassGroupSpecImplTest {
     }
 
     @Test
+    void truncatedCompressedPoint_throws() {
+      // A compressed-point prefix with too few coordinate bytes is rejected by BouncyCastle's
+      // decodePoint with an "Incorrect length" IllegalArgumentException, before any curve math.
+      byte[] truncated = new byte[]{0x02, 0x01, 0x02, 0x03};
+      assertThatThrownBy(() -> spec.deserializePoint(truncated))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void emptyEncoding_throws() {
+      // An empty buffer has no type byte to inspect; deserialization must fail rather than parse.
+      assertThatThrownBy(() -> spec.deserializePoint(new byte[0]))
+          .isInstanceOfAny(IllegalArgumentException.class, IndexOutOfBoundsException.class,
+              SecurityException.class);
+    }
+
+    @Test
     void scalarMultiply_withDeserializedPoint_roundTrips() {
       byte[] gen = spec.curve().g().normalize().getEncoded(true);
       BigInteger k = BigInteger.valueOf(7);

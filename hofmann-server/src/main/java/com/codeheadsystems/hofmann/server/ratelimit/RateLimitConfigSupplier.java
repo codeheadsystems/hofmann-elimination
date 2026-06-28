@@ -14,7 +14,10 @@ public interface RateLimitConfigSupplier {
 
     @Override
     public RateLimitConfig recoveryRateLimitConfig() {
-      return new RateLimitConfig(3, 3.0 / 60, 50_000);
+      // A full legitimate recovery draws three tokens from this bucket (recoveryStart +
+      // recoveryVerify + registrationFinish); capacity 6 leaves headroom for a couple of
+      // mistyped challenge codes while still tightly throttling online code/token guessing.
+      return new RateLimitConfig(6, 6.0 / 60, 50_000);
     }
 
     @Override

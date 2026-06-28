@@ -13,6 +13,7 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.WebApplicationException;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
@@ -30,25 +31,54 @@ import org.slf4j.LoggerFactory;
 public class OprfResource {
   private static final Logger log = LoggerFactory.getLogger(OprfResource.class);
 
+  /** Generous upper bound on the hex-encoded EC point (a P-521 uncompressed point is ~267 chars). */
+  private static final int MAX_EC_POINT_HEX_LENGTH = 4096;
+  /** Generous upper bound on the client-supplied request id. */
+  private static final int MAX_REQUEST_ID_LENGTH = 512;
+
   private final OprfServerManager oprfServerManager;
   private final OprfClientConfigResponse clientConfig;
   private final RateLimiter rateLimiter;
+  private final boolean trustForwardedHeaders;
+
+  @Context
+  private HttpServletRequest httpServletRequest;
 
   /**
-   * Instantiates a new Oprf resource.
+   * Instantiates a new Oprf resource that does not trust forwarded headers
+   * (rate limiting is keyed by the real socket peer address).
    *
    * @param oprfServerManager the oprf server manager
    * @param clientConfig      the client config response to expose via GET /oprf/config
    * @param rateLimiter       rate limiter for the OPRF evaluate endpoint (keyed by client IP)
    */
-  @Inject
   public OprfResource(final OprfServerManager oprfServerManager,
                       final OprfClientConfigResponse clientConfig,
                       final RateLimiter rateLimiter) {
+    this(oprfServerManager, clientConfig, rateLimiter, false);
+  }
+
+  /**
+   * Instantiates a new Oprf resource.
+   *
+   * @param oprfServerManager     the oprf server manager
+   * @param clientConfig          the client config response to expose via GET /oprf/config
+   * @param rateLimiter           rate limiter for the OPRF evaluate endpoint (keyed by client IP)
+   * @param trustForwardedHeaders when true, derive the client IP from the {@code X-Forwarded-For}
+   *                              header (only safe behind a trusted proxy that overwrites it);
+   *                              when false (default), use the real socket peer address and ignore
+   *                              the spoofable header
+   */
+  @Inject
+  public OprfResource(final OprfServerManager oprfServerManager,
+                      final OprfClientConfigResponse clientConfig,
+                      final RateLimiter rateLimiter,
+                      final boolean trustForwardedHeaders) {
     this.oprfServerManager = oprfServerManager;
     this.clientConfig = clientConfig;
     this.rateLimiter = rateLimiter;
-    log.info("OprfResource({})", oprfServerManager);
+    this.trustForwardedHeaders = trustForwardedHeaders;
+    log.info("OprfResource({}, trustForwardedHeaders={})", oprfServerManager, trustForwardedHeaders);
   }
 
   /**
@@ -84,8 +114,14 @@ public class OprfResource {
     if (request.ecPoint() == null || request.ecPoint().isBlank()) {
       throw new WebApplicationException("Missing required field: ecPoint", Response.Status.BAD_REQUEST);
     }
+    if (request.ecPoint().length() > MAX_EC_POINT_HEX_LENGTH) {
+      throw new WebApplicationException("Field too large: ecPoint", Response.Status.BAD_REQUEST);
+    }
     if (request.requestId() == null || request.requestId().isBlank()) {
       throw new WebApplicationException("Missing required field: requestId", Response.Status.BAD_REQUEST);
+    }
+    if (request.requestId().length() > MAX_REQUEST_ID_LENGTH) {
+      throw new WebApplicationException("Field too large: requestId", Response.Status.BAD_REQUEST);
     }
     try {
       final EvaluatedResponse evaluatedResponse = oprfServerManager.process(request.blindedRequest());
@@ -95,12 +131,22 @@ public class OprfResource {
     }
   }
 
-  private static String extractClientIp(ContainerRequestContext ctx) {
-    String forwarded = ctx.getHeaderString("X-Forwarded-For");
-    if (forwarded != null && !forwarded.isBlank()) {
-      return forwarded.split(",")[0].trim();
+  private String extractClientIp(ContainerRequestContext ctx) {
+    // Only honour X-Forwarded-For when explicitly told we are behind a trusted proxy.
+    // Otherwise the header is fully attacker-controlled: rotating it per request would mint a
+    // fresh rate-limit bucket every time, defeating the only control on this unauthenticated
+    // OPRF oracle.
+    if (trustForwardedHeaders) {
+      String forwarded = ctx.getHeaderString("X-Forwarded-For");
+      if (forwarded != null && !forwarded.isBlank()) {
+        return forwarded.split(",")[0].trim();
+      }
     }
-    // Fallback — may not be the true client IP behind a proxy
+    if (httpServletRequest != null) {
+      return httpServletRequest.getRemoteAddr();
+    }
+    // No servlet context available (e.g. a unit test constructing the resource directly).
+    // Never fall back to the spoofable header here.
     return "unknown";
   }
 }

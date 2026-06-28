@@ -25,6 +25,7 @@ public class HofmannProperties {
   private int argon2Iterations = 3;
   private int argon2Parallelism = 1;
   private boolean allowIdentityKsf = false;
+  private long maxRequestBodyBytes = 65536;
 
   /**
    * Gets opaque cipher suite.
@@ -332,5 +333,24 @@ public class HofmannProperties {
    */
   public void setAllowIdentityKsf(boolean allowIdentityKsf) {
     this.allowIdentityKsf = allowIdentityKsf;
+  }
+
+  /**
+   * Maximum allowed request body size in bytes. Defaults to 65536 (64 KiB) — well above the
+   * largest OPAQUE/OPRF message but small enough to block large-payload DoS attempts.
+   *
+   * @return the max request body bytes
+   */
+  public long getMaxRequestBodyBytes() {
+    return maxRequestBodyBytes;
+  }
+
+  /**
+   * Sets max request body bytes.
+   *
+   * @param maxRequestBodyBytes the max request body bytes
+   */
+  public void setMaxRequestBodyBytes(long maxRequestBodyBytes) {
+    this.maxRequestBodyBytes = maxRequestBodyBytes;
   }
 }

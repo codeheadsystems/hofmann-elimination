@@ -129,6 +129,17 @@ class Ristretto255GroupSpecTest {
         .isInstanceOf(SecurityException.class);
   }
 
+  @Test
+  void decodeInvalidEncoding_negativeS() {
+    // s = 1 is canonical (< p) but has its least-significant bit set, i.e. a "negative" field
+    // element. RFC 9496 §4.3.1 requires rejecting non-canonical / negative s encodings.
+    byte[] negativeS = new byte[32];
+    negativeS[0] = 0x01; // little-endian value 1, low bit set
+    assertThatThrownBy(() -> Ristretto255GroupSpec.decodeRistretto255(negativeS))
+        .isInstanceOf(SecurityException.class)
+        .hasMessageContaining("negative");
+  }
+
   // RFC 9496 §4.5: small multiples of the generator
   @Test
   void smallMultiplesOfGenerator() {

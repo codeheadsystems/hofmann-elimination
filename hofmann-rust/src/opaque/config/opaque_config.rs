@@ -115,7 +115,10 @@ impl OpaqueConfig {
         if self.use_argon2 {
             use argon2::Argon2;
 
-            let salt = [0u8; NN];
+            // 16-byte zero salt per RFC 9807, matching the Java and TypeScript
+            // implementations. Must not be NN (the 32-byte nonce length) or the
+            // derived randomized_pwd diverges and cross-implementation auth fails.
+            let salt = [0u8; 16];
             let params = argon2::Params::new(
                 self.argon2_memory,
                 self.argon2_iterations,
