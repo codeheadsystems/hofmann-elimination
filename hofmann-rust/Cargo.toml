@@ -10,7 +10,7 @@ categories = ["cryptography"]
 
 [dependencies]
 # Elliptic curves (RustCrypto)
-p256 = { version = "0.13", features = ["hash2curve", "arithmetic"] }
+p256 = { version = "0.14", features = ["hash2curve", "arithmetic"] }
 p384 = { version = "0.13", features = ["hash2curve", "arithmetic"] }
 p521 = { version = "0.13", features = ["hash2curve", "arithmetic"] }
 elliptic-curve = { version = "0.13", features = ["sec1", "hash2curve", "arithmetic"] }
