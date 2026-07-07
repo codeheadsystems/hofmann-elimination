@@ -11,7 +11,7 @@ categories = ["cryptography"]
 [dependencies]
 # Elliptic curves (RustCrypto)
 p256 = { version = "0.14", features = ["hash2curve", "arithmetic"] }
-p384 = { version = "0.13", features = ["hash2curve", "arithmetic"] }
+p384 = { version = "0.14", features = ["hash2curve", "arithmetic"] }
 p521 = { version = "0.13", features = ["hash2curve", "arithmetic"] }
 elliptic-curve = { version = "0.13", features = ["sec1", "hash2curve", "arithmetic"] }
 
@@ -31,7 +31,7 @@ rand = "0.8"
 rand_core = "0.6"
 
 # Ristretto255 / Curve25519
-curve25519-dalek = { version = "4", features = ["rand_core"] }
+curve25519-dalek = { version = "5", features = ["rand_core"] }
 
 # Constant-time comparison
 subtle = "2.6"
