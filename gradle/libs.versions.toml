@@ -3,16 +3,16 @@
 
 [versions]
 assertj = "3.27.7"
-auth0-jwt = "4.5.2"
-bouncy-castle = "1.84"
+auth0-jwt = "4.6.0"
+bouncy-castle = "1.85"
 dropwizard = "5.0.2"
 spring-boot = "4.1.0"
-jackson = '2.22.0'
+jackson = '2.22.1'
 jackson-annotations = '2.22'
-tools-jackson = '3.2.0'
+tools-jackson = '3.2.1'
 jakarta-rs-api = '4.0.0'
 jakarta-servlet-api = '6.1.0'
-junit-jupiter = "6.1.1"
+junit-jupiter = "6.1.2"
 mockito = '5.23.0'
 slf4j = '2.0.18'
 
