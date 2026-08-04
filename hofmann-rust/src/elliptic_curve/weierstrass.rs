@@ -209,7 +209,8 @@ impl GroupSpec for WeierstrassGroupSpec {
     fn is_identity_element(&self, element: &[u8]) -> bool {
         // SEC1 identity is a single 0x00 byte; also reject all-zero encodings
         // of the expected element size as a defense-in-depth measure.
-        element == [0x00] || (element.len() == self.element_size() && element.iter().all(|&b| b == 0))
+        element == [0x00]
+            || (element.len() == self.element_size() && element.iter().all(|&b| b == 0))
     }
 
     fn scalar_inverse(&self, scalar: &[u8]) -> Vec<u8> {

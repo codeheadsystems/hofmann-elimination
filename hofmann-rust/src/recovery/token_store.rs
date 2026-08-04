@@ -131,14 +131,16 @@ impl RecoveryTokenStore for InMemoryRecoveryTokenStore {
     fn peek(&self, token: &str) -> Option<String> {
         let mut tokens = self.tokens.lock().unwrap();
         Self::cleanup(&mut tokens, self.ttl);
-        tokens.get(token)
+        tokens
+            .get(token)
             .filter(|entry| Self::is_valid(entry, self.ttl))
             .map(|entry| entry.credential_identifier.clone())
     }
 
     fn remove(&self, token: &str) -> Option<String> {
         let mut tokens = self.tokens.lock().unwrap();
-        tokens.remove(token)
+        tokens
+            .remove(token)
             .filter(|entry| Self::is_valid(entry, self.ttl))
             .map(|entry| entry.credential_identifier)
     }

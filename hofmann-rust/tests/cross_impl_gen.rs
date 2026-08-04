@@ -6,7 +6,7 @@
 //! implementations agreeing on these bytes is real conformance evidence (the
 //! suites have no published CFRG OPAQUE known-answer vectors).
 
-use hofmann_rfc::opaque::config::{OpaqueConfig, OpaqueCipherSuite};
+use hofmann_rfc::opaque::config::{OpaqueCipherSuite, OpaqueConfig};
 use hofmann_rfc::opaque::{OpaqueClient, OpaqueServer};
 
 fn hexs(b: &[u8]) -> String {
@@ -56,7 +56,8 @@ fn run(name: &str, suite: OpaqueCipherSuite) {
     );
 
     // Registration.
-    let reg_state = client.create_registration_request_deterministic(&password, &blind_registration);
+    let reg_state =
+        client.create_registration_request_deterministic(&password, &blind_registration);
     let reg_response = server
         .create_registration_response(&reg_state.request, &credential_identifier)
         .unwrap();
@@ -138,5 +139,8 @@ fn run(name: &str, suite: OpaqueCipherSuite) {
 fn generate_cross_impl_vectors() {
     run("P384_SHA384", OpaqueCipherSuite::p384_sha384());
     run("P521_SHA512", OpaqueCipherSuite::p521_sha512());
-    run("RISTRETTO255_SHA512", OpaqueCipherSuite::ristretto255_sha512());
+    run(
+        "RISTRETTO255_SHA512",
+        OpaqueCipherSuite::ristretto255_sha512(),
+    );
 }

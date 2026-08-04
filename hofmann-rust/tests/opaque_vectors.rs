@@ -162,16 +162,25 @@ fn do_registration(
     server: &OpaqueServer,
     server_identity: Option<&[u8]>,
     client_identity: Option<&[u8]>,
-) -> (ClientRegistrationState, RegistrationResponse, RegistrationRecord) {
-    let state = client.create_registration_request_deterministic(&password(), &blind_registration());
-    let response = server.create_registration_response(&state.request, &credential_identifier()).unwrap();
-    let record = client.finalize_registration_deterministic(
-        &state,
-        &response,
-        server_identity,
-        client_identity,
-        &envelope_nonce(),
-    ).unwrap();
+) -> (
+    ClientRegistrationState,
+    RegistrationResponse,
+    RegistrationRecord,
+) {
+    let state =
+        client.create_registration_request_deterministic(&password(), &blind_registration());
+    let response = server
+        .create_registration_response(&state.request, &credential_identifier())
+        .unwrap();
+    let record = client
+        .finalize_registration_deterministic(
+            &state,
+            &response,
+            server_identity,
+            client_identity,
+            &envelope_nonce(),
+        )
+        .unwrap();
     (state, response, record)
 }
 
@@ -191,19 +200,26 @@ fn do_full_auth(
         &client_keyshare_seed(),
     );
 
-    let ke2_result = server.generate_ke2_deterministic(
-        server_identity,
-        record,
-        &credential_identifier(),
-        &auth_state.ke1,
-        client_identity,
-        &masking_nonce(),
-        &server_keyshare_seed(),
-        &server_nonce(),
-    ).unwrap();
+    let ke2_result = server
+        .generate_ke2_deterministic(
+            server_identity,
+            record,
+            &credential_identifier(),
+            &auth_state.ke1,
+            client_identity,
+            &masking_nonce(),
+            &server_keyshare_seed(),
+            &server_nonce(),
+        )
+        .unwrap();
 
     let auth_result = client
-        .generate_ke3(&auth_state, client_identity, server_identity, &ke2_result.ke2)
+        .generate_ke3(
+            &auth_state,
+            client_identity,
+            server_identity,
+            &ke2_result.ke2,
+        )
         .expect("Client KE3 should succeed");
 
     (auth_state, ke2_result, auth_result)
@@ -218,7 +234,8 @@ fn vector1_registration_request() {
     let config = make_config();
     let client = OpaqueClient::new(&config);
 
-    let state = client.create_registration_request_deterministic(&password(), &blind_registration());
+    let state =
+        client.create_registration_request_deterministic(&password(), &blind_registration());
 
     assert_eq!(
         state.request.blinded_element,
@@ -233,8 +250,11 @@ fn vector1_registration_response() {
     let client = OpaqueClient::new(&config);
     let server = make_server(&config);
 
-    let state = client.create_registration_request_deterministic(&password(), &blind_registration());
-    let response = server.create_registration_response(&state.request, &credential_identifier()).unwrap();
+    let state =
+        client.create_registration_request_deterministic(&password(), &blind_registration());
+    let response = server
+        .create_registration_response(&state.request, &credential_identifier())
+        .unwrap();
 
     let actual = [
         response.evaluated_element.as_slice(),
@@ -305,16 +325,18 @@ fn vector1_ke2() {
         &client_keyshare_seed(),
     );
 
-    let ke2_result = server.generate_ke2_deterministic(
-        None,
-        &record,
-        &credential_identifier(),
-        &auth_state.ke1,
-        None,
-        &masking_nonce(),
-        &server_keyshare_seed(),
-        &server_nonce(),
-    ).unwrap();
+    let ke2_result = server
+        .generate_ke2_deterministic(
+            None,
+            &record,
+            &credential_identifier(),
+            &auth_state.ke1,
+            None,
+            &masking_nonce(),
+            &server_keyshare_seed(),
+            &server_nonce(),
+        )
+        .unwrap();
 
     assert_eq!(
         serialize_ke2(&ke2_result.ke2),
@@ -406,8 +428,7 @@ fn vector2_ke3_and_session_key() {
     let sid = server_identity_v2();
     let cid = client_identity_v2();
     let (_, _, record) = do_registration(&client, &server, Some(&sid), Some(&cid));
-    let (_, _, auth_result) =
-        do_full_auth(&client, &server, &record, Some(&sid), Some(&cid));
+    let (_, _, auth_result) = do_full_auth(&client, &server, &record, Some(&sid), Some(&cid));
 
     assert_eq!(
         auth_result.ke3.client_mac,

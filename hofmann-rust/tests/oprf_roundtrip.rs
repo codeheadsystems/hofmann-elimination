@@ -42,7 +42,9 @@ fn run_oprf_roundtrip(suite: CurveHashSuite) {
     let hashed_other = gs.hash_to_group(other_input, oprf.hash_to_group_dst());
     let blinded_other = gs.scalar_multiply(&blind, &hashed_other).unwrap();
     let evaluated_other = gs.scalar_multiply(&server_key, &blinded_other).unwrap();
-    let output_other = oprf.finalize(other_input, &blind, &evaluated_other).unwrap();
+    let output_other = oprf
+        .finalize(other_input, &blind, &evaluated_other)
+        .unwrap();
 
     assert_ne!(
         output, output_other,

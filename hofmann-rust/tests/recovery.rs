@@ -154,9 +154,12 @@ fn test_full_recovery_flow() {
 
     // --- Step 1: Initial registration with old password ---
     let reg_state = client.create_registration_request(old_password, &mut rng);
-    let reg_response = server.create_registration_response(&reg_state.request, credential_id).unwrap();
-    let _old_record =
-        client.finalize_registration(&reg_state, &reg_response, None, None, &mut rng).unwrap();
+    let reg_response = server
+        .create_registration_response(&reg_state.request, credential_id)
+        .unwrap();
+    let _old_record = client
+        .finalize_registration(&reg_state, &reg_response, None, None, &mut rng)
+        .unwrap();
 
     // --- Step 2: Recovery flow ---
     // 2a: Send challenge
@@ -165,7 +168,9 @@ fn test_full_recovery_flow() {
     // 2b: Verify challenge → get recovery token
     assert!(challenger.verify_response(credential_id, "123456"));
     let recovery_token = "recovery-token-uuid";
-    token_store.store(recovery_token, "dXNlckBleGFtcGxlLmNvbQ==").unwrap();
+    token_store
+        .store(recovery_token, "dXNlckBleGFtcGxlLmNvbQ==")
+        .unwrap();
 
     // 2c: Validate token during registration start (peek, don't consume)
     let peeked = token_store.peek(recovery_token);
@@ -173,10 +178,12 @@ fn test_full_recovery_flow() {
 
     // --- Step 3: Re-register with new password ---
     let new_reg_state = client.create_registration_request(new_password, &mut rng);
-    let new_reg_response =
-        server.create_registration_response(&new_reg_state.request, credential_id).unwrap();
-    let new_record =
-        client.finalize_registration(&new_reg_state, &new_reg_response, None, None, &mut rng).unwrap();
+    let new_reg_response = server
+        .create_registration_response(&new_reg_state.request, credential_id)
+        .unwrap();
+    let new_record = client
+        .finalize_registration(&new_reg_state, &new_reg_response, None, None, &mut rng)
+        .unwrap();
 
     // Consume the recovery token
     let consumed = token_store.remove(recovery_token);
@@ -187,14 +194,16 @@ fn test_full_recovery_flow() {
 
     // --- Step 4: Authenticate with new password ---
     let auth_state = client.generate_ke1(new_password, &mut rng);
-    let ke2_result = server.generate_ke2(
-        None,
-        &new_record,
-        credential_id,
-        &auth_state.ke1,
-        None,
-        &mut rng,
-    ).unwrap();
+    let ke2_result = server
+        .generate_ke2(
+            None,
+            &new_record,
+            credential_id,
+            &auth_state.ke1,
+            None,
+            &mut rng,
+        )
+        .unwrap();
     let auth_result = client
         .generate_ke3(&auth_state, None, None, &ke2_result.ke2)
         .expect("Auth with new password should succeed");
@@ -219,27 +228,34 @@ fn test_old_password_fails_after_recovery() {
 
     // Register with old password
     let reg_state = client.create_registration_request(old_password, &mut rng);
-    let reg_response = server.create_registration_response(&reg_state.request, credential_id).unwrap();
-    let _old_record =
-        client.finalize_registration(&reg_state, &reg_response, None, None, &mut rng).unwrap();
+    let reg_response = server
+        .create_registration_response(&reg_state.request, credential_id)
+        .unwrap();
+    let _old_record = client
+        .finalize_registration(&reg_state, &reg_response, None, None, &mut rng)
+        .unwrap();
 
     // Re-register with new password (simulating recovery)
     let new_reg_state = client.create_registration_request(new_password, &mut rng);
-    let new_reg_response =
-        server.create_registration_response(&new_reg_state.request, credential_id).unwrap();
-    let new_record =
-        client.finalize_registration(&new_reg_state, &new_reg_response, None, None, &mut rng).unwrap();
+    let new_reg_response = server
+        .create_registration_response(&new_reg_state.request, credential_id)
+        .unwrap();
+    let new_record = client
+        .finalize_registration(&new_reg_state, &new_reg_response, None, None, &mut rng)
+        .unwrap();
 
     // Try to authenticate with old password — should fail
     let auth_state = client.generate_ke1(old_password, &mut rng);
-    let ke2_result = server.generate_ke2(
-        None,
-        &new_record,
-        credential_id,
-        &auth_state.ke1,
-        None,
-        &mut rng,
-    ).unwrap();
+    let ke2_result = server
+        .generate_ke2(
+            None,
+            &new_record,
+            credential_id,
+            &auth_state.ke1,
+            None,
+            &mut rng,
+        )
+        .unwrap();
     let result = client.generate_ke3(&auth_state, None, None, &ke2_result.ke2);
     assert!(
         result.is_err(),
