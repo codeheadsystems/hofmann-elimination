@@ -7,15 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [3.0.0] - 2026-08-04
+
+> **The only breaking change in this release is in the Rust `hofmann-rfc` crate**, whose
+> RNG parameter types change with the RustCrypto 0.14 upgrade. The Java artifacts and the
+> TypeScript package have no source changes since 2.1.0 — they move to 3.0.0 only to stay
+> in lockstep with the crate. Java and TypeScript users can upgrade with no code changes.
+>
+> No wire-format or protocol change in any implementation. All RFC 9380, RFC 9497 and
+> RFC 9807 test vectors pass unchanged, so existing registration records remain valid and
+> cross-implementation (Java/TypeScript ↔ Rust) interop is unaffected.
 
 ### Changed
 
-#### RustCrypto 0.14 upgrade (`hofmann-rfc` crate — **breaking**, crate version 3.0.0)
-
-> Rust only; the Java and TypeScript artifacts are unaffected. No wire-format or
-> protocol change — all RFC 9380, RFC 9497 and RFC 9807 test vectors pass unchanged,
-> so existing registration records and cross-implementation interop are unaffected.
+#### RustCrypto 0.14 upgrade (`hofmann-rfc` crate — **breaking**)
 
 - Moved the whole RustCrypto dependency set to the 0.14 line: `elliptic-curve`,
   `p256`, `p384`, `p521` and the newly split-out `hash2curve` crate at 0.14, plus
@@ -29,6 +34,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   accept an RNG. Callers using `rand::thread_rng()` should now use `rand::rng()`.
 - Dropped the unused `hkdf` and `generic-array` dependencies. HKDF is implemented
   directly on HMAC in `OpaqueCipherSuite`; the `hkdf` crate was never called.
+- `argon2` stays at 0.5 (0.6 is still a release candidate) and is now the only source
+  of duplicate crates in the dependency tree, via `blake2` and `password-hash`.
+- The crate is now `rustfmt`-clean; `cargo fmt --all --check` passes.
+
+#### Dependency updates (Java)
+
+- `auth0-jwt` 4.5.2 → 4.6.0, `bouncy-castle` 1.84 → 1.85, `jackson` 2.22.0 → 2.22.1,
+  `tools-jackson` 3.2.0 → 3.2.1, `junit-jupiter` 6.1.0 → 6.1.2, and the
+  `com.gradleup.nmcp.settings` plugin 1.6.0 → 1.6.1, plus a Gradle wrapper bump.
+
+#### Dependency updates (TypeScript)
+
+- Dev-dependency updates only (`vite`, `vitest`, `@types/node`); no runtime dependency
+  or source changes.
 
 ## [2.1.0] - 2026-06-28
 
@@ -477,6 +496,7 @@ First stable release.
 
 ---
 
+[3.0.0]: https://github.com/codeheadsystems/hofmann-elimination/compare/v2.1.0...v3.0.0
 [2.1.0]: https://github.com/codeheadsystems/hofmann-elimination/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/codeheadsystems/hofmann-elimination/compare/v1.4.1...v2.0.0
 [1.3.0]: https://github.com/codeheadsystems/hofmann-elimination/compare/v1.2.1...v1.3.0
