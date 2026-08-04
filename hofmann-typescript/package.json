@@ -1,6 +1,6 @@
 {
   "name": "@codeheadsystems/hofmann-typescript",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "description": "RFC 9497 (OPRF) and RFC 9807 (OPAQUE-3DH) browser client",
   "repository": {
     "type": "git",
@@ -43,6 +43,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.0.0",
+    "@typescript/typescript6": "^6.0.2",
     "typescript": "^7.0.2",
     "vite": "^8.0.11",
     "vite-plugin-dts": "^5.0.0",
