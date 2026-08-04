@@ -9,7 +9,7 @@ use crate::opaque::model::*;
 pub fn create_registration_request(
     password: &[u8],
     config: &OpaqueConfig,
-    rng: &mut dyn rand_core::CryptoRngCore,
+    rng: &mut dyn rand_core::CryptoRng,
 ) -> ClientRegistrationState {
     let blind = config.cipher_suite().oprf_suite().random_scalar(rng);
     create_registration_request_with_blind(password, &blind, config)
@@ -54,7 +54,7 @@ pub fn finalize_registration(
     server_identity: Option<&[u8]>,
     client_identity: Option<&[u8]>,
     config: &OpaqueConfig,
-    rng: &mut dyn rand_core::CryptoRngCore,
+    rng: &mut dyn rand_core::CryptoRng,
 ) -> Result<RegistrationRecord, &'static str> {
     let mut nonce = vec![0u8; NN];
     rng.fill_bytes(&mut nonce);

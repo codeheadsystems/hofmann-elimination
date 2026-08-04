@@ -23,7 +23,7 @@
 //! use hofmann_rfc::opaque::{OpaqueClient, OpaqueServer};
 //!
 //! let config = OpaqueConfig::for_testing();
-//! let mut rng = rand::thread_rng();
+//! let mut rng = rand::rng();
 //!
 //! // --- Server setup ---
 //! let server = OpaqueServer::generate(&config, &mut rng);

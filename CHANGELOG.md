@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+#### RustCrypto 0.14 upgrade (`hofmann-rfc` crate — **breaking**, crate version 3.0.0)
+
+> Rust only; the Java and TypeScript artifacts are unaffected. No wire-format or
+> protocol change — all RFC 9380, RFC 9497 and RFC 9807 test vectors pass unchanged,
+> so existing registration records and cross-implementation interop are unaffected.
+
+- Moved the whole RustCrypto dependency set to the 0.14 line: `elliptic-curve`,
+  `p256`, `p384`, `p521` and the newly split-out `hash2curve` crate at 0.14, plus
+  `sha2` 0.11, `hmac` 0.13, `digest` 0.11 and `rand`/`rand_core` 0.10. Previously the
+  curve crates were held at 0.13 because a partial bump puts two incompatible copies
+  of `elliptic-curve` in the tree; the `ignore` list in `.github/dependabot.yml` that
+  enforced that is now gone.
+- **Breaking:** RNG parameters take `rand_core::CryptoRng` (0.10) instead of
+  `rand_core::CryptoRngCore` (0.6). This affects `GroupSpec::random_scalar`,
+  `OpaqueConfig::random_bytes`, and the `OpaqueClient`/`OpaqueServer` methods that
+  accept an RNG. Callers using `rand::thread_rng()` should now use `rand::rng()`.
+- Dropped the unused `hkdf` and `generic-array` dependencies. HKDF is implemented
+  directly on HMAC in `OpaqueCipherSuite`; the `hkdf` crate was never called.
+
 ## [2.1.0] - 2026-06-28
 
 > Backward-compatible hardening and bug-fix release; no breaking API changes to the Java

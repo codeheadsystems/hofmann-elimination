@@ -140,7 +140,7 @@ impl OpaqueConfig {
     }
 
     /// Generate random bytes.
-    pub fn random_bytes(&self, len: usize, rng: &mut dyn rand_core::CryptoRngCore) -> Vec<u8> {
+    pub fn random_bytes(&self, len: usize, rng: &mut dyn rand_core::CryptoRng) -> Vec<u8> {
         let mut buf = vec![0u8; len];
         rng.fill_bytes(&mut buf);
         buf

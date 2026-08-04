@@ -90,7 +90,7 @@ impl GroupSpec for Ristretto255GroupSpec {
         result
     }
 
-    fn random_scalar(&self, rng: &mut dyn rand_core::CryptoRngCore) -> Vec<u8> {
+    fn random_scalar(&self, rng: &mut dyn rand_core::CryptoRng) -> Vec<u8> {
         let mut scalar_bytes = [0u8; 64];
         rng.fill_bytes(&mut scalar_bytes);
         let scalar = Scalar::from_bytes_mod_order_wide(&scalar_bytes);
@@ -156,7 +156,7 @@ mod tests {
     #[test]
     fn test_scalar_inverse_roundtrip() {
         let gs = Ristretto255GroupSpec;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let scalar = gs.random_scalar(&mut rng);
         let inv = gs.scalar_inverse(&scalar);
 
@@ -194,7 +194,7 @@ mod tests {
     #[test]
     fn test_scalar_multiply_roundtrip() {
         let gs = Ristretto255GroupSpec;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         let scalar = gs.random_scalar(&mut rng);
         let point = gs.scalar_multiply_generator(&scalar);

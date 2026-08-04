@@ -24,7 +24,7 @@ use hofmann_rfc::opaque::config::OpaqueConfig;
 use hofmann_rfc::opaque::{OpaqueClient, OpaqueServer};
 
 let config = OpaqueConfig::for_testing();
-let mut rng = rand::thread_rng();
+let mut rng = rand::rng();
 
 // --- Server setup ---
 let server = OpaqueServer::generate(&config, &mut rng);
@@ -116,7 +116,7 @@ The `Cargo.toml` already includes the required metadata (`description`, `license
 
 ```toml
 [dependencies]
-hofmann-rfc = "1.4.0"
+hofmann-rfc = "3.0.0"
 ```
 
 ## Security

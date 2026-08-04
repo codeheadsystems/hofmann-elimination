@@ -36,7 +36,7 @@ impl<'a> OpaqueServer<'a> {
     }
 
     /// Generates a new server with a random key pair and OPRF seed.
-    pub fn generate(config: &'a OpaqueConfig, rng: &mut dyn rand_core::CryptoRngCore) -> Self {
+    pub fn generate(config: &'a OpaqueConfig, rng: &mut dyn rand_core::CryptoRng) -> Self {
         let sk = config.cipher_suite().oprf_suite().random_scalar(rng);
         let pk = config
             .cipher_suite()
@@ -93,7 +93,7 @@ impl<'a> OpaqueServer<'a> {
         credential_identifier: &[u8],
         ke1: &KE1,
         client_identity: Option<&[u8]>,
-        rng: &mut dyn rand_core::CryptoRngCore,
+        rng: &mut dyn rand_core::CryptoRng,
     ) -> Result<ServerKE2Result, &'static str> {
         opaque_ake::generate_ke2(
             self.config,
@@ -130,7 +130,7 @@ impl<'a> OpaqueServer<'a> {
         credential_identifier: &[u8],
         server_identity: Option<&[u8]>,
         client_identity: Option<&[u8]>,
-        rng: &mut dyn rand_core::CryptoRngCore,
+        rng: &mut dyn rand_core::CryptoRng,
     ) -> Result<ServerKE2Result, &'static str> {
         let fake_record = self.create_fake_record(credential_identifier);
         opaque_ake::generate_ke2(

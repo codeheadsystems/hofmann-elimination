@@ -142,7 +142,7 @@ fn test_challenger_unknown_cred_fails() {
 #[test]
 fn test_full_recovery_flow() {
     let config = OpaqueConfig::for_testing();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let credential_id = b"user@example.com";
     let old_password = b"old-password";
     let new_password = b"new-password";
@@ -209,7 +209,7 @@ fn test_full_recovery_flow() {
 #[test]
 fn test_old_password_fails_after_recovery() {
     let config = OpaqueConfig::for_testing();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let credential_id = b"user@example.com";
     let old_password = b"old-password";
     let new_password = b"new-password";

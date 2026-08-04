@@ -3,7 +3,7 @@ use hofmann_rfc::opaque::model::RegistrationRequest;
 use hofmann_rfc::opaque::{OpaqueClient, OpaqueServer};
 
 fn run_opaque_roundtrip(config: OpaqueConfig, suite_name: &str) {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let password = b"correct-horse-battery-staple";
     let credential_id = b"user@example.com";
 
@@ -97,7 +97,7 @@ fn test_opaque_roundtrip_ristretto255() {
 #[test]
 fn test_opaque_server_rejects_malformed_request() {
     let config = OpaqueConfig::for_testing();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let credential_id = b"user@example.com";
 
     let server = OpaqueServer::generate(&config, &mut rng);
@@ -151,7 +151,7 @@ fn test_opaque_server_rejects_malformed_request() {
 #[test]
 fn test_opaque_client_rejects_truncated_credential_response() {
     let config = OpaqueConfig::for_testing();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let credential_id = b"user@example.com";
 
     let server = OpaqueServer::generate(&config, &mut rng);
@@ -183,7 +183,7 @@ fn test_opaque_client_rejects_truncated_credential_response() {
 #[test]
 fn test_opaque_wrong_password_fails() {
     let config = OpaqueConfig::for_testing();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let credential_id = b"user@example.com";
 
     let server = OpaqueServer::generate(&config, &mut rng);
@@ -215,7 +215,7 @@ fn test_opaque_wrong_password_fails() {
 #[test]
 fn test_opaque_fake_ke2() {
     let config = OpaqueConfig::for_testing();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let server = OpaqueServer::generate(&config, &mut rng);
     let client = OpaqueClient::new(&config);
