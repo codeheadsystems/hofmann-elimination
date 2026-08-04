@@ -333,7 +333,7 @@ dependencies = [
 
 [[package]]
 name = "hofmann-rfc"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "argon2",
  "curve25519-dalek",
