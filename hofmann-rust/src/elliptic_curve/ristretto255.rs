@@ -15,9 +15,8 @@ pub struct Ristretto255GroupSpec;
 
 /// Group order L = 2^252 + 27742317777372353535851937790883648493
 const GROUP_ORDER_LE: [u8; 32] = [
-    0xed, 0xd3, 0xf5, 0x5c, 0x1a, 0x63, 0x12, 0x58, 0xd6, 0x9c, 0xf7, 0xa2, 0xde, 0xf9, 0xde,
-    0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x10,
+    0xed, 0xd3, 0xf5, 0x5c, 0x1a, 0x63, 0x12, 0x58, 0xd6, 0x9c, 0xf7, 0xa2, 0xde, 0xf9, 0xde, 0x14,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10,
 ];
 
 impl Ristretto255GroupSpec {
@@ -90,7 +89,7 @@ impl GroupSpec for Ristretto255GroupSpec {
         result
     }
 
-    fn random_scalar(&self, rng: &mut dyn rand_core::CryptoRngCore) -> Vec<u8> {
+    fn random_scalar(&self, rng: &mut dyn rand_core::CryptoRng) -> Vec<u8> {
         let mut scalar_bytes = [0u8; 64];
         rng.fill_bytes(&mut scalar_bytes);
         let scalar = Scalar::from_bytes_mod_order_wide(&scalar_bytes);
@@ -128,8 +127,8 @@ fn decompress_point(bytes: &[u8]) -> Result<RistrettoPoint, &'static str> {
     if bytes.len() == 32 && bytes.iter().all(|&b| b == 0) {
         return Err("identity element rejected per RFC 9497 §2.1");
     }
-    let compressed =
-        CompressedRistretto::from_slice(bytes).map_err(|_| "invalid ristretto255 encoding length")?;
+    let compressed = CompressedRistretto::from_slice(bytes)
+        .map_err(|_| "invalid ristretto255 encoding length")?;
     compressed
         .decompress()
         .ok_or("invalid ristretto255 point encoding")
@@ -156,7 +155,7 @@ mod tests {
     #[test]
     fn test_scalar_inverse_roundtrip() {
         let gs = Ristretto255GroupSpec;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let scalar = gs.random_scalar(&mut rng);
         let inv = gs.scalar_inverse(&scalar);
 
@@ -194,7 +193,7 @@ mod tests {
     #[test]
     fn test_scalar_multiply_roundtrip() {
         let gs = Ristretto255GroupSpec;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         let scalar = gs.random_scalar(&mut rng);
         let point = gs.scalar_multiply_generator(&scalar);

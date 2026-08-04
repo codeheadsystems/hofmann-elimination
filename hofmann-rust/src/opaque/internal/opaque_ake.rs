@@ -168,7 +168,7 @@ pub fn generate_ke2(
     oprf_seed: &[u8],
     ke1: &KE1,
     client_identity: Option<&[u8]>,
-    rng: &mut dyn rand_core::CryptoRngCore,
+    rng: &mut dyn rand_core::CryptoRng,
 ) -> Result<ServerKE2Result, &'static str> {
     let mut masking_nonce = vec![0u8; NN];
     rng.fill_bytes(&mut masking_nonce);

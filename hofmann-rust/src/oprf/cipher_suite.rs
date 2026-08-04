@@ -1,5 +1,6 @@
 use crate::common::{concat, i2osp};
 use crate::elliptic_curve::{CurveType, GroupSpec, Ristretto255GroupSpec, WeierstrassGroupSpec};
+use digest::KeyInit;
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256, Sha384, Sha512};
 use std::sync::Arc;
@@ -160,7 +161,7 @@ impl OprfCipherSuite {
 
     // --- Random scalar ---
 
-    pub fn random_scalar(&self, rng: &mut dyn rand_core::CryptoRngCore) -> Vec<u8> {
+    pub fn random_scalar(&self, rng: &mut dyn rand_core::CryptoRng) -> Vec<u8> {
         self.group_spec.random_scalar(rng)
     }
 

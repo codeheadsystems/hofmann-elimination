@@ -65,7 +65,7 @@ pub trait GroupSpec: Send + Sync {
     fn serialize_scalar(&self, scalar: &[u8]) -> Vec<u8>;
 
     /// Generates a uniformly random scalar in \[1, n-1\].
-    fn random_scalar(&self, rng: &mut dyn rand_core::CryptoRngCore) -> Vec<u8>;
+    fn random_scalar(&self, rng: &mut dyn rand_core::CryptoRng) -> Vec<u8>;
 
     /// Computes the modular inverse: scalar⁻¹ mod n.
     ///

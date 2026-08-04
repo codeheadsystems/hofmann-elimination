@@ -2,12 +2,12 @@ use hofmann_rfc::oprf::{CurveHashSuite, OprfCipherSuite};
 
 fn run_oprf_roundtrip(suite: CurveHashSuite) {
     let oprf = OprfCipherSuite::new(suite);
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     // Server: derive key pair
     let mut seed = vec![0u8; 32];
     rng.fill_bytes(&mut seed);
-    use rand::RngCore;
+    use rand_core::Rng;
     let server_key = oprf.derive_key_pair(&seed, b"test-info");
 
     // Client: blind
@@ -42,7 +42,9 @@ fn run_oprf_roundtrip(suite: CurveHashSuite) {
     let hashed_other = gs.hash_to_group(other_input, oprf.hash_to_group_dst());
     let blinded_other = gs.scalar_multiply(&blind, &hashed_other).unwrap();
     let evaluated_other = gs.scalar_multiply(&server_key, &blinded_other).unwrap();
-    let output_other = oprf.finalize(other_input, &blind, &evaluated_other).unwrap();
+    let output_other = oprf
+        .finalize(other_input, &blind, &evaluated_other)
+        .unwrap();
 
     assert_ne!(
         output, output_other,
@@ -76,7 +78,7 @@ fn test_oprf_ristretto255() {
 fn assert_scalar_multiply_rejects_bad_input(suite: CurveHashSuite) {
     let oprf = OprfCipherSuite::new(suite);
     let gs = oprf.group_spec();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let key = oprf.random_scalar(&mut rng);
 
     // Wrong-length / non-canonical encoding.

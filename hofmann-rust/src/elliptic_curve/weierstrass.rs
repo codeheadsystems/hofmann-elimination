@@ -1,9 +1,9 @@
 use crate::elliptic_curve::group_spec::GroupSpec;
-use elliptic_curve::bigint::Encoding as _;
-use elliptic_curve::hash2curve::{ExpandMsgXmd, GroupDigest};
+use elliptic_curve::consts::{U48, U72, U98};
 use elliptic_curve::ops::Reduce;
-use elliptic_curve::sec1::{FromEncodedPoint, ToEncodedPoint};
+use elliptic_curve::sec1::{FromSec1Point, Sec1Point, ToSec1Point};
 use elliptic_curve::{AffinePoint, Curve, Field, Group, ProjectivePoint};
+use hash2curve::GroupDigest;
 
 /// Supported NIST Weierstrass curve types.
 ///
@@ -81,25 +81,19 @@ impl GroupSpec for WeierstrassGroupSpec {
     fn hash_to_group(&self, msg: &[u8], dst: &[u8]) -> Vec<u8> {
         match self.curve_type {
             CurveType::P256 => {
-                let pt =
-                    p256::NistP256::hash_from_bytes::<ExpandMsgXmd<sha2::Sha256>>(&[msg], &[dst])
-                        .unwrap();
+                let pt = p256::NistP256::hash_from_bytes(&[msg], &[dst]).unwrap();
                 let affine: AffinePoint<p256::NistP256> = pt.to_affine();
-                affine.to_encoded_point(true).as_bytes().to_vec()
+                affine.to_sec1_point(true).as_bytes().to_vec()
             }
             CurveType::P384 => {
-                let pt =
-                    p384::NistP384::hash_from_bytes::<ExpandMsgXmd<sha2::Sha384>>(&[msg], &[dst])
-                        .unwrap();
+                let pt = p384::NistP384::hash_from_bytes(&[msg], &[dst]).unwrap();
                 let affine: AffinePoint<p384::NistP384> = pt.to_affine();
-                affine.to_encoded_point(true).as_bytes().to_vec()
+                affine.to_sec1_point(true).as_bytes().to_vec()
             }
             CurveType::P521 => {
-                let pt =
-                    p521::NistP521::hash_from_bytes::<ExpandMsgXmd<sha2::Sha512>>(&[msg], &[dst])
-                        .unwrap();
+                let pt = p521::NistP521::hash_from_bytes(&[msg], &[dst]).unwrap();
                 let affine: AffinePoint<p521::NistP521> = pt.to_affine();
-                affine.to_encoded_point(true).as_bytes().to_vec()
+                affine.to_sec1_point(true).as_bytes().to_vec()
             }
         }
     }
@@ -107,21 +101,30 @@ impl GroupSpec for WeierstrassGroupSpec {
     fn hash_to_scalar(&self, msg: &[u8], dst: &[u8]) -> Vec<u8> {
         match self.curve_type {
             CurveType::P256 => {
-                let scalar =
-                    p256::NistP256::hash_to_scalar::<ExpandMsgXmd<sha2::Sha256>>(&[msg], &[dst])
-                        .unwrap();
+                let scalar = hash2curve::hash_to_scalar::<
+                    p256::NistP256,
+                    <p256::NistP256 as GroupDigest>::ExpandMsg,
+                    U48,
+                >(&[msg], &[dst])
+                .unwrap();
                 scalar.to_bytes().to_vec()
             }
             CurveType::P384 => {
-                let scalar =
-                    p384::NistP384::hash_to_scalar::<ExpandMsgXmd<sha2::Sha384>>(&[msg], &[dst])
-                        .unwrap();
+                let scalar = hash2curve::hash_to_scalar::<
+                    p384::NistP384,
+                    <p384::NistP384 as GroupDigest>::ExpandMsg,
+                    U72,
+                >(&[msg], &[dst])
+                .unwrap();
                 scalar.to_bytes().to_vec()
             }
             CurveType::P521 => {
-                let scalar =
-                    p521::NistP521::hash_to_scalar::<ExpandMsgXmd<sha2::Sha512>>(&[msg], &[dst])
-                        .unwrap();
+                let scalar = hash2curve::hash_to_scalar::<
+                    p521::NistP521,
+                    <p521::NistP521 as GroupDigest>::ExpandMsg,
+                    U98,
+                >(&[msg], &[dst])
+                .unwrap();
                 scalar.to_bytes().to_vec()
             }
         }
@@ -134,21 +137,21 @@ impl GroupSpec for WeierstrassGroupSpec {
                 let s = decode_scalar_p256(scalar);
                 let result = point * s;
                 let affine: AffinePoint<p256::NistP256> = result.to_affine();
-                Ok(affine.to_encoded_point(true).as_bytes().to_vec())
+                Ok(affine.to_sec1_point(true).as_bytes().to_vec())
             }
             CurveType::P384 => {
                 let point = decode_point_p384(element)?;
                 let s = decode_scalar_p384(scalar);
                 let result = point * s;
                 let affine: AffinePoint<p384::NistP384> = result.to_affine();
-                Ok(affine.to_encoded_point(true).as_bytes().to_vec())
+                Ok(affine.to_sec1_point(true).as_bytes().to_vec())
             }
             CurveType::P521 => {
                 let point = decode_point_p521(element)?;
                 let s = decode_scalar_p521(scalar);
                 let result = point * s;
                 let affine: AffinePoint<p521::NistP521> = result.to_affine();
-                Ok(affine.to_encoded_point(true).as_bytes().to_vec())
+                Ok(affine.to_sec1_point(true).as_bytes().to_vec())
             }
         }
     }
@@ -159,19 +162,19 @@ impl GroupSpec for WeierstrassGroupSpec {
                 let s = decode_scalar_p256(scalar);
                 let result = ProjectivePoint::<p256::NistP256>::generator() * s;
                 let affine: AffinePoint<p256::NistP256> = result.to_affine();
-                affine.to_encoded_point(true).as_bytes().to_vec()
+                affine.to_sec1_point(true).as_bytes().to_vec()
             }
             CurveType::P384 => {
                 let s = decode_scalar_p384(scalar);
                 let result = ProjectivePoint::<p384::NistP384>::generator() * s;
                 let affine: AffinePoint<p384::NistP384> = result.to_affine();
-                affine.to_encoded_point(true).as_bytes().to_vec()
+                affine.to_sec1_point(true).as_bytes().to_vec()
             }
             CurveType::P521 => {
                 let s = decode_scalar_p521(scalar);
                 let result = ProjectivePoint::<p521::NistP521>::generator() * s;
                 let affine: AffinePoint<p521::NistP521> = result.to_affine();
-                affine.to_encoded_point(true).as_bytes().to_vec()
+                affine.to_sec1_point(true).as_bytes().to_vec()
             }
         }
     }
@@ -186,7 +189,7 @@ impl GroupSpec for WeierstrassGroupSpec {
         result
     }
 
-    fn random_scalar(&self, rng: &mut dyn rand_core::CryptoRngCore) -> Vec<u8> {
+    fn random_scalar(&self, rng: &mut dyn rand_core::CryptoRng) -> Vec<u8> {
         match self.curve_type {
             CurveType::P256 => {
                 let scalar = <p256::Scalar as Field>::random(rng);
@@ -206,7 +209,8 @@ impl GroupSpec for WeierstrassGroupSpec {
     fn is_identity_element(&self, element: &[u8]) -> bool {
         // SEC1 identity is a single 0x00 byte; also reject all-zero encodings
         // of the expected element size as a defense-in-depth measure.
-        element == [0x00] || (element.len() == self.element_size() && element.iter().all(|&b| b == 0))
+        element == [0x00]
+            || (element.len() == self.element_size() && element.iter().all(|&b| b == 0))
     }
 
     fn scalar_inverse(&self, scalar: &[u8]) -> Vec<u8> {
@@ -245,7 +249,7 @@ impl GroupSpec for WeierstrassGroupSpec {
 fn decode_scalar_p256(bytes: &[u8]) -> p256::Scalar {
     use elliptic_curve::bigint::U256;
     let uint = U256::from_be_slice(bytes);
-    <p256::Scalar as Reduce<U256>>::reduce(uint)
+    <p256::Scalar as Reduce<U256>>::reduce(&uint)
 }
 
 /// Decodes a compressed SEC1 P-256 point into projective coordinates.
@@ -254,9 +258,9 @@ fn decode_scalar_p256(bytes: &[u8]) -> p256::Scalar {
 /// a malformed encoding, an off-curve point, or the identity element
 /// (rejected per RFC 9497 §2.1).
 fn decode_point_p256(bytes: &[u8]) -> Result<ProjectivePoint<p256::NistP256>, &'static str> {
-    let encoded =
-        p256::EncodedPoint::from_bytes(bytes).map_err(|_| "invalid P-256 point encoding")?;
-    let affine = AffinePoint::<p256::NistP256>::from_encoded_point(&encoded);
+    let encoded = Sec1Point::<p256::NistP256>::from_bytes(bytes)
+        .map_err(|_| "invalid P-256 point encoding")?;
+    let affine = AffinePoint::<p256::NistP256>::from_sec1_point(&encoded);
     if bool::from(affine.is_none()) {
         return Err("P-256 point is not on the curve");
     }
@@ -273,7 +277,7 @@ fn decode_point_p256(bytes: &[u8]) -> Result<ProjectivePoint<p256::NistP256>, &'
 fn decode_scalar_p384(bytes: &[u8]) -> p384::Scalar {
     use elliptic_curve::bigint::U384;
     let uint = U384::from_be_slice(bytes);
-    <p384::Scalar as Reduce<U384>>::reduce(uint)
+    <p384::Scalar as Reduce<U384>>::reduce(&uint)
 }
 
 /// Decodes a compressed SEC1 P-384 point into projective coordinates.
@@ -282,9 +286,9 @@ fn decode_scalar_p384(bytes: &[u8]) -> p384::Scalar {
 /// a malformed encoding, an off-curve point, or the identity element
 /// (rejected per RFC 9497 §2.1).
 fn decode_point_p384(bytes: &[u8]) -> Result<ProjectivePoint<p384::NistP384>, &'static str> {
-    let encoded =
-        p384::EncodedPoint::from_bytes(bytes).map_err(|_| "invalid P-384 point encoding")?;
-    let affine = AffinePoint::<p384::NistP384>::from_encoded_point(&encoded);
+    let encoded = Sec1Point::<p384::NistP384>::from_bytes(bytes)
+        .map_err(|_| "invalid P-384 point encoding")?;
+    let affine = AffinePoint::<p384::NistP384>::from_sec1_point(&encoded);
     if bool::from(affine.is_none()) {
         return Err("P-384 point is not on the curve");
     }
@@ -316,7 +320,7 @@ fn decode_scalar_p521(bytes: &[u8]) -> p521::Scalar {
     let start = 72 - bytes.len();
     padded[start..].copy_from_slice(bytes);
     let uint = U576::from_be_slice(&padded);
-    <p521::Scalar as Reduce<U576>>::reduce(uint)
+    <p521::Scalar as Reduce<U576>>::reduce(&uint)
 }
 
 /// Decodes a compressed SEC1 P-521 point into projective coordinates.
@@ -325,9 +329,9 @@ fn decode_scalar_p521(bytes: &[u8]) -> p521::Scalar {
 /// a malformed encoding, an off-curve point, or the identity element
 /// (rejected per RFC 9497 §2.1).
 fn decode_point_p521(bytes: &[u8]) -> Result<ProjectivePoint<p521::NistP521>, &'static str> {
-    let encoded =
-        p521::EncodedPoint::from_bytes(bytes).map_err(|_| "invalid P-521 point encoding")?;
-    let affine = AffinePoint::<p521::NistP521>::from_encoded_point(&encoded);
+    let encoded = Sec1Point::<p521::NistP521>::from_bytes(bytes)
+        .map_err(|_| "invalid P-521 point encoding")?;
+    let affine = AffinePoint::<p521::NistP521>::from_sec1_point(&encoded);
     if bool::from(affine.is_none()) {
         return Err("P-521 point is not on the curve");
     }
@@ -380,7 +384,7 @@ mod tests {
     #[test]
     fn test_scalar_inverse_p256() {
         let gs = WeierstrassGroupSpec::p256();
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let scalar = gs.random_scalar(&mut rng);
         let inv = gs.scalar_inverse(&scalar);
         // scalar * inv should give 1 when multiplied as scalars

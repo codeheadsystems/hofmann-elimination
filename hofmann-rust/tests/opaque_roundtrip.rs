@@ -3,7 +3,7 @@ use hofmann_rfc::opaque::model::RegistrationRequest;
 use hofmann_rfc::opaque::{OpaqueClient, OpaqueServer};
 
 fn run_opaque_roundtrip(config: OpaqueConfig, suite_name: &str) {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let password = b"correct-horse-battery-staple";
     let credential_id = b"user@example.com";
 
@@ -15,10 +15,14 @@ fn run_opaque_roundtrip(config: OpaqueConfig, suite_name: &str) {
     let reg_state = client.create_registration_request(password, &mut rng);
 
     // Server: create registration response
-    let reg_response = server.create_registration_response(&reg_state.request, credential_id).unwrap();
+    let reg_response = server
+        .create_registration_response(&reg_state.request, credential_id)
+        .unwrap();
 
     // Client: finalize registration
-    let record = client.finalize_registration(&reg_state, &reg_response, None, None, &mut rng).unwrap();
+    let record = client
+        .finalize_registration(&reg_state, &reg_response, None, None, &mut rng)
+        .unwrap();
 
     // --- Authentication ---
 
@@ -26,14 +30,16 @@ fn run_opaque_roundtrip(config: OpaqueConfig, suite_name: &str) {
     let auth_state = client.generate_ke1(password, &mut rng);
 
     // Server: generate KE2
-    let ke2_result = server.generate_ke2(
-        None,
-        &record,
-        credential_id,
-        &auth_state.ke1,
-        None,
-        &mut rng,
-    ).unwrap();
+    let ke2_result = server
+        .generate_ke2(
+            None,
+            &record,
+            credential_id,
+            &auth_state.ke1,
+            None,
+            &mut rng,
+        )
+        .unwrap();
 
     // Client: generate KE3
     let auth_result = client
@@ -97,7 +103,7 @@ fn test_opaque_roundtrip_ristretto255() {
 #[test]
 fn test_opaque_server_rejects_malformed_request() {
     let config = OpaqueConfig::for_testing();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let credential_id = b"user@example.com";
 
     let server = OpaqueServer::generate(&config, &mut rng);
@@ -139,7 +145,14 @@ fn test_opaque_server_rejects_malformed_request() {
     auth_state.ke1.credential_request.blinded_element = vec![0x01, 0x02, 0x03];
     assert!(
         server
-            .generate_ke2(None, &record, credential_id, &auth_state.ke1, None, &mut rng)
+            .generate_ke2(
+                None,
+                &record,
+                credential_id,
+                &auth_state.ke1,
+                None,
+                &mut rng
+            )
             .is_err(),
         "server must reject a malformed credential request blinded element"
     );
@@ -151,7 +164,7 @@ fn test_opaque_server_rejects_malformed_request() {
 #[test]
 fn test_opaque_client_rejects_truncated_credential_response() {
     let config = OpaqueConfig::for_testing();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let credential_id = b"user@example.com";
 
     let server = OpaqueServer::generate(&config, &mut rng);
@@ -167,11 +180,22 @@ fn test_opaque_client_rejects_truncated_credential_response() {
 
     let auth_state = client.generate_ke1(b"pw", &mut rng);
     let mut ke2_result = server
-        .generate_ke2(None, &record, credential_id, &auth_state.ke1, None, &mut rng)
+        .generate_ke2(
+            None,
+            &record,
+            credential_id,
+            &auth_state.ke1,
+            None,
+            &mut rng,
+        )
         .unwrap();
 
     // Truncate the server-supplied masked response.
-    ke2_result.ke2.credential_response.masked_response.truncate(3);
+    ke2_result
+        .ke2
+        .credential_response
+        .masked_response
+        .truncate(3);
 
     let result = client.generate_ke3(&auth_state, None, None, &ke2_result.ke2);
     assert!(
@@ -183,7 +207,7 @@ fn test_opaque_client_rejects_truncated_credential_response() {
 #[test]
 fn test_opaque_wrong_password_fails() {
     let config = OpaqueConfig::for_testing();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let credential_id = b"user@example.com";
 
     let server = OpaqueServer::generate(&config, &mut rng);
@@ -191,19 +215,25 @@ fn test_opaque_wrong_password_fails() {
 
     // Register with correct password
     let reg_state = client.create_registration_request(b"correct-password", &mut rng);
-    let reg_response = server.create_registration_response(&reg_state.request, credential_id).unwrap();
-    let record = client.finalize_registration(&reg_state, &reg_response, None, None, &mut rng).unwrap();
+    let reg_response = server
+        .create_registration_response(&reg_state.request, credential_id)
+        .unwrap();
+    let record = client
+        .finalize_registration(&reg_state, &reg_response, None, None, &mut rng)
+        .unwrap();
 
     // Authenticate with wrong password
     let auth_state = client.generate_ke1(b"wrong-password", &mut rng);
-    let ke2_result = server.generate_ke2(
-        None,
-        &record,
-        credential_id,
-        &auth_state.ke1,
-        None,
-        &mut rng,
-    ).unwrap();
+    let ke2_result = server
+        .generate_ke2(
+            None,
+            &record,
+            credential_id,
+            &auth_state.ke1,
+            None,
+            &mut rng,
+        )
+        .unwrap();
 
     let result = client.generate_ke3(&auth_state, None, None, &ke2_result.ke2);
     assert!(
@@ -215,15 +245,16 @@ fn test_opaque_wrong_password_fails() {
 #[test]
 fn test_opaque_fake_ke2() {
     let config = OpaqueConfig::for_testing();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let server = OpaqueServer::generate(&config, &mut rng);
     let client = OpaqueClient::new(&config);
 
     // Try to authenticate without registration (fake KE2)
     let auth_state = client.generate_ke1(b"any-password", &mut rng);
-    let fake_ke2_result =
-        server.generate_fake_ke2(&auth_state.ke1, b"unknown-user", None, None, &mut rng).unwrap();
+    let fake_ke2_result = server
+        .generate_fake_ke2(&auth_state.ke1, b"unknown-user", None, None, &mut rng)
+        .unwrap();
 
     // Client should fail to verify
     let result = client.generate_ke3(&auth_state, None, None, &fake_ke2_result.ke2);

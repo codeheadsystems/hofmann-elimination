@@ -15,7 +15,7 @@ use crate::opaque::model::*;
 /// # use hofmann_rfc::opaque::OpaqueClient;
 /// let config = OpaqueConfig::for_testing();
 /// let client = OpaqueClient::new(&config);
-/// let mut rng = rand::thread_rng();
+/// let mut rng = rand::rng();
 ///
 /// // Registration
 /// let reg_state = client.create_registration_request(b"password", &mut rng);
@@ -40,7 +40,7 @@ impl<'a> OpaqueClient<'a> {
     pub fn create_registration_request(
         &self,
         password: &[u8],
-        rng: &mut dyn rand_core::CryptoRngCore,
+        rng: &mut dyn rand_core::CryptoRng,
     ) -> ClientRegistrationState {
         opaque_credentials::create_registration_request(password, self.config, rng)
     }
@@ -52,7 +52,7 @@ impl<'a> OpaqueClient<'a> {
         response: &RegistrationResponse,
         server_identity: Option<&[u8]>,
         client_identity: Option<&[u8]>,
-        rng: &mut dyn rand_core::CryptoRngCore,
+        rng: &mut dyn rand_core::CryptoRng,
     ) -> Result<RegistrationRecord, &'static str> {
         opaque_credentials::finalize_registration(
             state,
@@ -70,7 +70,7 @@ impl<'a> OpaqueClient<'a> {
     pub fn generate_ke1(
         &self,
         password: &[u8],
-        rng: &mut dyn rand_core::CryptoRngCore,
+        rng: &mut dyn rand_core::CryptoRng,
     ) -> ClientAuthState {
         let blind = self.config.cipher_suite().oprf_suite().random_scalar(rng);
         let seed = self.config.random_bytes(NN, rng);

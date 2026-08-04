@@ -53,9 +53,5 @@ pub trait RecoveryChallenger: Send + Sync {
     /// Verifies the user's response to a previously sent challenge.
     ///
     /// Returns `true` if the response is valid and the user's identity is confirmed.
-    fn verify_response(
-        &self,
-        credential_identifier: &[u8],
-        challenge_response: &str,
-    ) -> bool;
+    fn verify_response(&self, credential_identifier: &[u8], challenge_response: &str) -> bool;
 }

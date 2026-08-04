@@ -1,6 +1,6 @@
 [package]
 name = "hofmann-rfc"
-version = "2.1.0"
+version = "3.0.0"
 edition = "2021"
 description = "Rust implementation of RFC 9380 (Hash-to-Curve), RFC 9497 (OPRF), and RFC 9807 (OPAQUE)"
 license = "Apache-2.0"
@@ -10,25 +10,24 @@ categories = ["cryptography"]
 
 [dependencies]
 # Elliptic curves (RustCrypto)
-p256 = { version = "0.14", features = ["hash2curve", "arithmetic"] }
-p384 = { version = "0.14", features = ["hash2curve", "arithmetic"] }
-p521 = { version = "0.14", features = ["hash2curve", "arithmetic"] }
-elliptic-curve = { version = "0.13", features = ["sec1", "hash2curve", "arithmetic"] }
+p256 = { version = "0.14", features = ["group-digest", "arithmetic"] }
+p384 = { version = "0.14", features = ["group-digest", "arithmetic"] }
+p521 = { version = "0.14", features = ["group-digest", "arithmetic"] }
+elliptic-curve = { version = "0.14", features = ["sec1", "arithmetic"] }
+# hash-to-curve moved out of elliptic-curve into its own crate in 0.14
+hash2curve = "0.14"
 
 # Hashing and MAC
-sha2 = "0.10"
-hmac = "0.12"
-digest = "0.10"
-
-# HKDF
-hkdf = "0.12"
+sha2 = "0.11"
+hmac = "0.13"
+digest = "0.11"
 
 # Argon2id
 argon2 = "0.5"
 
 # Random number generation
-rand = "0.8"
-rand_core = "0.6"
+rand = "0.10"
+rand_core = "0.10"
 
 # Ristretto255 / Curve25519
 curve25519-dalek = { version = "5", features = ["rand_core"] }
@@ -37,7 +36,6 @@ curve25519-dalek = { version = "5", features = ["rand_core"] }
 subtle = "2.6"
 
 # Serialization helpers
-generic-array = "0.14"
 zeroize = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
