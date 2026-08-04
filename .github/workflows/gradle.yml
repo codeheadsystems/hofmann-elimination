@@ -94,6 +94,45 @@ jobs:
         run: npm test
         working-directory: hofmann-typescript
 
+  rust:
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    defaults:
+      run:
+        working-directory: hofmann-rust
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ubuntu-latest ships a stable Rust toolchain with cargo, rustfmt and clippy,
+      # so there is no third-party toolchain action to pin here.
+      - name: Show toolchain versions
+        run: rustc --version && cargo --version && cargo clippy --version
+
+      - name: Cache cargo registry and build output
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            hofmann-rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('hofmann-rust/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      # --locked fails if Cargo.lock is stale, which catches a manifest edit that was
+      # committed without the matching lockfile update.
+      - name: Clippy
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --locked
+
   dependency-submission:
 
     runs-on: ubuntu-latest

@@ -44,12 +44,12 @@ fn run_opaque_roundtrip(config: OpaqueConfig, suite_name: &str) {
     // Client: generate KE3
     let auth_result = client
         .generate_ke3(&auth_state, None, None, &ke2_result.ke2)
-        .expect(&format!("Client KE3 failed for {}", suite_name));
+        .unwrap_or_else(|_| panic!("Client KE3 failed for {}", suite_name));
 
     // Server: finish
     let server_session_key = server
         .server_finish(&ke2_result.server_auth_state, &auth_result.ke3)
-        .expect(&format!("Server finish failed for {}", suite_name));
+        .unwrap_or_else(|_| panic!("Server finish failed for {}", suite_name));
 
     // Session keys must match
     assert_eq!(

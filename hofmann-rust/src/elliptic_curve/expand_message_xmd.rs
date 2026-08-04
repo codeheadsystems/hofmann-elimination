@@ -236,7 +236,7 @@ mod tests {
 
     fn long_dst() -> Vec<u8> {
         let mut dst = b"QUUX-V01-CS02-with-expander-SHA256-128-long-DST-".to_vec();
-        dst.extend(std::iter::repeat(b'1').take(208));
+        dst.extend(std::iter::repeat_n(b'1', 208));
         assert_eq!(dst.len(), 256);
         dst
     }
