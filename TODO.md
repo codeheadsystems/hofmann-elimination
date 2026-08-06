@@ -17,95 +17,64 @@ classes, not by reading alone.
 
 ## P0: Critical — fix before the next release
 
-- [ ] **Reject the identity element when decoding a ristretto255 point** — [reproduced]
-      `Ristretto255GroupSpec.decodeRistretto255()` (`:222-256`) implements every RFC 9496
-      §4.3.1 check but not the protocol-layer identity rejection RFC 9497 §2.1 adds on top.
-      The all-zero encoding is a *legitimate* ristretto255 encoding, so §4.3.1 conformance
-      does not exclude it. `finalize()` (`OprfCipherSuite.java:277`) then computes
-      `blindInv · O = O` and the OPRF output collapses to
-      `H(len‖input‖len‖0³²‖"Finalize")` — a function of the input alone, independent of the
-      blind *and* the server key:
+All three P0 items are fixed on branch `3.1`. Retained here only as pointers; see the commits
+for the full analysis and the reproduction each was verified against.
 
-      ```
-      RISTRETTO255_SHA512 -> ACCEPTED identity; blind1 == blind2 output; key-independent
-      P256_SHA256         -> REJECTED
-      ```
-
-      A malicious, breached, or MITM'd server returning 32 zero bytes silently downgrades
-      every client to an unkeyed, unsalted hash. Mode `0x00` OPRF has no verifiability
-      proof, so the client cannot detect it. Affects **both** the standalone OPRF product
-      (`OprfClientManager.hashResult:85-89` passes the server element straight through) and
-      OPAQUE (`OpaqueOprf.java:67`, where the envelope MAC degrades it to an auth failure).
-
-      **Fix in `decodeRistretto255`, not in `finalize`.** `decodeRistretto255` has exactly
-      one caller — `Ristretto255GroupSpec.scalarMultiply:137` — which is the shared entry
-      point for `finalize` *and* all six AKE Diffie-Hellman operations
-      (`OpaqueAke.java:154-156`, `:213-215`). One guard covers every path and matches where
-      Rust placed it.
-
-      Rust (`elliptic_curve/ristretto255.rs:126-135`) and TypeScript
-      (`src/oprf/suite.ts:345-353`) both already reject this, and the TS comment describes
-      this exact attack. **Java is the only implementation missing it.** Relatedly,
-      `OprfServerManager.java:45-46` justifies its own server-side check with "The client
-      already rejects the identity" — that premise is false for the Java client and should
-      be corrected in the same change.
-
-- [ ] **Canonicalize the credential identifier at the trust boundary** — [reproduced]
-      The server carries **two identities per user**: `InMemoryCredentialStore` keys on the
-      *decoded bytes* (`ByteKey`), while the JWT `sub`, `SessionStore`, and every
-      rate-limit bucket key on the *raw base64 string* the client sent. Java's
-      `Base64.getDecoder()` ignores both padding and the unused trailing bits of the final
-      character, so `YWxpY2U=`, `YWxpY2U`, `YWxpY2V`, `YWxpY2V=`, `YWxpY2W=`, `YWxpY2X=`
-      all decode to `alice`. Alias count depends on identifier length: `len%3==0` → 1
-      (immune), `len%3==2` → 8, `len%3==1` → 32. Roughly two-thirds of a real user base is
-      aliasable. Nothing normalizes anywhere.
-
-      Two consequences:
-      - **Session revocation is bypassable.** Every account-mutating operation performs a
-        bytes-keyed mutation beside a string-keyed revocation
-        (`HofmannOpaqueServerManager.java:319-320`, `:360-361`, `:414-417`). A session
-        opened under an alias survives password change *and* account deletion until natural
-        JWT expiry. This contradicts the Javadoc on both methods and the stated contract in
-        `SessionStore.java`.
-      - **Rate limits multiply 8–32× per account** — the only control between an OPAQUE
-        deployment and online guessing, and it also gates the recovery OTP.
-
-      One re-encode in the DTO accessor closes both. Prefer carrying decoded bytes plus a
-      single server-derived string form.
-
-- [ ] **Enforce a client-side floor on key-stretching parameters**
-      `OpaqueClientConfig.fromServerConfig()` (`:109-115`) adopts `argon2MemoryKib` /
-      `Iterations` / `Parallelism` verbatim from `GET /opaque/config`, and
-      `argon2MemoryKib == 0` selects `IdentityKsf`, whose `stretch()` returns the input
-      unchanged (`OpaqueConfig.java:207-212`). Reached from the production `@Inject` path
-      (`HofmannOpaqueClientManager.java:89`); same in TypeScript (`src/opaque/http.ts:154`).
-
-      Since the KSF runs entirely client-side, a server answering `{"argon2MemoryKib":0}`
-      at registration makes the client store a record derived from an **unstretched**
-      password — offline attack cost drops from 64 MiB Argon2id to ~1 hash/guess.
-      Authentication keeps working afterwards, so nothing looks wrong from either side.
-      The quieter variant (8 KiB / 1 iteration) is equally unchecked.
-
-      The server has `allowIdentityKsf` and fails startup without it; the client has no
-      counterpart. Add a local floor and require an explicit local opt-in for the identity
-      KSF. Also pin `context` out-of-band rather than taking it from the server
-      (`http.ts:157` vs `USAGE.md:23`), and reject non-`https` URIs in
-      `ServerConnectionInfo`.
+- [x] **Reject the identity element when decoding a ristretto255 point** — `71846ed`. Also
+      closed a matching hole where a blind congruent to 0 mod n produced the same
+      key-independent collapse, and repaired a 400→500 regression the guard introduced at
+      `POST /opaque/auth/start` in both frameworks.
+- [x] **Canonicalize the credential identifier at the trust boundary** — `b8e3530`. Closed the
+      revocation bypass and the 8–32× rate-limit multiplier together, and removed a
+      pre-existing failure mode where padding drift between recovery steps locked users out.
+- [x] **Enforce a client-side floor on key-stretching parameters** — `291cbd4`. Java and
+      TypeScript. The first TypeScript attempt was bypassable by omitting one JSON field
+      (`NaN` comparisons are all false, so control fell through to the identity KSF); the
+      strict path now has no branch to `identityKsf` at all.
 
 ---
 
 ## P1: High
 
-- [ ] **Rate-limit `POST /opaque/registration/finish` and equalize its response branches**
-      [reproduced] The limiter is consumed only inside the recovery branch
-      (`HofmannOpaqueServerManager.java:302`); the normal path consumes nothing. The
-      endpoint also never checks that a `registrationStart` occurred, so the uploaded
-      record can be arbitrary bytes. Existing credential → `IllegalArgumentException` →
-      **400**; new credential → **204**. That is a free, unlimited, unauthenticated
-      existence oracle which nullifies the fake-KE2 machinery `Server.generateFakeKE2`
-      exists to provide. Worse, the 204 branch **stores the prober's record**, so every
-      negative probe permanently squats that identifier and the legitimate user can never
-      register — a single sweep can pre-register a whole namespace.
+- [x] **Rate-limit `POST /opaque/registration/finish` and equalize its response branches** —
+      `e63db78`. Token now consumed before the existence lookup; an already-registered
+      credential returns 204 without storing rather than throwing 400. Added a 25 ms floor
+      mirroring `RECOVERY_VERIFY_MIN_NANOS`, because the not-exists branch performs a write the
+      exists branch skips — negligible in memory, an `INSERT` against a database-backed store.
+      **Squatting is NOT fixed** and rate limiting does not meaningfully mitigate it: the
+      limiter is per-identifier and squatting an unused identifier costs one token, so 2000 of
+      2000 identifiers were squatted in 9 ms with the default limiter installed. See the new
+      P1 item below.
+
+- [ ] **Bound identifier squatting with an IP-dimension limiter in the adapters**
+      Discovered while verifying `e63db78`. `HofmannOpaqueServerManager` is framework-agnostic
+      and never sees the request context, so it can only key on the credential identifier —
+      which bounds repeated attempts against one account and does nothing at all against
+      squatting across many. `OpaqueResource` and `OpaqueController` do hold the request
+      context and neither applies an IP-keyed limiter; `OprfResource.extractClientIp:134-151`
+      already shows the correct pattern. Note the `maxEntries` cap turns a squatting flood into
+      a registration outage for everyone, so this interacts with the item below. Eliminating
+      squatting outright needs proof of identifier ownership at the deployment layer — that
+      belongs in the docs, not in a rate-limit claim.
+
+- [ ] **Spring Boot flattens every error status to 401** — pre-existing, found while verifying
+      `e63db78`. `HofmannSecurityConfig` permits `/opaque/**` and `/oprf/**` but not `/error`,
+      with `anyRequest().authenticated()` and an `HttpStatusEntryPoint(UNAUTHORIZED)`, so the
+      ERROR dispatch is rejected by the security chain and every `ResponseStatusException`
+      surfaces as a bare 401. Confirmed on endpoints the fix never touched: a malformed
+      `auth/start` body returns 401 where the controller maps 400, and a throttled
+      `registration/start` returns 401 where the controller maps 429. Dropwizard returns the
+      correct codes. Consequence: the new `registration/finish` throttle is invisible to Spring
+      Boot clients — no 429, no `Retry-After` — and they cannot distinguish rate-limited from
+      unauthorized. Likely fixed by permitting `/error` in the chain.
+
+- [ ] **A junk recovery bearer token drains the recovery limiter before validation**
+      `HofmannOpaqueServerManager.registrationFinish` consumes the recovery limiter (6 tokens)
+      on the `bearerToken != null` path *before* the token is validated, so six unauthenticated
+      requests carrying garbage drain a victim's bucket and lock them out of `recoveryStart` /
+      `recoveryVerify` for about a minute, sustainable indefinitely at 6/min. Pre-existing —
+      unchanged by `e63db78`, which only touched the else branch — but it denies recovery on
+      the endpoint whose whole purpose is recovering a squatted or lost account.
 
 - [ ] **Validate uploaded `RegistrationRecord` fields before storing** — [reproduced]
       `RegistrationFinishRequest.registrationRecord()` (`:84-90`) base64-decodes
