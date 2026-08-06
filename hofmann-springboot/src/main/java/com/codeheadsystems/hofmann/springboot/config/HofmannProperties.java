@@ -25,6 +25,19 @@ public class HofmannProperties {
   private int argon2Iterations = 3;
   private int argon2Parallelism = 1;
   private boolean allowIdentityKsf = false;
+
+  /**
+   * Whether the server may generate ephemeral key material at startup when {@code jwtSecretHex},
+   * {@code serverKeySeedHex} or {@code oprfSeedHex} is unset.
+   * <p>
+   * Defaults to {@code false}, so a deployment missing any of them fails to start rather than
+   * silently generating a fresh key per process. The generated key is random, so this is not a
+   * key-disclosure risk — the failure is availability and consistency: every node signs with a
+   * different key, and a restart invalidates every account. Those symptoms appear as intermittent
+   * authentication failures long after the deployment, which is a poor trade for a startup
+   * warning. Set to {@code true} for local development and tests.
+   */
+  private boolean allowEphemeralKeys = false;
   private long maxRequestBodyBytes = 65536;
 
   /**
@@ -333,6 +346,24 @@ public class HofmannProperties {
    */
   public void setAllowIdentityKsf(boolean allowIdentityKsf) {
     this.allowIdentityKsf = allowIdentityKsf;
+  }
+
+  /**
+   * Whether ephemeral key generation is permitted when key material is unset.
+   *
+   * @return true if ephemeral keys are allowed
+   */
+  public boolean isAllowEphemeralKeys() {
+    return allowEphemeralKeys;
+  }
+
+  /**
+   * Sets whether ephemeral key generation is permitted.
+   *
+   * @param allowEphemeralKeys the flag
+   */
+  public void setAllowEphemeralKeys(boolean allowEphemeralKeys) {
+    this.allowEphemeralKeys = allowEphemeralKeys;
   }
 
   /**

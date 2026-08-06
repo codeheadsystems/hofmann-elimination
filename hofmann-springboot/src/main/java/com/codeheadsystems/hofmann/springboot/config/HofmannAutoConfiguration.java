@@ -6,6 +6,7 @@ import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
 import com.codeheadsystems.hofmann.server.manager.JwtKeyDetail;
 import com.codeheadsystems.hofmann.server.manager.JwtManager;
 import com.codeheadsystems.hofmann.server.manager.OpaqueServerKeyDetail;
+import com.codeheadsystems.hofmann.server.ratelimit.FixedCapacityRateLimiter;
 import com.codeheadsystems.hofmann.server.ratelimit.InMemoryRateLimiter;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfig;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfigSupplier;
@@ -153,8 +154,12 @@ public class HofmannAutoConfiguration {
     boolean hasOprfSeed = oprfSeedHex != null && !oprfSeedHex.isEmpty();
 
     if (!hasKeySeed && !hasOprfSeed) {
-      log.warn("No server key seed or OPRF seed configured — generating randomly. "
-          + "All registrations will be invalidated on restart. Do not use in production.");
+      requireEphemeralKeysAllowed(props, "server-key-seed-hex and oprf-seed-hex",
+          "credentials registered against one node cannot authenticate against another, and a "
+              + "restart invalidates every registration");
+      log.warn("No server key seed or OPRF seed configured — generating ephemeral ones because "
+          + "allow-ephemeral-keys is set. All registrations will be invalidated on restart. "
+          + "Do not use in production.");
       return Server.generate(opaqueConfig);
     }
 
@@ -250,8 +255,12 @@ public class HofmannAutoConfiguration {
     String secretHex = props.getJwtSecretHex();
     byte[] secret;
     if (secretHex == null || secretHex.isEmpty()) {
-      log.warn("No JWT secret configured — generating randomly. "
-          + "Tokens will be invalidated on restart. Do not use in production.");
+      requireEphemeralKeysAllowed(props, "jwt-secret-hex",
+          "tokens minted by one node will be rejected by every other, and a restart invalidates "
+              + "every session");
+      log.warn("No JWT secret configured — generating an ephemeral one because "
+          + "allow-ephemeral-keys is set. Tokens will be invalidated on restart. "
+          + "Do not use in production.");
       secret = new byte[32];
       secureRandom.nextBytes(secret);
     } else {
@@ -306,7 +315,7 @@ public class HofmannAutoConfiguration {
   @Bean(destroyMethod = "shutdown")
   @ConditionalOnMissingBean(name = "authRateLimiter")
   public RateLimiter authRateLimiter(RateLimitConfigSupplier rateLimitConfigSupplier) {
-    return new InMemoryRateLimiter(rateLimitConfigSupplier.authRateLimitConfig());
+    return new FixedCapacityRateLimiter(rateLimitConfigSupplier.authRateLimitConfig());
   }
 
   /**
@@ -319,7 +328,7 @@ public class HofmannAutoConfiguration {
   @Bean(destroyMethod = "shutdown")
   @ConditionalOnMissingBean(name = "registrationRateLimiter")
   public RateLimiter registrationRateLimiter(RateLimitConfigSupplier rateLimitConfigSupplier) {
-    return new InMemoryRateLimiter(rateLimitConfigSupplier.registrationRateLimitConfig());
+    return new FixedCapacityRateLimiter(rateLimitConfigSupplier.registrationRateLimitConfig());
   }
 
   /**
@@ -332,7 +341,7 @@ public class HofmannAutoConfiguration {
   @Bean(destroyMethod = "shutdown")
   @ConditionalOnMissingBean(name = "oprfRateLimiter")
   public RateLimiter oprfRateLimiter(RateLimitConfigSupplier rateLimitConfigSupplier) {
-    return new InMemoryRateLimiter(rateLimitConfigSupplier.oprfRateLimitConfig());
+    return new FixedCapacityRateLimiter(rateLimitConfigSupplier.oprfRateLimitConfig());
   }
 
   /**
@@ -377,7 +386,7 @@ public class HofmannAutoConfiguration {
   @ConditionalOnBean(RecoveryChallenger.class)
   @ConditionalOnMissingBean(name = "recoveryRateLimiter")
   public RateLimiter recoveryRateLimiter(RateLimitConfigSupplier rateLimitConfigSupplier) {
-    return new InMemoryRateLimiter(rateLimitConfigSupplier.recoveryRateLimitConfig());
+    return new FixedCapacityRateLimiter(rateLimitConfigSupplier.recoveryRateLimitConfig());
   }
 
   /**
@@ -485,15 +494,44 @@ public class HofmannAutoConfiguration {
   @Qualifier("opaqueOriginRateLimiter")
   public RateLimiter opaqueOriginRateLimiter(RateLimitConfigSupplier supplier) {
     RateLimitConfig config = supplier.originRateLimitConfig();
-    // Null means origin-based limiting is disabled, which is the default. A no-op limiter is
-    // returned rather than a null bean so the controller's constructor injection stays simple.
-    return config == null ? key -> true : new InMemoryRateLimiter(config);
+    // Deliberately NOT InMemoryRateLimiter: its capacity is exhaustible by varying the key, which
+    // is what this limiter defends against, so using it here would put a second copy of the
+    // vulnerability in front of every endpoint. Null disables origin limiting; a no-op limiter is
+    // returned rather than a null bean so constructor injection stays simple.
+    return config == null ? key -> true : new FixedCapacityRateLimiter(config);
+  }
+
+  /**
+   * Refuses to start when key material is missing, unless the deployment has explicitly opted in
+   * to ephemeral keys. Mirrors the treatment {@code oprfMasterKeyHex} and {@code allowIdentityKsf}
+   * already receive.
+   */
+  private void requireEphemeralKeysAllowed(HofmannProperties props, String setting,
+                                           String consequence) {
+    if (!props.isAllowEphemeralKeys()) {
+      throw new IllegalStateException(
+          "hofmann." + setting + " is not configured. Generating key material at startup means "
+              + consequence + ". Configure it (openssl rand -hex 32), or set "
+              + "hofmann.allow-ephemeral-keys=true to accept ephemeral keys — appropriate for "
+              + "local development, not for production.");
+    }
   }
 
   @Bean
   @ConditionalOnMissingBean
   public Supplier<ServerProcessorDetail> serverProcessorDetailSupplier(HofmannProperties props) {
     String masterKeyHex = props.getOprfMasterKeyHex();
+    if ((masterKeyHex == null || masterKeyHex.isEmpty()) && props.isAllowEphemeralKeys()) {
+      // allowEphemeralKeys has to cover every piece of key material or it is not an escape hatch.
+      log.warn("No OPRF master key configured — generating an ephemeral one because "
+          + "allow-ephemeral-keys is set. OPRF outputs will not be stable across restarts. "
+          + "Do not use in production.");
+      OprfCipherSuite suite =
+          OprfCipherSuite.builder().withSuite(props.getOprfCipherSuite()).build();
+      ServerProcessorDetail ephemeral =
+          new ServerProcessorDetail(suite.randomScalar(), props.getOprfProcessorId());
+      return () -> ephemeral;
+    }
     if (masterKeyHex == null || masterKeyHex.isEmpty()) {
       throw new IllegalStateException(
           "hofmann.oprfMasterKeyHex must be configured for the OPRF endpoint. "

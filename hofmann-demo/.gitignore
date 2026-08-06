@@ -1,1 +1,4 @@
 haproxy/certs/
+
+# Generated throwaway key material for `make up`. Never commit key material.
+.env

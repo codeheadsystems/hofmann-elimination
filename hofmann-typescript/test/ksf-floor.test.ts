@@ -6,6 +6,8 @@ import {
   MAX_ARGON2_MEMORY_KIB,
   MAX_ARGON2_ITERATIONS,
   MAX_ARGON2_PARALLELISM,
+  OpaqueHttpClient,
+  identityKsf,
 } from '../src/index.js';
 
 /**
@@ -142,5 +144,59 @@ describe('resource bounds', () => {
       cipherSuite: 'P256_SHA256', context: 'ctx',
       argon2MemoryKib: 65536, argon2Iterations: 3, argon2Parallelism: 0,
     })).toThrow(/between 1 and/);
+  });
+});
+
+/**
+ * The context is the anti-cross-deployment-replay binding and the docs specify it is shared
+ * out-of-band, yet it arrives on the channel an attacker in the middle controls.
+ */
+describe('context pinning', () => {
+  const cfg = (context: string) => ({
+    cipherSuite: 'P256_SHA256',
+    context,
+    argon2MemoryKib: 65536,
+    argon2Iterations: 3,
+    argon2Parallelism: 1,
+  });
+
+  it('is opt-in: without an expected value the server\'s is accepted', () => {
+    expect(() => assertKsfMeetsMinimum(cfg('anything'))).not.toThrow();
+  });
+
+  it('rejects a server whose context disagrees with the expected one', async () => {
+    const { createServer } = await import('node:http');
+    const srv = createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(cfg('attacker-deployment')));
+    });
+    await new Promise<void>((r) => srv.listen(0, '127.0.0.1', () => r()));
+    const port = (srv.address() as { port: number }).port;
+    try {
+      await expect(
+        OpaqueHttpClient.create(`http://127.0.0.1:${port}`, { expectedContext: 'prod' }),
+      ).rejects.toThrow(/does not match/);
+      await expect(
+        OpaqueHttpClient.create(`http://127.0.0.1:${port}`, {
+          expectedContext: 'attacker-deployment',
+        }),
+      ).resolves.toBeDefined();
+    } finally {
+      srv.close();
+    }
+  });
+});
+
+/**
+ * Constructing the client without a KSF meant no password stretching at all — which reads like a
+ * reasonable default and is not one.
+ */
+describe('explicit KSF requirement', () => {
+  it('refuses to construct without one', () => {
+    expect(() => new OpaqueHttpClient('http://localhost:1')).toThrow(/requires an explicit ksf/);
+  });
+
+  it('accepts an explicit opt-in to no stretching', () => {
+    expect(() => new OpaqueHttpClient('http://localhost:1', { ksf: identityKsf })).not.toThrow();
   });
 });

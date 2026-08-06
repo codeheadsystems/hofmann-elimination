@@ -15,7 +15,19 @@ certs:
 build:
 	docker compose build
 
-up: certs
+# Generates throwaway key material into .env if it is not already present, so `make up` works
+# out of the box now that config.yml carries no committed fallbacks. .env is gitignored, and the
+# keys persist across restarts of this demo so registrations survive `make down && make up`.
+.env:
+	@echo "Generating throwaway demo keys into .env (gitignored, not for production)"
+	@{ \
+	  echo "SERVER_KEY_SEED_HEX=$$(openssl rand -hex 32)"; \
+	  echo "OPRF_SEED_HEX=$$(openssl rand -hex 32)"; \
+	  echo "OPRF_MASTER_KEY_HEX=$$(openssl rand -hex 32)"; \
+	  echo "JWT_SECRET_HEX=$$(openssl rand -hex 32)"; \
+	} > .env
+
+up: certs .env
 	docker compose up -d
 
 down:

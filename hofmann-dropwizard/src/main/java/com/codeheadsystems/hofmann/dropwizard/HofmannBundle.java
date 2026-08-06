@@ -9,6 +9,7 @@ import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
 import com.codeheadsystems.hofmann.server.manager.JwtKeyDetail;
 import com.codeheadsystems.hofmann.server.manager.JwtManager;
 import com.codeheadsystems.hofmann.server.manager.OpaqueServerKeyDetail;
+import com.codeheadsystems.hofmann.server.ratelimit.FixedCapacityRateLimiter;
 import com.codeheadsystems.hofmann.server.ratelimit.InMemoryRateLimiter;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfigSupplier;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfig;
@@ -120,7 +121,12 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     this.processorDetailSupplier = null;
     this.ephemeralKey = true;
     this.rateLimitConfigSupplier = new RateLimitConfigSupplier.DefaultRateLimitConfigSupplier();
-    this.rateLimiterFunction = InMemoryRateLimiter::new;
+    // FixedCapacityRateLimiter, not InMemoryRateLimiter: every key these limiters see is
+    // attacker-chosen — a credential identifier from an unauthenticated body, a recovery token, a
+    // client address — and a map keyed on attacker-chosen values cannot be made safe by bounding
+    // it. Filling it denies every caller whose bucket is not resident. The fixed-capacity
+    // implementation pre-allocates, so there is no capacity condition to reach.
+    this.rateLimiterFunction = FixedCapacityRateLimiter::new;
     log.warn("""
         #################################################################
         # WARNING: Using ephemeral in-memory stores and a random OPRF  #
@@ -304,6 +310,9 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     // only dimension that bounds a flood of distinct identifiers, and therefore the only thing
     // standing between that flood and exhaustion of the bucket map and pending-session store.
     RateLimitConfig originConfig = rateLimitConfigSupplier.originRateLimitConfig();
+    // Uses rateLimiterFunction like every other limiter, so a consumer supplying a distributed
+    // (e.g. Redis-backed) implementation gets cluster-wide limiting here too. Hardcoding the
+    // in-process one would have silently given an N-node cluster N times the configured rate.
     RateLimiter opaqueOriginRateLimiter =
         originConfig == null ? null : rateLimiterFunction.apply(originConfig);
     environment.jersey().register(new OpaqueResource(hofmannOpaqueServerManager, opaqueClientConfig,
@@ -419,8 +428,12 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
       String secretHex = configuration.getJwtSecretHex();
       byte[] secret;
       if (secretHex == null || secretHex.isEmpty()) {
-        log.warn("No JWT secret configured — generating randomly. "
-            + "Tokens will be invalidated on restart. Do not use in production.");
+        requireEphemeralKeysAllowed(configuration, "jwtSecretHex",
+            "tokens minted by one node will be rejected by every other, and a restart "
+                + "invalidates every session");
+        log.warn("No JWT secret configured — generating an ephemeral one because "
+            + "allowEphemeralKeys is set. Tokens will be invalidated on restart. "
+            + "Do not use in production.");
         secret = new byte[32];
         secureRandom.nextBytes(secret);
       } else {
@@ -504,6 +517,24 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
         configuration.getArgon2Parallelism());
   }
 
+  /**
+   * Refuses to start when key material is missing, unless the deployment has explicitly opted in
+   * to ephemeral keys.
+   * <p>
+   * Mirrors the treatment {@code oprfMasterKeyHex} and {@code allowIdentityKsf} already receive.
+   * The generated key is random per process, so this is not a key-disclosure risk — the failure
+   * is availability and consistency, and it surfaces as intermittent authentication failures well
+   * after deployment rather than at the point of the mistake.
+   */
+  private void requireEphemeralKeysAllowed(C configuration, String setting, String consequence) {
+    if (!configuration.isAllowEphemeralKeys()) {
+      throw new IllegalStateException(
+          setting + " is not configured. Generating key material at startup means " + consequence
+              + ". Configure it (openssl rand -hex 32), or set allowEphemeralKeys: true to accept "
+              + "ephemeral keys — appropriate for local development, not for production.");
+    }
+  }
+
   private Server buildServer(C configuration, OpaqueConfig opaqueConfig) {
     String keySeedHex = configuration.getServerKeySeedHex();
     String oprfSeedHex = configuration.getOprfSeedHex();
@@ -512,8 +543,12 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     boolean hasOprfSeed = oprfSeedHex != null && !oprfSeedHex.isEmpty();
 
     if (!hasKeySeed && !hasOprfSeed) {
-      log.warn("No server key seed or OPRF seed configured — generating randomly. "
-          + "All registrations will be invalidated on restart. Do not use in production.");
+      requireEphemeralKeysAllowed(configuration, "serverKeySeedHex and oprfSeedHex",
+          "credentials registered against one node cannot authenticate against another, and a "
+              + "restart invalidates every registration");
+      log.warn("No server key seed or OPRF seed configured — generating ephemeral ones because "
+          + "allowEphemeralKeys is set. All registrations will be invalidated on restart. "
+          + "Do not use in production.");
       return Server.generate(opaqueConfig);
     }
 
@@ -549,6 +584,19 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
 
   private Supplier<ServerProcessorDetail> buildDefaultProcessorSupplier(C configuration) {
     String masterKeyHex = configuration.getOprfMasterKeyHex();
+    if ((masterKeyHex == null || masterKeyHex.isEmpty()) && configuration.isAllowEphemeralKeys()) {
+      // allowEphemeralKeys has to cover every piece of key material or it is not an escape hatch:
+      // leaving this one out meant the documented "set allowEphemeralKeys for a throwaway run"
+      // still failed on the next setting along.
+      log.warn("No OPRF master key configured — generating an ephemeral one because "
+          + "allowEphemeralKeys is set. OPRF outputs will not be stable across restarts. "
+          + "Do not use in production.");
+      OprfCipherSuite suite =
+          OprfCipherSuite.builder().withSuite(configuration.getOprfCipherSuite()).build();
+      ServerProcessorDetail ephemeral =
+          new ServerProcessorDetail(suite.randomScalar(), configuration.getOprfProcessorId());
+      return () -> ephemeral;
+    }
     if (masterKeyHex == null || masterKeyHex.isEmpty()) {
       throw new IllegalStateException(
           "oprfMasterKeyHex must be configured for the OPRF endpoint. "

@@ -29,19 +29,39 @@ argon2MemoryKib: 65536
 argon2Iterations: 3
 argon2Parallelism: 1
 
-# Stable test-only keys – generated with: openssl rand -hex 32
-# Override via environment variable for isolation between test environments.
-serverKeySeedHex: ${SERVER_KEY_SEED_HEX:-71c35fd9647f464e7288c68fabe22a07a0a062a3423a9d402e55c55b07d1dae3}
-oprfSeedHex: ${OPRF_SEED_HEX:-20aa81d9ea8bf9de0877e02bc9d6adf4ef9d6bd50bbb515c84d78d1f246f49a3}
+# ── Key material ──────────────────────────────────────────────────────────────
+#
+# No committed defaults. Every value below MUST come from the environment.
+#
+# These files are copied into the published images, so a committed fallback is not a
+# convenience — it is a working key that every deployment of that image shares. Anyone could
+# mint valid tokens against a deployment that kept the old jwtSecretHex default, and forge
+# registrations against the old serverKeySeedHex.
+#
+# Leaving them empty alone would only trade a known key for a silently random one, so the
+# server now refuses to start without them unless allowEphemeralKeys is set. Generate with:
+#
+#     openssl rand -hex 32
+#
+# The `:-` is load-bearing: Dropwizard's substitutor is non-strict, so a bare ${VAR} for an unset
+# variable is left as the literal text "${VAR}", which looks like a configured value. The
+# fail-closed check would be skipped and startup would die in hex parsing instead, and the
+# allowEphemeralKeys escape hatch below would never be reached. `${VAR:-}` yields empty, which is
+# what both of those paths test for.
+#
+# For a throwaway local run, set allowEphemeralKeys: true instead and accept that all state is
+# lost on restart.
+serverKeySeedHex: ${SERVER_KEY_SEED_HEX:-}
+oprfSeedHex: ${OPRF_SEED_HEX:-}
 
 # ── Standalone OPRF ───────────────────────────────────────────────────────────
 
 oprfCipherSuite: P256_SHA256
-oprfMasterKeyHex: ${OPRF_MASTER_KEY_HEX:-137564f38fb14059492bbab74f03624de228817bd877b74e6df5ac378878720e}
+oprfMasterKeyHex: ${OPRF_MASTER_KEY_HEX:-}
 oprfProcessorId: hofmann-testserver
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
 
-jwtSecretHex: ${JWT_SECRET_HEX:-04fb50080c93c055a4195cb535c9311381975a94eaaac8aeef3df0776aca4f6d}
+jwtSecretHex: ${JWT_SECRET_HEX:-}
 jwtTtlSeconds: 3600
 jwtIssuer: hofmann-testserver

@@ -57,6 +57,7 @@ public class HofmannOpaqueClientManager {
   private final Map<ServerIdentifier, OpaqueClientConfig> overrides;
   private final ConcurrentHashMap<ServerIdentifier, Client> clientCache;
   private final boolean allowWeakServerKsf;
+  private final String expectedContext;
 
   /**
    * Production constructor — auto-fetches OPAQUE config from each server on first use.
@@ -98,6 +99,28 @@ public class HofmannOpaqueClientManager {
   public HofmannOpaqueClientManager(final HofmannOpaqueAccessor accessor,
                                      final Map<ServerIdentifier, OpaqueClientConfig> overrides,
                                      final boolean allowWeakServerKsf) {
+    this(accessor, overrides, allowWeakServerKsf, null);
+  }
+
+  /**
+   * Constructor that additionally pins the OPAQUE context.
+   * <p>
+   * The context is the binding that stops a transcript from one deployment being replayed against
+   * another, and USAGE.md specifies it is shared out-of-band — but it arrives from
+   * {@code GET /opaque/config}, the channel an attacker in the middle controls. That matters here
+   * in particular because this manager passes null for both identities, leaving the context the
+   * only deployment-distinguishing value in the preamble. Supply the expected value to have the
+   * server's verified against it instead of adopted.
+   *
+   * @param accessor           the accessor
+   * @param overrides          per-server config overrides (may be empty)
+   * @param allowWeakServerKsf true to accept the identity KSF and below-floor parameters
+   * @param expectedContext    the locally configured context, or null to accept the server's
+   */
+  public HofmannOpaqueClientManager(final HofmannOpaqueAccessor accessor,
+                                     final Map<ServerIdentifier, OpaqueClientConfig> overrides,
+                                     final boolean allowWeakServerKsf,
+                                     final String expectedContext) {
     log.info("OpaqueManager(overrides={}, allowWeakServerKsf={})",
         overrides.size(), allowWeakServerKsf);
     if (allowWeakServerKsf) {
@@ -108,6 +131,7 @@ public class HofmannOpaqueClientManager {
     this.accessor = accessor;
     this.overrides = overrides;
     this.allowWeakServerKsf = allowWeakServerKsf;
+    this.expectedContext = expectedContext;
     this.clientCache = new ConcurrentHashMap<>();
   }
 
@@ -116,7 +140,7 @@ public class HofmannOpaqueClientManager {
       OpaqueClientConfig cfg = overrides.get(id);
       if (cfg == null) {
         cfg = OpaqueClientConfig.fromServerConfig(
-            accessor.getOpaqueConfig(id), allowWeakServerKsf);
+            accessor.getOpaqueConfig(id), allowWeakServerKsf, expectedContext);
       }
       return new Client(cfg.opaqueConfig());
     });

@@ -8,21 +8,24 @@ Findings from the security review of **August 2026** (six-reviewer fan-out acros
 | Section | Done | Open |
 |---|---:|---:|
 | **P0 Critical** | 3 | 0 |
-| **P1 High** | 8 | **1** |
-| Follow-ups from verifying the 3.1.0 fixes | 1 | 6 |
+| **P1 High** | 9 | 0 |
+| Follow-ups from verifying the 3.1.0 fixes | 7 | 0 |
 | **P2 Medium** | 1 | 13 |
-| **P3 Low** | 0 | 11 |
+| **P3 Low** | 1 | 10 |
 | Documentation | 0 | 4 |
 | Test coverage gaps | 0 | 4 |
-| **Total** | **13** | **39** |
+| **Total** | **21** | **31** |
 
-Everything marked `[x]` shipped in **3.1.0** and carries its commit hash. Everything marked `[ ]`
+**Every P0, P1 and verification follow-up is now closed.** What remains is P2 and below.
+
+Entries marked `[x]` carry the commit that closed them. P0/P1 shipped in **3.1.0**; the
+verification follow-ups and the last P1 land after it. Everything marked `[ ]`
 is outstanding.
 
-> **One P1 item is still open.** An earlier summary of this work claimed all P0 and P1 findings
-> were fixed. That was wrong: *Fail closed on unset JWT secret and OPAQUE seeds* was skipped and
-> never implemented. The 3.1.0 CHANGELOG inherits the same error and is corrected in the same
-> commit as this note.
+> Several completed items carry a scope limit in their entry — what the fix does *not* cover.
+> Those are deliberate and load-bearing: identifier squatting is bounded but not eliminated, and
+> the rate limiter's memory is bounded but its throughput is not. Read them before assuming a
+> checked box means the whole class of attack is gone.
 
 ## How to read this file
 
@@ -81,16 +84,7 @@ for the full analysis and the reproduction each was verified against.
 
 - [x] **Register the Spring components from the auto-configuration** — `45ff4ca`. Also fixed the CORS bean, which @Import made universally present and which crashed any consumer following the documented override.
 
-- [ ] **Fail closed on unset JWT secret and OPAQUE seeds — and empty the demo defaults in
-      the same change**
-      `HofmannBundle.java:411-418` / `:503-510` and `HofmannAutoConfiguration.java:238-247`
-      / `:143-147` generate random key material with only a `log.warn` when unset. Being
-      precise: this is random *per process*, so there is no hardcoded signing key in the
-      library and no token-forgery vulnerability in library code — the failure is
-      availability and consistency (nodes disagree, every restart invalidates all
-      accounts). The defect is inconsistency: `oprfMasterKeyHex` (`:544-549` / `:463-469`),
-      `allowIdentityKsf` (`:481-489` / `:109-117`), and half-configured rotation seed pairs
-      (`:447-451` / `:186-190`) all **throw**.
+- [x] **Fail closed on unset JWT secret and OPAQUE seeds** — `d5064f0`. Both frameworks refuse to start without key material unless `allowEphemeralKeys` is set, mirroring `allowIdentityKsf`. The committed fallbacks are gone from both deployed configs, `make up` generates throwaway keys into a gitignored `.env`, and a test asserts no key material returns — those files are not compiled, so nothing else would notice.
 
       Where it does bite is deployment: `hofmann-demo/server/config.yml:34,35,40,45` and
       `hofmann-testserver/config/config.yml:34,35,40,45` carry working
@@ -111,55 +105,34 @@ Not from the original review — these surfaced while adversarially verifying th
 Two are scope limits on work that shipped, recorded so partial coverage is not mistaken for
 completeness.
 
-- [ ] **Bound identifier squatting with an IP-dimension limiter in the adapters**
-      Discovered while verifying `e63db78`. `HofmannOpaqueServerManager` is framework-agnostic
-      and never sees the request context, so it can only key on the credential identifier —
-      which bounds repeated attempts against one account and does nothing at all against
-      squatting across many. `OpaqueResource` and `OpaqueController` do hold the request
-      context and neither applies an IP-keyed limiter; `OprfResource.extractClientIp:134-151`
-      already shows the correct pattern. Note the `maxEntries` cap turns a squatting flood into
-      a registration outage for everyone, so this interacts with the item below. Eliminating
-      squatting outright needs proof of identifier ownership at the deployment layer — that
-      belongs in the docs, not in a rate-limit claim.
+- [x] **Bound identifier squatting with an IP-dimension limiter in the adapters** — `67e3d08`. The origin limiter is on by default now that its key is aggregated to an IPv6 /64 and it is backed by a structure that cannot be filled. **Squatting itself is still not eliminated** — that needs proof of identifier ownership at the deployment layer; this bounds the rate, not the capability.
 
 - [x] **Spring Boot flattens every error status to 401** — `45ff4ca` (3.1.0). The ERROR dispatch is now permitted, bound to the configured error path so a custom error page aimed at a protected controller cannot be reached unauthenticated.
 
-- [ ] **A junk recovery bearer token drains the recovery limiter before validation**
-      `HofmannOpaqueServerManager.registrationFinish` consumes the recovery limiter (6 tokens)
-      on the `bearerToken != null` path *before* the token is validated, so six unauthenticated
-      requests carrying garbage drain a victim's bucket and lock them out of `recoveryStart` /
-      `recoveryVerify` for about a minute, sustainable indefinitely at 6/min. Pre-existing —
-      unchanged by `e63db78`, which only touched the else branch — but it denies recovery on
-      the endpoint whose whole purpose is recovering a squatted or lost account.
+- [x] **A junk recovery bearer token drains the recovery limiter before validation** — `67e3d08`.
+      Re-keyed onto the token at `registrationFinish`, so an attacker's guesses burn their own
+      bucket. **Narrower than it first read:** `recoveryStart` and `recoveryVerify` still key on
+      the credential identifier, so six unauthenticated requests naming a victim still lock them
+      out of those two endpoints for about a minute. Inherent to rate-limiting an account-scoped
+      operation for an unauthenticated caller — before a token exists there is nothing else to key
+      on — and the origin limiter bounds how fast one source can do it. See the open item below.
 
-- [ ] **Bound the rate limiter's key space — the flood is only half-fixed** (from `049bbca`)
-      Reclaim-before-deny converts a persistent outage into a self-healing one, but an attacker
-      who touches each of 50,000 keys once every four minutes keeps them inside the five-minute
-      stale window, so the reclaim finds nothing and the outage holds at ~167 req/s indefinitely.
-      The origin limiter added alongside it is opt-in and does not close this either: its key is
-      a bare address with no prefix aggregation, so 84 addresses — or one IPv6 /64 — sidestep it,
-      and its own bucket map fills the same way, reproducing the outage one layer earlier in
-      front of every endpoint. The real fix is a key space that cannot be filled: aggregate IPv6
-      to /64, and use a fixed-size structure where an unknown key hashes into an existing slot
-      rather than allocating. Keep deny-on-full as the backstop.
+- [x] **Bound the rate limiter's key space** — `67e3d08`. `FixedCapacityRateLimiter` pre-allocates and hashes into existing slots, with a per-process seed so collisions cannot be computed offline. **Bounding memory does not bound volume** — enough traffic to drain every slot still denies service; what is gone is exhausting capacity far more cheaply than saturating the buckets.
 
-- [ ] **`recoveryVerify`'s 250 ms floor still amplifies across origins** (from `049bbca`)
-      Per origin the hold is now bounded, but it composes: ~400 origins × 0.5 threads is enough
-      to exhaust a default Jetty pool, and 400 addresses is one IPv6 /64. Needs async handling or
-      a bounded concurrency semaphore rather than a sleeping request thread.
+- [x] **`recoveryVerify`'s 250 ms floor still amplifies across origins** — `67e3d08`. Concurrency inside the floor is capped; requests beyond the ceiling are refused rather than queued.
 
-- [ ] **Pin `context` locally instead of adopting the server's** (deferred from `291cbd4`)
-      `USAGE.md` says context must be shared out-of-band as the anti-cross-deployment-replay
-      binding; both clients read it from `GET /opaque/config`. Lower severity than the KSF
-      downgrade — it needs a MITM plus a victim credential on a second deployment — but
-      `HofmannOpaqueClientManager` passes null for both identities, so context is the only
-      deployment-distinguishing value in the preamble. Same shape as the KSF fix: accept a local
-      value and verify the server's matches, rather than adopting it. API break, needs migration.
+- [x] **Pin `context` locally instead of adopting the server's** — `67e3d08`. Both clients accept an expected context and verify the server's against it. Opt-in, since requiring it would break every existing caller.
 
-- [ ] **`OpaqueHttpClient`'s constructor still defaults to `identityKsf`** (deferred from `291cbd4`)
-      No longer reachable from server-controlled data — the strict `create()` path has no branch
-      to it — so this is a footgun for a caller who hand-constructs the class, not a
-      vulnerability. Making `ksf` required is an API break; revisit in 4.0.
+- [x] **`OpaqueHttpClient`'s constructor still defaults to `identityKsf`** — `67e3d08`. The constructor now requires an explicit KSF.
+
+- [ ] **Unauthenticated callers can still lock a victim out of account recovery**
+      `recoveryStart` and `recoveryVerify` key their limiter on the credential identifier, which
+      is right for bounding guessing against one account and wrong given the caller is
+      unauthenticated: six requests naming a victim spend that victim's budget. The origin limiter
+      bounds the rate per source, and moving to the non-exhaustible limiter stopped the flood
+      becoming a global recovery outage — but a targeted lockout stays cheap. Closing it needs
+      something an attacker cannot supply on the victim's behalf: proof-of-work on recoveryStart,
+      or the email round trip that recovery ownership rests on anyway.
 
 ---
 

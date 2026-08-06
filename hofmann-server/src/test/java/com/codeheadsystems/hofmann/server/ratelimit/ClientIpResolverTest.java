@@ -51,11 +51,18 @@ class ClientIpResolverTest {
     assertThat(ClientIpResolver.resolve(PEER + ", ", "10.0.0.1", true)).isEqualTo(PEER);
   }
 
+  /**
+   * IPv6 is aggregated to the /64 prefix rather than passed through — a single /64 is one
+   * subscriber line and contains 2^64 addresses, so keying on the full address would let one host
+   * mint unlimited rate-limit keys. Prefix behaviour is covered in detail by
+   * {@link ClientIpAggregationTest}; asserted here so the resolver's own contract stays explicit.
+   */
   @Test
-  void ipv6AddressesSurviveIntact() {
-    String v6 = "2001:db8::1";
-    assertThat(ClientIpResolver.resolve(null, v6, false)).isEqualTo(v6);
-    assertThat(ClientIpResolver.resolve("evil, " + v6, "10.0.0.1", true)).isEqualTo(v6);
+  void ipv6AddressesAreAggregatedToTheirPrefix() {
+    String prefix = ClientIpResolver.resolve(null, "2001:db8::1", false);
+
+    assertThat(prefix).isEqualTo("2001:0db8:0000:0000::/64");
+    assertThat(ClientIpResolver.resolve("evil, 2001:db8::1", "10.0.0.1", true)).isEqualTo(prefix);
   }
 
   // ── Degenerate input ──────────────────────────────────────────────────────

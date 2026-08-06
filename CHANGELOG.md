@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-> **Security release.** Fixes three critical and eight high-severity findings from an August 2026
-> review. Two are exploitable by a malicious or compromised server against its own clients, and
+> **Security release.** Fixes three critical and nine high-severity findings from an August 2026
+> review, plus six follow-ups found while verifying those fixes. Two are exploitable by a malicious or compromised server against its own clients, and
 > one lets a session survive the password change meant to revoke it — so upgrading is strongly
 > recommended for anyone running OPAQUE or the standalone OPRF in production.
 >
@@ -18,6 +18,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > need no code changes; the exceptions are listed under *Breaking changes* below. There is no
 > wire-format change and existing registration records remain valid, with one narrow exception
 > noted under *Upgrade notes*.
+
+### Added
+
+- `allowEphemeralKeys` (Dropwizard) / `hofmann.allow-ephemeral-keys` (Spring Boot), and the
+  removal of committed key fallbacks from the demo and testserver configs. See the ninth
+  high-severity entry below. `make up` generates throwaway keys into a gitignored `.env`.
+- `FixedCapacityRateLimiter`, which pre-allocates its buckets and hashes keys into them, so an
+  attacker-controlled key space cannot exhaust it. It backs the origin limiter, now enabled by
+  default at 600/min — viable because origins are aggregated to an IPv6 /64 rather than keyed on
+  a full address, of which one subscriber line holds 2^64.
+- Optional pinning of the OPAQUE `context`: callers may supply the expected value and have the
+  server's verified against it rather than adopting whatever arrives. `USAGE.md` specifies the
+  context is shared out-of-band, and it is the only deployment-distinguishing value in the
+  preamble when identities are absent.
+
+### Fixed
+
+- A junk recovery bearer token drained the victim's recovery rate limit at
+  `registration/finish`. That path is keyed on the token now, so guesses burn the attacker's own
+  budget. `recovery/start` and `recovery/verify` still key on the credential identifier, so a
+  targeted lockout of those two remains possible — see known limitations.
+- `recoveryVerify`'s constant-time floor held a request thread for 250 ms with no ceiling on
+  concurrency, so a few hundred sources — well under one IPv6 /64 — could exhaust the servlet
+  pool and take down the whole application, not just recovery. Concurrency is capped, with excess
+  refused rather than queued.
+- `OpaqueHttpClient`'s constructor defaulted to `identityKsf`, so hand-constructing it silently
+  disabled password stretching. It requires an explicit KSF now.
 
 ### Security
 
@@ -88,6 +115,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Spring Boot rewrote every error status to 401.** The ERROR dispatch was not permitted, so
   400, 429 and 503 all reached clients as "unauthorized" — a throttled client would re-prompt for
   a password instead of backing off.
+- **Key material was generated at startup when unset, behind only a warning.** `jwtSecretHex`,
+  `serverKeySeedHex` and `oprfSeedHex` each fell back to a freshly generated value, while
+  `oprfMasterKeyHex` and `allowIdentityKsf` failed startup outright — the same class of
+  misconfiguration treated two ways. The generated key is random per process, so this was never
+  a key-disclosure risk in library code; the failure is availability and consistency, surfacing
+  as intermittent authentication failures long after deployment. Where it did bite is deployment:
+  the demo and testserver configs shipped working `${VAR:-<committed>}` fallbacks — including a
+  real HMAC signing key — and both Dockerfiles copy those files into the published images, so an
+  operator running an image without the environment variables set inherited a key that is public
+  in git history. Both halves are fixed together, because emptying the defaults alone would have
+  traded a known key for a silently random one.
 - **The release pipeline ran unpinned third-party actions alongside the signing key.** Both
   release workflows imported the GPG key and wrote the passphrase to disk, then ran actions
   referenced by mutable tags in the same job. All actions are now pinned by commit SHA, signing
@@ -149,28 +187,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Recorded in `TODO.md` rather than left implied:
 
-- **One P1 finding from the review is NOT fixed in this release.** Unset `jwtSecretHex`,
-  `serverKeySeedHex` and `oprfSeedHex` still generate random key material with only a warning,
-  rather than failing startup behind an explicit opt-in the way `oprfMasterKeyHex` and
-  `allowIdentityKsf` already do. The generated key is random per process, so there is no
-  hardcoded secret in the library and no token-forgery vulnerability in library code — the
-  failure is availability and consistency: nodes disagree about signing keys and every restart
-  invalidates all accounts. Where it does bite is deployment, because
-  `hofmann-demo/server/config.yml` and `hofmann-testserver/config/config.yml` ship working
-  `${VAR:-<committed-value>}` fallbacks that both Dockerfiles copy into the image, so an
-  operator running the published image without the environment variables set gets a publicly
-  known HMAC signing key. Both halves need to change together: emptying the demo defaults alone
-  would trade a known key for a silently random one.
-
-- The rate-limiter flood is only half-closed. Reclaim-before-deny converts a persistent outage
-  into a self-healing one, but an attacker who keeps 50,000 keys warm inside the stale window
-  sustains the outage at roughly 167 req/s. Bounding the key space is the real fix.
-- Identifier squatting on `registration/finish` is not fixed and is not meaningfully mitigated by
-  rate limiting — the limiter is per identifier, and squatting an unused one costs a single
-  token. Proof of identifier ownership belongs at the deployment layer.
-- `recoveryVerify`'s 250 ms constant-time floor still amplifies across origins.
-- The OPAQUE `context` string is still taken from the server, although `USAGE.md` specifies it
-  should be shared out-of-band.
+- Rate limiting bounds memory, not throughput. The limiter in front of the unauthenticated
+  endpoints can no longer be exhausted by varying the key — it pre-allocates its buckets — but an
+  attacker sending enough traffic to drain every slot still denies service, as they would against
+  any per-key limit.
+- **Identifier squatting is bounded but not eliminated.** The origin limiter caps the rate at
+  which a single source can claim unregistered identifiers; nothing stops a distributed attacker
+  claiming them slowly. Eliminating it requires proof of identifier ownership — email or SMS
+  confirmation before a registration is honoured — which belongs to the deployment, not the
+  library.
+- The OPAQUE `context` is verified against a locally supplied value only when the caller opts in
+  by passing one. Requiring it would break every existing caller, so the default still accepts the
+  server's value.
+- Rate-limit slots are shared: distinct keys can hash to the same bucket and therefore share a
+  budget. The per-process seed is folded through the key's characters, so collisions cannot be
+  solved for offline, but per-key accounting is approximate rather than exact.
+- **An unauthenticated caller can still lock a victim out of account recovery.**
+  `recovery/start` and `recovery/verify` bound guessing per account, so a handful of requests
+  naming a victim spend that victim's budget. The origin limiter bounds the rate per source and
+  the limiter can no longer be exhausted, but a targeted lockout is cheap. Closing it needs
+  something an attacker cannot supply on the victim's behalf — proof-of-work, or the email round
+  trip that recovery ownership rests on anyway.
 
 ## [3.0.0] - 2026-08-04
 

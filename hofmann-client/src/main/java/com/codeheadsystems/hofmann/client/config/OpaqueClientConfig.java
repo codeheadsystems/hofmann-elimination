@@ -171,6 +171,40 @@ public record OpaqueClientConfig(OpaqueConfig opaqueConfig) {
    */
   public static OpaqueClientConfig fromServerConfig(OpaqueClientConfigResponse cfg,
                                                     boolean allowWeakKsf) {
+    return fromServerConfig(cfg, allowWeakKsf, null);
+  }
+
+  /**
+   * Variant that additionally verifies the server's {@code context} against a locally configured
+   * value rather than adopting whatever the server sends.
+   * <p>
+   * USAGE.md specifies that {@code context} is shared out-of-band and must be unique per
+   * deployment: it is the binding that stops a transcript from one deployment being replayed
+   * against another. Both clients nonetheless read it from {@code GET /opaque/config} — the same
+   * channel an attacker in the middle controls — so the anti-replay binding was being negotiated
+   * with the party it exists to bind. That matters more than it looks: the client manager passes
+   * null for both identities, so {@code context} is the only deployment-distinguishing value in
+   * the preamble.
+   * <p>
+   * Pass the expected context to pin it. A mismatch fails loudly instead of silently producing a
+   * transcript bound to someone else's deployment. Pass null to keep the previous behaviour.
+   *
+   * @param cfg             the server config response
+   * @param allowWeakKsf    true to accept the identity KSF and below-floor parameters
+   * @param expectedContext the locally configured context, or null to accept the server's
+   * @return the opaque client config
+   * @throws IllegalStateException if the server's context does not match the expected value
+   */
+  public static OpaqueClientConfig fromServerConfig(OpaqueClientConfigResponse cfg,
+                                                    boolean allowWeakKsf,
+                                                    String expectedContext) {
+    if (expectedContext != null && !expectedContext.equals(cfg.context())) {
+      throw new IllegalStateException(String.format(
+          "Server context \"%s\" does not match the expected \"%s\". The context is the binding "
+              + "that prevents a transcript from one deployment being replayed against another, "
+              + "so it must be shared out-of-band rather than taken from the server.",
+          cfg.context(), expectedContext));
+    }
     if (!allowWeakKsf) {
       if (cfg.argon2MemoryKib() == 0) {
         throw new IllegalStateException(

@@ -84,6 +84,22 @@ public class HofmannOpaqueServerManager {
    */
   private static final long REGISTRATION_FINISH_MIN_NANOS = 25L * 1_000_000L; // 25 ms
 
+  /**
+   * Ceiling on requests simultaneously parked inside {@link #recoveryVerify}'s constant-time
+   * floor.
+   * <p>
+   * The floor holds a request thread for 250 ms, and the per-origin limiter bounds that only per
+   * origin: it composes linearly, so a few hundred sources — one IPv6 /64 is far more than that —
+   * park enough threads to exhaust a default servlet pool and take the whole application down,
+   * not just recovery. This caps the blast radius at a fixed number of threads regardless of how
+   * many origins participate. Requests beyond it are rejected immediately rather than queued,
+   * because queueing would hold the very resource being protected.
+   */
+  private static final int MAX_CONCURRENT_RECOVERY_VERIFY = 16;
+
+  private final java.util.concurrent.Semaphore recoveryVerifySlots =
+      new java.util.concurrent.Semaphore(MAX_CONCURRENT_RECOVERY_VERIFY);
+
   private final Supplier<OpaqueServerKeyDetail> keyDetailSupplier;
   private final CredentialStore credentialStore;
   private final JwtManager jwtManager;
@@ -318,8 +334,19 @@ public class HofmannOpaqueServerManager {
       // tokens from this bucket (recoveryStart + recoveryVerify + registrationFinish), which the
       // default capacity (maxTokens=6) accommodates with retry headroom; size the recovery limit
       // accordingly if you tune it.
-      if (recoveryRateLimiter != null
-          && !recoveryRateLimiter.tryConsume(req.credentialIdentifierBase64())) {
+      // Keyed on the TOKEN, not on the credential identifier, so a junk token presented HERE no
+      // longer spends the victim's recovery budget.
+      //
+      // Scope, because this is narrower than it looks: recoveryStart and recoveryVerify still key
+      // on the credential identifier, and both are unauthenticated, so six requests naming a
+      // victim still lock them out of those two endpoints for around a minute. That is inherent
+      // to rate-limiting an account-scoped operation on behalf of an unauthenticated caller —
+      // there is nothing else to key on before a token exists — and the origin limiter bounds how
+      // fast one source can do it. Recorded as open in TODO.md rather than described as fixed.
+      //
+      // Note this key space is attacker-chosen, so the limiter backing it must be one that cannot
+      // be exhausted; see the FixedCapacityRateLimiter wiring in both framework integrations.
+      if (recoveryRateLimiter != null && !recoveryRateLimiter.tryConsume("token:" + bearerToken)) {
         throw new RateLimitExceededException();
       }
       // Validate the uploaded record here: after the limiter, so the work is throttled, but
@@ -552,6 +579,14 @@ public class HofmannOpaqueServerManager {
     // failure path) bounds the observable timing to its jitter. Implementations should still
     // use constant-time comparison; if a challenger's verification can exceed the floor for
     // existing accounts, raise RECOVERY_VERIFY_MIN_NANOS accordingly.
+    // Refuse rather than queue when too many requests are already inside the floor: queueing
+    // would consume the request threads this exists to protect.
+    if (!recoveryVerifySlots.tryAcquire()) {
+      log.warn("recoveryVerify at its concurrency ceiling ({}); rejecting. Sustained occurrences "
+          + "indicate an attempt to exhaust request threads via the constant-time floor.",
+          MAX_CONCURRENT_RECOVERY_VERIFY);
+      throw new RateLimitExceededException();
+    }
     final long deadlineNanos = System.nanoTime() + RECOVERY_VERIFY_MIN_NANOS;
     try {
       if (!recoveryChallenger.verifyResponse(
@@ -562,7 +597,11 @@ public class HofmannOpaqueServerManager {
       recoveryTokenStore.store(token, req.credentialIdentifierBase64());
       return new RecoveryVerifyResponse(token);
     } finally {
-      sleepUntil(deadlineNanos);
+      try {
+        sleepUntil(deadlineNanos);
+      } finally {
+        recoveryVerifySlots.release();
+      }
     }
   }
 
