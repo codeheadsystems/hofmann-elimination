@@ -548,6 +548,15 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
               + "Alternatively, supply a custom Supplier<ServerProcessorDetail> to the HofmannBundle constructor.");
     }
     BigInteger masterKey = new BigInteger(masterKeyHex, 16);
+    // Fail at startup rather than silently running with an unusable key: a key congruent to
+    // zero modulo the group order makes every OPRF evaluation return the identity element, and
+    // on ristretto255 that decodes cleanly, so the deployment would look healthy while having
+    // no effective key at all. Normalizing also folds a key at or above the order into range —
+    // the documented `openssl rand -hex 32` exceeds ristretto255's order about 94% of the time
+    // — so two configs differing by a multiple of the order stop looking like distinct keys.
+    // This changes no output: scalar multiplication reduces modulo the order regardless.
+    masterKey = OprfCipherSuite.builder().withSuite(configuration.getOprfCipherSuite()).build()
+        .normalizeSecretKey(masterKey);
     String processorId = configuration.getOprfProcessorId();
     ServerProcessorDetail detail = new ServerProcessorDetail(masterKey, processorId);
     return () -> detail;

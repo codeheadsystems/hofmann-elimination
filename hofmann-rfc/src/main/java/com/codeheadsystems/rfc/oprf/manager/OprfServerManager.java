@@ -8,12 +8,17 @@ import com.codeheadsystems.rfc.oprf.model.ServerProcessorDetail;
 import com.codeheadsystems.rfc.oprf.rfc9497.OprfCipherSuite;
 import java.util.function.Supplier;
 import org.bouncycastle.util.encoders.Hex;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The type Oprf server manager.
  */
 public class OprfServerManager {
 
+  private static final Logger log = LoggerFactory.getLogger(OprfServerManager.class);
+
+  private final OprfCipherSuite suite;
   private final GroupSpec groupSpec;
   private final Supplier<ServerProcessorDetail> supplier;
 
@@ -24,6 +29,7 @@ public class OprfServerManager {
    * @param serverProcessorDetailSupplier the server processor detail supplier
    */
   public OprfServerManager(OprfCipherSuite suite, Supplier<ServerProcessorDetail> serverProcessorDetailSupplier) {
+    this.suite = suite;
     this.groupSpec = suite.groupSpec();
     this.supplier = serverProcessorDetailSupplier;
   }
@@ -47,8 +53,34 @@ public class OprfServerManager {
     if (ByteUtils.isAllZero(q)) {
       throw new IllegalArgumentException("Blinded element is the identity element");
     }
-    byte[] result = groupSpec.scalarMultiply(supplier.get().masterKey(), q);
-    return new EvaluatedResponse(Hex.toHexString(result), supplier.get().processorIdentifier());
+    // Snapshot the detail once. The supplier is documented as a rotation seam, so calling it
+    // twice can straddle a key swap and label a hash computed with key A as key B — a stored
+    // value that can then never be recomputed or verified.
+    final ServerProcessorDetail detail = supplier.get();
+    // Re-checked per request rather than only at construction, because a rotating supplier can
+    // introduce a key the startup validation never saw. Costs one BigInteger mod — under 0.04%
+    // of the scalar multiplication that follows, and on ristretto255 it repeats a reduction
+    // scalarMul performs anyway.
+    //
+    // Rethrown as IllegalStateException deliberately. validateSecretKey signals a bad *value*
+    // with IllegalArgumentException, which is right at configuration time, but both HTTP
+    // adapters catch IllegalArgumentException on this path and turn it into
+    // 400 "Invalid EC point data" — blaming the caller for a server misconfiguration and
+    // discarding the message. A key that has gone bad under rotation would then produce a
+    // healthy-looking server rejecting every client, which is the exact failure mode this
+    // check exists to surface. IllegalStateException reaches the adapters unhandled and
+    // becomes a 5xx, and the ERROR log carries the real reason.
+    try {
+      suite.validateSecretKey(detail.masterKey());
+    } catch (IllegalArgumentException e) {
+      log.error("OPRF server key is unusable for processor '{}': {}. Every evaluation would "
+              + "return the identity element. Check the configured oprfMasterKeyHex, or the "
+              + "supplier if key rotation is in use.",
+          detail.processorIdentifier(), e.getMessage());
+      throw new IllegalStateException("OPRF server key is misconfigured", e);
+    }
+    byte[] result = groupSpec.scalarMultiply(detail.masterKey(), q);
+    return new EvaluatedResponse(Hex.toHexString(result), detail.processorIdentifier());
   }
 
 }
