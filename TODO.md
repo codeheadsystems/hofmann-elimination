@@ -1,5 +1,9 @@
 # Security TODO
 
+**Status: all P0 and P1 items are fixed on branch `3.1`.** Completed entries are retained with
+their commit hashes because each records a reproduction worth not losing. What remains below is
+P2 and lower, plus items surfaced by verifying the fixes themselves.
+
 Open items from the security review of **August 2026** (six-reviewer fan-out across
 `hofmann-rfc`, `hofmann-server`, `hofmann-client`, both framework integrations, and the
 Rust/TypeScript ports).
@@ -76,17 +80,18 @@ for the full analysis and the reproduction each was verified against.
       unchanged by `e63db78`, which only touched the else branch — but it denies recovery on
       the endpoint whose whole purpose is recovering a squatted or lost account.
 
-- [ ] **Validate uploaded `RegistrationRecord` fields before storing** — [reproduced]
-      `RegistrationFinishRequest.registrationRecord()` (`:84-90`) base64-decodes
-      `clientPublicKey`, `maskingKey`, `envelopeNonce`, `authTag` and hands them straight
-      to `credentialStore.store()`. No length check against Npk/Nh/Nn/Nm, and
-      `clientPublicKey` is never round-tripped through point deserialization. A poisoned
-      record makes `/auth/start` throw on an XOR length mismatch (`97 vs 35`) → **400**,
-      while an unknown identifier returns **200 + fake KE2** — a second enumeration oracle
-      and a permanent per-identifier auth DoS. A wrong-length key yields a third
-      distinguishable class (401) one step later.
+- [x] **Validate uploaded `RegistrationRecord` fields before storing** — `55798f2`. Also guarded changePasswordFinish, the third write path, which was missed on the first pass. Failures normalised to 400: which exception the crypto layer raises depends on the suite, not the fault. Tests run all four suites — P-256 hides Nn/Nh/Nm confusion.
 
-- [ ] **Validate the server OPRF key at supplier construction** — [reproduced]
+-->
+-->
+-->
+-->
+-->
+-->
+
+- [x] **Validate the server OPRF key at supplier construction** — `bfae3a2`. Rejects keys congruent to zero mod n. Does NOT reject k >= n: those already work (scalar multiplication reduces anyway) and `openssl rand -hex 32` exceeds ristretto255's order ~94% of the time, so refusing would break live deployments. Normalised instead.
+
+<!--** — [reproduced]
       `HofmannBundle.java:550` / `HofmannAutoConfiguration.java:470` do
       `new BigInteger(masterKeyHex, 16)` with no nonzero check, no `[1, n-1]` range check,
       and no reduction mod n. `oprfMasterKeyHex: "00"` on ristretto255 makes the server
@@ -96,7 +101,9 @@ for the full analysis and the reproduction each was verified against.
       `processorIdentifier`s — a key-rotation footgun — and the raw bit length feeds the
       wNAF window size.
 
-- [ ] **Use a constant-time multiplier for the NIST curves**
+- [x] **Use a constant-time multiplier for the NIST curves** — `df4fd03`. Explicit Montgomery ladder — BouncyCastle 1.85 no longer ships one. Covers scalarMultiplyGenerator too, which carries the client's long-term key. Hamming-weight signal 17-19% -> noise; bit-length signal closed by a fixed-width rescale.
+
+<!--**
       `WeierstrassGroupSpecImpl.scalarMultiply:102` calls BouncyCastle `ECPoint.multiply`,
       which resolves to `WNafL2RMultiplier` for the NIST prime curves — confirmed by
       reflection on the live curve object, with a measured ~12% Hamming-weight signal at
@@ -113,7 +120,9 @@ for the full analysis and the reproduction each was verified against.
       never addressed. Fix via `curve.configure().setMultiplier(...)`, or document the
       suite choice as having a side-channel consequence.
 
-- [ ] **Stop keying rate limits and DoS-sensitive stores on attacker-chosen values**
+- [x] **Stop keying rate limits and DoS-sensitive stores on attacker-chosen values** — `049bbca`. PARTIAL — see the new item below. Reclaim-before-deny converts a persistent outage into a self-healing one but does not stop a live adversary. Fixed a null-keying bug that made both the OPAQUE and the pre-existing OPRF limiter global.
+
+<!--**
       `InMemoryRateLimiter:49-58` denies any non-resident key once `maxEntries` (50,000) is
       reached, and the key is entirely client-supplied. ~200 req/s of random identifiers
       sustains a **total login outage** indefinitely. Separately,
@@ -129,7 +138,9 @@ for the full analysis and the reproduction each was verified against.
       when explicitly trusted, right-most entry) — adopt that pattern on the OPAQUE
       endpoints, or add an outer IP-keyed limiter.
 
-- [ ] **Scope the Spring Boot security filter chain**
+- [x] **Scope the Spring Boot security filter chain** — `45ff4ca`. Made conditional rather than scoped: scoping would stop the JWT filter authenticating the consumer's endpoints, which is the library's purpose.
+
+<!--**
       `HofmannSecurityConfig.securityFilterChain` (`:44-65`) has no `securityMatcher`, no
       `@Order`, and no `@ConditionalOnMissingBean`. It matches **every URL in the host
       application** and globally disables CSRF, forces `STATELESS`, replaces the CORS
@@ -141,7 +152,9 @@ for the full analysis and the reproduction each was verified against.
       Add `http.securityMatcher("/opaque/**", "/oprf/**")`, an explicit `@Order`, and
       `@ConditionalOnMissingBean`.
 
-- [ ] **Register the Spring components from the auto-configuration**
+- [x] **Register the Spring components from the auto-configuration** — `45ff4ca`. Also fixed the CORS bean, which @Import made universally present and which crashed any consumer following the documented override.
+
+<!--**
       `META-INF/spring/...AutoConfiguration.imports` lists only `HofmannAutoConfiguration`,
       which carries no `@Import` or `@ComponentScan`. `OpaqueController`, `OprfController`,
       `HofmannSecurityConfig`, and `OpaqueServerHealthIndicator` load **only** if the
@@ -174,7 +187,9 @@ for the full analysis and the reproduction each was verified against.
       silently random one. Add an explicit `allowEphemeralKeys` / `devMode` flag mirroring
       `allowIdentityKsf`.
 
-- [ ] **Harden the release pipeline** — `release.yml:41,105` and
+- [x] **Harden the release pipeline** — `6e01e27`. All actions pinned by SHA at their existing major versions, signing material scrubbed after publish, manual release gated on main-ancestry.
+
+<!--** — `release.yml:41,105` and
       `manual-release.yml:74,138` run unpinned third-party actions
       (`gradle/actions/setup-gradle@v3`, `softprops/action-gh-release@v2`) in the **same
       job** that imports the GPG private key (`release.yml:61`) and writes
@@ -185,6 +200,35 @@ for the full analysis and the reproduction each was verified against.
       same practice here. Separately, `manual-release.yml:4` is `workflow_dispatch` with no
       branch restriction and publishes from the dispatch ref, so arbitrary unreviewed code
       can ship to Maven Central; gate on `main` ancestry.
+
+- [ ] **Bound the rate limiter's key space — the flood is only half-fixed** (from `049bbca`)
+      Reclaim-before-deny converts a persistent outage into a self-healing one, but an attacker
+      who touches each of 50,000 keys once every four minutes keeps them inside the five-minute
+      stale window, so the reclaim finds nothing and the outage holds at ~167 req/s indefinitely.
+      The origin limiter added alongside it is opt-in and does not close this either: its key is
+      a bare address with no prefix aggregation, so 84 addresses — or one IPv6 /64 — sidestep it,
+      and its own bucket map fills the same way, reproducing the outage one layer earlier in
+      front of every endpoint. The real fix is a key space that cannot be filled: aggregate IPv6
+      to /64, and use a fixed-size structure where an unknown key hashes into an existing slot
+      rather than allocating. Keep deny-on-full as the backstop.
+
+- [ ] **`recoveryVerify`'s 250 ms floor still amplifies across origins** (from `049bbca`)
+      Per origin the hold is now bounded, but it composes: ~400 origins × 0.5 threads is enough
+      to exhaust a default Jetty pool, and 400 addresses is one IPv6 /64. Needs async handling or
+      a bounded concurrency semaphore rather than a sleeping request thread.
+
+- [ ] **Pin `context` locally instead of adopting the server's** (deferred from `291cbd4`)
+      `USAGE.md` says context must be shared out-of-band as the anti-cross-deployment-replay
+      binding; both clients read it from `GET /opaque/config`. Lower severity than the KSF
+      downgrade — it needs a MITM plus a victim credential on a second deployment — but
+      `HofmannOpaqueClientManager` passes null for both identities, so context is the only
+      deployment-distinguishing value in the preamble. Same shape as the KSF fix: accept a local
+      value and verify the server's matches, rather than adopting it. API break, needs migration.
+
+- [ ] **`OpaqueHttpClient`'s constructor still defaults to `identityKsf`** (deferred from `291cbd4`)
+      No longer reachable from server-controlled data — the strict `create()` path has no branch
+      to it — so this is a footgun for a caller who hand-constructs the class, not a
+      vulnerability. Making `ksf` required is an API break; revisit in 4.0.
 
 ---
 
