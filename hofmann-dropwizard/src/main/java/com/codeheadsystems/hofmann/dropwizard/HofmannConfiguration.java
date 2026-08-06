@@ -135,6 +135,23 @@ public class HofmannConfiguration extends Configuration {
   private boolean allowIdentityKsf = false;
 
   /**
+   * Whether the server may generate ephemeral key material at startup when
+   * {@code jwtSecretHex}, {@code serverKeySeedHex} or {@code oprfSeedHex} is unset.
+   * <p>
+   * Defaults to {@code false}, so a deployment missing any of them fails to start rather than
+   * silently generating a fresh key per process. Generated keys are random, so this is not a
+   * key-disclosure risk — the failure is availability and consistency: every node signs with a
+   * different key, tokens minted on one are rejected by another, credentials registered against
+   * one cannot authenticate against another, and a restart invalidates every account. Those
+   * symptoms surface as intermittent authentication failures long after the deployment, which is
+   * a poor trade for a warning line in a startup log.
+   * <p>
+   * Set to {@code true} for local development and tests, where losing all state on restart is
+   * the intended behaviour.
+   */
+  private boolean allowEphemeralKeys = false;
+
+  /**
    * Allowed CORS origins.  When empty (the default), no CORS headers are added and
    * all cross-origin requests are blocked by the browser's same-origin policy.
    * Set to specific origins (e.g. {@code ["https://app.example.com"]}) to allow
@@ -527,6 +544,26 @@ public class HofmannConfiguration extends Configuration {
   @JsonProperty
   public boolean isAllowIdentityKsf() {
     return allowIdentityKsf;
+  }
+
+  /**
+   * Whether ephemeral key generation is permitted when key material is unset.
+   *
+   * @return true if ephemeral keys are allowed
+   */
+  @JsonProperty
+  public boolean isAllowEphemeralKeys() {
+    return allowEphemeralKeys;
+  }
+
+  /**
+   * Sets whether ephemeral key generation is permitted.
+   *
+   * @param allowEphemeralKeys the flag
+   */
+  @JsonProperty
+  public void setAllowEphemeralKeys(boolean allowEphemeralKeys) {
+    this.allowEphemeralKeys = allowEphemeralKeys;
   }
 
   /**

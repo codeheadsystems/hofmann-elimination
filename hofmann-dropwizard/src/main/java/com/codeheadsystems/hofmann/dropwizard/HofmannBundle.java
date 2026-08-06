@@ -419,8 +419,12 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
       String secretHex = configuration.getJwtSecretHex();
       byte[] secret;
       if (secretHex == null || secretHex.isEmpty()) {
-        log.warn("No JWT secret configured — generating randomly. "
-            + "Tokens will be invalidated on restart. Do not use in production.");
+        requireEphemeralKeysAllowed(configuration, "jwtSecretHex",
+            "tokens minted by one node will be rejected by every other, and a restart "
+                + "invalidates every session");
+        log.warn("No JWT secret configured — generating an ephemeral one because "
+            + "allowEphemeralKeys is set. Tokens will be invalidated on restart. "
+            + "Do not use in production.");
         secret = new byte[32];
         secureRandom.nextBytes(secret);
       } else {
@@ -504,6 +508,24 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
         configuration.getArgon2Parallelism());
   }
 
+  /**
+   * Refuses to start when key material is missing, unless the deployment has explicitly opted in
+   * to ephemeral keys.
+   * <p>
+   * Mirrors the treatment {@code oprfMasterKeyHex} and {@code allowIdentityKsf} already receive.
+   * The generated key is random per process, so this is not a key-disclosure risk — the failure
+   * is availability and consistency, and it surfaces as intermittent authentication failures well
+   * after deployment rather than at the point of the mistake.
+   */
+  private void requireEphemeralKeysAllowed(C configuration, String setting, String consequence) {
+    if (!configuration.isAllowEphemeralKeys()) {
+      throw new IllegalStateException(
+          setting + " is not configured. Generating key material at startup means " + consequence
+              + ". Configure it (openssl rand -hex 32), or set allowEphemeralKeys: true to accept "
+              + "ephemeral keys — appropriate for local development, not for production.");
+    }
+  }
+
   private Server buildServer(C configuration, OpaqueConfig opaqueConfig) {
     String keySeedHex = configuration.getServerKeySeedHex();
     String oprfSeedHex = configuration.getOprfSeedHex();
@@ -512,8 +534,12 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     boolean hasOprfSeed = oprfSeedHex != null && !oprfSeedHex.isEmpty();
 
     if (!hasKeySeed && !hasOprfSeed) {
-      log.warn("No server key seed or OPRF seed configured — generating randomly. "
-          + "All registrations will be invalidated on restart. Do not use in production.");
+      requireEphemeralKeysAllowed(configuration, "serverKeySeedHex and oprfSeedHex",
+          "credentials registered against one node cannot authenticate against another, and a "
+              + "restart invalidates every registration");
+      log.warn("No server key seed or OPRF seed configured — generating ephemeral ones because "
+          + "allowEphemeralKeys is set. All registrations will be invalidated on restart. "
+          + "Do not use in production.");
       return Server.generate(opaqueConfig);
     }
 

@@ -8,7 +8,8 @@ services:
     image: hofmann-demo-server:latest
     environment:
       # Each variable is only forwarded to the container when it is set in the
-      # host environment; if unset, config.yml defaults are used instead.
+      # host environment. There are no committed fallbacks: if unset, the server refuses
+      # to start unless allowEphemeralKeys is enabled in config.yml.
       #
       # Set any of these to override the default stable test keys:
       #   export SERVER_KEY_SEED_HEX=$(openssl rand -hex 32)

@@ -2,6 +2,8 @@ hofmann:
   context: "hofmann-test"
   argon2-memory-kib: 0
   allow-identity-ksf: true
+  # Tests intentionally run with generated key material; state is not meant to survive.
+  allow-ephemeral-keys: true
   server-key-seed-hex: ""
   oprf-seed-hex: ""
   # Fixed test-only OPRF master key — do not use in production.

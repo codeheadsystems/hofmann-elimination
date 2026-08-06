@@ -153,8 +153,12 @@ public class HofmannAutoConfiguration {
     boolean hasOprfSeed = oprfSeedHex != null && !oprfSeedHex.isEmpty();
 
     if (!hasKeySeed && !hasOprfSeed) {
-      log.warn("No server key seed or OPRF seed configured — generating randomly. "
-          + "All registrations will be invalidated on restart. Do not use in production.");
+      requireEphemeralKeysAllowed(props, "server-key-seed-hex and oprf-seed-hex",
+          "credentials registered against one node cannot authenticate against another, and a "
+              + "restart invalidates every registration");
+      log.warn("No server key seed or OPRF seed configured — generating ephemeral ones because "
+          + "allow-ephemeral-keys is set. All registrations will be invalidated on restart. "
+          + "Do not use in production.");
       return Server.generate(opaqueConfig);
     }
 
@@ -250,8 +254,12 @@ public class HofmannAutoConfiguration {
     String secretHex = props.getJwtSecretHex();
     byte[] secret;
     if (secretHex == null || secretHex.isEmpty()) {
-      log.warn("No JWT secret configured — generating randomly. "
-          + "Tokens will be invalidated on restart. Do not use in production.");
+      requireEphemeralKeysAllowed(props, "jwt-secret-hex",
+          "tokens minted by one node will be rejected by every other, and a restart invalidates "
+              + "every session");
+      log.warn("No JWT secret configured — generating an ephemeral one because "
+          + "allow-ephemeral-keys is set. Tokens will be invalidated on restart. "
+          + "Do not use in production.");
       secret = new byte[32];
       secureRandom.nextBytes(secret);
     } else {
@@ -488,6 +496,22 @@ public class HofmannAutoConfiguration {
     // Null means origin-based limiting is disabled, which is the default. A no-op limiter is
     // returned rather than a null bean so the controller's constructor injection stays simple.
     return config == null ? key -> true : new InMemoryRateLimiter(config);
+  }
+
+  /**
+   * Refuses to start when key material is missing, unless the deployment has explicitly opted in
+   * to ephemeral keys. Mirrors the treatment {@code oprfMasterKeyHex} and {@code allowIdentityKsf}
+   * already receive.
+   */
+  private void requireEphemeralKeysAllowed(HofmannProperties props, String setting,
+                                           String consequence) {
+    if (!props.isAllowEphemeralKeys()) {
+      throw new IllegalStateException(
+          "hofmann." + setting + " is not configured. Generating key material at startup means "
+              + consequence + ". Configure it (openssl rand -hex 32), or set "
+              + "hofmann.allow-ephemeral-keys=true to accept ephemeral keys — appropriate for "
+              + "local development, not for production.");
+    }
   }
 
   @Bean

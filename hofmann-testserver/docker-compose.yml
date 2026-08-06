@@ -10,7 +10,8 @@ services:
       - "${HOFMANN_ADMIN_PORT:-8081}:8081"
     environment:
       # Each variable is only forwarded to the container when it is set in the
-      # host environment; if unset, the config.yml default is used instead,
+      # host environment. There are no committed fallbacks: if unset, the server refuses
+      # to start unless allowEphemeralKeys is enabled in config.yml,
       # giving a consistent local-development experience out of the box.
       #
       # Set any of these to override the default stable test keys:
