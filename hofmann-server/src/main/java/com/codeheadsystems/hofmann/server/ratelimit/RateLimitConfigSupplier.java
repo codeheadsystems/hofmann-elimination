@@ -43,8 +43,15 @@ public interface RateLimitConfigSupplier {
    * @return the origin rate limit config, or null to disable origin-based limiting
    */
   default RateLimitConfig originRateLimitConfig() {
-    return null;
+    // Two tokens per login, so 600/min is 300 logins a minute from one origin. Sized to stay out
+    // of the way of a corporate NAT or mobile CGNAT while still bounding a single source, now
+    // that the key is aggregated to an IPv6 /64 rather than a bare address — a /64 is one
+    // subscriber line, and keying on the full address let a single host mint 2^64 distinct keys.
+    // maxEntries is unused: the origin limiter is backed by a fixed-capacity structure that
+    // cannot be filled.
+    return new RateLimitConfig(600, 600.0 / 60, 0);
   }
+
 
   class DefaultRateLimitConfigSupplier implements RateLimitConfigSupplier {
 

@@ -9,6 +9,7 @@ import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
 import com.codeheadsystems.hofmann.server.manager.JwtKeyDetail;
 import com.codeheadsystems.hofmann.server.manager.JwtManager;
 import com.codeheadsystems.hofmann.server.manager.OpaqueServerKeyDetail;
+import com.codeheadsystems.hofmann.server.ratelimit.FixedCapacityRateLimiter;
 import com.codeheadsystems.hofmann.server.ratelimit.InMemoryRateLimiter;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfigSupplier;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfig;
@@ -304,8 +305,12 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     // only dimension that bounds a flood of distinct identifiers, and therefore the only thing
     // standing between that flood and exhaustion of the bucket map and pending-session store.
     RateLimitConfig originConfig = rateLimitConfigSupplier.originRateLimitConfig();
+    // Deliberately NOT rateLimiterFunction: that builds the map-backed limiter, whose capacity an
+    // attacker can exhaust by varying the key — which is exactly what this limiter is defending
+    // against, so using it here would put a second copy of the vulnerability in front of every
+    // endpoint. FixedCapacityRateLimiter pre-allocates and cannot be filled.
     RateLimiter opaqueOriginRateLimiter =
-        originConfig == null ? null : rateLimiterFunction.apply(originConfig);
+        originConfig == null ? null : new FixedCapacityRateLimiter(originConfig);
     environment.jersey().register(new OpaqueResource(hofmannOpaqueServerManager, opaqueClientConfig,
         opaqueOriginRateLimiter, configuration.isTrustForwardedHeaders()));
     environment.healthChecks().register("opaque-server", new OpaqueServerHealthCheck(server));

@@ -84,6 +84,22 @@ public class HofmannOpaqueServerManager {
    */
   private static final long REGISTRATION_FINISH_MIN_NANOS = 25L * 1_000_000L; // 25 ms
 
+  /**
+   * Ceiling on requests simultaneously parked inside {@link #recoveryVerify}'s constant-time
+   * floor.
+   * <p>
+   * The floor holds a request thread for 250 ms, and the per-origin limiter bounds that only per
+   * origin: it composes linearly, so a few hundred sources — one IPv6 /64 is far more than that —
+   * park enough threads to exhaust a default servlet pool and take the whole application down,
+   * not just recovery. This caps the blast radius at a fixed number of threads regardless of how
+   * many origins participate. Requests beyond it are rejected immediately rather than queued,
+   * because queueing would hold the very resource being protected.
+   */
+  private static final int MAX_CONCURRENT_RECOVERY_VERIFY = 16;
+
+  private final java.util.concurrent.Semaphore recoveryVerifySlots =
+      new java.util.concurrent.Semaphore(MAX_CONCURRENT_RECOVERY_VERIFY);
+
   private final Supplier<OpaqueServerKeyDetail> keyDetailSupplier;
   private final CredentialStore credentialStore;
   private final JwtManager jwtManager;
@@ -318,8 +334,13 @@ public class HofmannOpaqueServerManager {
       // tokens from this bucket (recoveryStart + recoveryVerify + registrationFinish), which the
       // default capacity (maxTokens=6) accommodates with retry headroom; size the recovery limit
       // accordingly if you tune it.
-      if (recoveryRateLimiter != null
-          && !recoveryRateLimiter.tryConsume(req.credentialIdentifierBase64())) {
+      // Keyed on the TOKEN, not on the credential identifier. Keying it on the identifier let
+      // anyone drain a victim's recovery budget with six unauthenticated requests carrying
+      // garbage tokens, locking them out of recoveryStart and recoveryVerify for a minute at a
+      // time — on the endpoint whose whole purpose is rescuing an account they have lost access
+      // to. An attacker guessing tokens now burns a bucket belonging to their own guesses.
+      // Token-guessing is still bounded, because a guess must be presented to be checked.
+      if (recoveryRateLimiter != null && !recoveryRateLimiter.tryConsume("token:" + bearerToken)) {
         throw new RateLimitExceededException();
       }
       // Validate the uploaded record here: after the limiter, so the work is throttled, but
@@ -552,6 +573,14 @@ public class HofmannOpaqueServerManager {
     // failure path) bounds the observable timing to its jitter. Implementations should still
     // use constant-time comparison; if a challenger's verification can exceed the floor for
     // existing accounts, raise RECOVERY_VERIFY_MIN_NANOS accordingly.
+    // Refuse rather than queue when too many requests are already inside the floor: queueing
+    // would consume the request threads this exists to protect.
+    if (!recoveryVerifySlots.tryAcquire()) {
+      log.warn("recoveryVerify at its concurrency ceiling ({}); rejecting. Sustained occurrences "
+          + "indicate an attempt to exhaust request threads via the constant-time floor.",
+          MAX_CONCURRENT_RECOVERY_VERIFY);
+      throw new RateLimitExceededException();
+    }
     final long deadlineNanos = System.nanoTime() + RECOVERY_VERIFY_MIN_NANOS;
     try {
       if (!recoveryChallenger.verifyResponse(
@@ -562,7 +591,11 @@ public class HofmannOpaqueServerManager {
       recoveryTokenStore.store(token, req.credentialIdentifierBase64());
       return new RecoveryVerifyResponse(token);
     } finally {
-      sleepUntil(deadlineNanos);
+      try {
+        sleepUntil(deadlineNanos);
+      } finally {
+        recoveryVerifySlots.release();
+      }
     }
   }
 

@@ -39,11 +39,11 @@ public final class ClientIpResolver {
     if (trustForwardedHeader) {
       String forwarded = rightmostForwardedFor(forwardedForHeader);
       if (forwarded != null) {
-        return forwarded;
+        return aggregate(forwarded);
       }
     }
     if (remoteAddress != null && !remoteAddress.isBlank()) {
-      return remoteAddress;
+      return aggregate(remoteAddress);
     }
     // Never fall back to the spoofable header here.
     return UNKNOWN;
@@ -61,6 +61,55 @@ public final class ClientIpResolver {
    * @param header the raw header value, or null
    * @return the right-most entry, or null
    */
+  /**
+   * Collapses an address to the smallest unit an operator is plausibly allocated.
+   *
+   * <p>IPv6 is aggregated to the /64 prefix. A single IPv6 /64 — the standard allocation for one
+   * subscriber line — contains 2^64 addresses, so keying on the full address lets one host mint
+   * an unbounded number of distinct rate-limit keys. That defeats the limiter and, on a
+   * map-backed one, fills it. IPv4 is returned unchanged: addresses there are scarce enough that
+   * a single one is a meaningful unit, and aggregating to a /24 would lump unrelated networks
+   * together.
+   *
+   * @param address a client address, or a value from a trusted proxy header
+   * @return the aggregated key
+   */
+  static String aggregate(final String address) {
+    String candidate = address.trim();
+    // Strip a bracketed form and any port: [2001:db8::1]:443
+    if (candidate.startsWith("[")) {
+      int close = candidate.indexOf(']');
+      if (close > 0) {
+        candidate = candidate.substring(1, close);
+      }
+    }
+    if (candidate.indexOf(':') < 0) {
+      return candidate; // IPv4, or a hostname — leave alone
+    }
+    // Zone index (fe80::1%eth0) is host-local and not part of the identity.
+    int zone = candidate.indexOf('%');
+    if (zone > 0) {
+      candidate = candidate.substring(0, zone);
+    }
+    try {
+      byte[] bytes = java.net.InetAddress.getByName(candidate).getAddress();
+      if (bytes.length != 16) {
+        return candidate; // IPv4-mapped or otherwise not a v6 address
+      }
+      StringBuilder prefix = new StringBuilder(20);
+      for (int i = 0; i < 8; i += 2) {
+        if (i > 0) {
+          prefix.append(':');
+        }
+        prefix.append(String.format("%02x%02x", bytes[i], bytes[i + 1]));
+      }
+      return prefix.append("::/64").toString();
+    } catch (java.net.UnknownHostException e) {
+      // Not parseable as an address; use it verbatim rather than inventing a key.
+      return candidate;
+    }
+  }
+
   public static String rightmostForwardedFor(final String header) {
     if (header == null || header.isBlank()) {
       return null;

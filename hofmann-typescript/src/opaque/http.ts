@@ -238,7 +238,18 @@ export class OpaqueHttpClient {
     const suite = options?.suite ?? P256_SHA256;
     this.opaque = new OpaqueClient(suite);
     this.ctx = options?.context ? strToBytes(options.context) : new Uint8Array(0);
-    this.ksf = options?.ksf ?? identityKsf;
+    // No silent default to identityKsf: constructing this class without a KSF meant no password
+    // stretching at all, which reads like a reasonable default and is not one. create() is the
+    // supported entry point and negotiates it; a caller constructing directly must say what they
+    // want, including saying explicitly that they want none.
+    if (options?.ksf === undefined) {
+      throw new Error(
+        'OpaqueHttpClient requires an explicit ksf. Use OpaqueHttpClient.create(), which '
+        + 'negotiates it from the server and enforces a minimum, or pass { ksf: identityKsf } '
+        + 'to opt in to no password stretching.',
+      );
+    }
+    this.ksf = options.ksf;
   }
 
   /**
@@ -261,13 +272,22 @@ export class OpaqueHttpClient {
    */
   static async create(
     baseUrl: string,
-    options?: { allowWeakServerKsf?: boolean },
+    options?: { allowWeakServerKsf?: boolean; expectedContext?: string },
   ): Promise<OpaqueHttpClient> {
     const r = await fetch(`${baseUrl}/opaque/config`);
     if (!r.ok) {
       throw new Error(`Failed to fetch OPAQUE config: ${r.status} ${r.statusText}`);
     }
     const cfg = await r.json() as OpaqueConfigResponseDto;
+    // The context is the binding that stops a transcript from one deployment being replayed
+    // against another, and the docs specify it is shared out-of-band — yet it arrives on the same
+    // channel an attacker in the middle controls. Pin it to verify rather than adopt.
+    if (options?.expectedContext !== undefined && options.expectedContext !== cfg.context) {
+      throw new Error(
+        `Server context "${cfg.context}" does not match the expected "${options.expectedContext}". `
+        + 'The context must be shared out-of-band, not taken from the server.',
+      );
+    }
     const suite = getCipherSuite(cfg.cipherSuite);
     let ksf: KSF;
     if (options?.allowWeakServerKsf) {

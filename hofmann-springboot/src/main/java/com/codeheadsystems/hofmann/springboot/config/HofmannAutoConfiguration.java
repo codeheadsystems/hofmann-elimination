@@ -6,6 +6,7 @@ import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
 import com.codeheadsystems.hofmann.server.manager.JwtKeyDetail;
 import com.codeheadsystems.hofmann.server.manager.JwtManager;
 import com.codeheadsystems.hofmann.server.manager.OpaqueServerKeyDetail;
+import com.codeheadsystems.hofmann.server.ratelimit.FixedCapacityRateLimiter;
 import com.codeheadsystems.hofmann.server.ratelimit.InMemoryRateLimiter;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfig;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfigSupplier;
@@ -493,9 +494,11 @@ public class HofmannAutoConfiguration {
   @Qualifier("opaqueOriginRateLimiter")
   public RateLimiter opaqueOriginRateLimiter(RateLimitConfigSupplier supplier) {
     RateLimitConfig config = supplier.originRateLimitConfig();
-    // Null means origin-based limiting is disabled, which is the default. A no-op limiter is
-    // returned rather than a null bean so the controller's constructor injection stays simple.
-    return config == null ? key -> true : new InMemoryRateLimiter(config);
+    // Deliberately NOT InMemoryRateLimiter: its capacity is exhaustible by varying the key, which
+    // is what this limiter defends against, so using it here would put a second copy of the
+    // vulnerability in front of every endpoint. Null disables origin limiting; a no-op limiter is
+    // returned rather than a null bean so constructor injection stays simple.
+    return config == null ? key -> true : new FixedCapacityRateLimiter(config);
   }
 
   /**
