@@ -97,16 +97,117 @@ public record OpaqueClientConfig(OpaqueConfig opaqueConfig) {
   }
 
   /**
-   * Creates an {@link OpaqueClientConfig} from a server-supplied config response.
+   * Minimum Argon2id memory cost, in KiB, accepted from a server-supplied config.
    * <p>
-   * When {@code argon2MemoryKib == 0} the server is using the identity KSF (test/dev only),
-   * so {@link #forTesting(String)} is used.  Otherwise {@link #withArgon2id} is used with
-   * the exact parameters returned by the server.
+   * 19456 KiB (19 MiB) is the OWASP Password Storage Cheat Sheet minimum for Argon2id at
+   * {@code t=2, p=1}. The server's own default is 65536 KiB, so this floor leaves room for a
+   * deployment that has deliberately tuned downwards while still refusing parameters weak
+   * enough to make an offline dictionary attack cheap.
+   */
+  public static final int MIN_ARGON2_MEMORY_KIB = 19456;
+
+  /** Minimum Argon2id iteration count accepted from a server-supplied config. */
+  public static final int MIN_ARGON2_ITERATIONS = 2;
+
+  /**
+   * Upper bound on server-requested Argon2id memory, 4 GiB. Not a security floor — it stops a
+   * server from inducing a client-side denial of service through an absurd allocation.
+   */
+  public static final int MAX_ARGON2_MEMORY_KIB = 4194304;
+
+  /**
+   * Upper bound on server-requested Argon2id iterations. Argon2id cost is linear in iterations
+   * and unbounded, so an absurd value hangs the client on its first registration just as surely
+   * as an absurd memory request. OWASP's published parameter sets top out at 4; 10 is generous.
+   * Like {@link #MAX_ARGON2_MEMORY_KIB} this is DoS hardening, not a security floor.
+   */
+  public static final int MAX_ARGON2_ITERATIONS = 10;
+
+  /** Upper bound on server-requested Argon2id parallelism. DoS hardening, not a security floor. */
+  public static final int MAX_ARGON2_PARALLELISM = 16;
+
+  /**
+   * Creates an {@link OpaqueClientConfig} from a server-supplied config response, refusing
+   * key-stretching parameters weaker than {@link #MIN_ARGON2_MEMORY_KIB} /
+   * {@link #MIN_ARGON2_ITERATIONS}.
+   * <p>
+   * In OPAQUE the key-stretching function runs entirely on the client, so these parameters
+   * decide how expensive an offline dictionary attack is against the record the server stores.
+   * Taking them from the server unchecked lets a malicious, breached, or MITM'd server turn its
+   * own users' password hashing off: answering {@code GET /opaque/config} with
+   * {@code argon2MemoryKib = 0} selects the identity KSF, which returns the OPRF output
+   * unchanged. Registration then stores a record derived from an unstretched password, and
+   * because the server keeps serving the same config afterwards, authentication continues to
+   * work and nothing looks wrong from either side. The quieter variant — 8 KiB, one iteration —
+   * is the same attack with a smaller footprint.
+   * <p>
+   * The server has an {@code allowIdentityKsf} flag and refuses to start without it; this is
+   * the client-side counterpart. To pin configuration locally instead of negotiating it, supply
+   * an {@link OpaqueClientConfig} through the overrides map of
+   * {@code HofmannOpaqueClientManager} — that path does not consult the server at all.
    *
    * @param cfg the server config response from GET /opaque/config
    * @return the opaque client config
+   * @throws IllegalStateException if the server offers the identity KSF or parameters below the
+   *                               floor
    */
   public static OpaqueClientConfig fromServerConfig(OpaqueClientConfigResponse cfg) {
+    return fromServerConfig(cfg, false);
+  }
+
+  /**
+   * Variant of {@link #fromServerConfig(OpaqueClientConfigResponse)} that allows the caller to
+   * accept weak or absent key stretching.
+   * <p>
+   * Pass {@code true} only for tests and local development against a server deliberately
+   * configured with {@code allowIdentityKsf}. It disables the client's only defence against a
+   * server that lowers its users' password-hashing cost, so it must be an explicit local
+   * decision — never something a remote host can talk the client into.
+   *
+   * @param cfg          the server config response from GET /opaque/config
+   * @param allowWeakKsf true to accept the identity KSF and below-floor parameters
+   * @return the opaque client config
+   * @throws IllegalStateException if {@code allowWeakKsf} is false and the parameters are weak
+   */
+  public static OpaqueClientConfig fromServerConfig(OpaqueClientConfigResponse cfg,
+                                                    boolean allowWeakKsf) {
+    if (!allowWeakKsf) {
+      if (cfg.argon2MemoryKib() == 0) {
+        throw new IllegalStateException(
+            "Server offers the identity KSF (argon2MemoryKib=0), which performs no password "
+                + "stretching and leaves the stored record open to an offline dictionary "
+                + "attack. Refusing. Use fromServerConfig(cfg, true) to opt in locally, or "
+                + "pin an OpaqueClientConfig through the client manager's overrides map.");
+      }
+      if (cfg.argon2MemoryKib() < MIN_ARGON2_MEMORY_KIB
+          || cfg.argon2Iterations() < MIN_ARGON2_ITERATIONS) {
+        throw new IllegalStateException(String.format(
+            "Server offers Argon2id parameters below the client's minimum: memory=%d KiB "
+                + "(minimum %d), iterations=%d (minimum %d). Refusing, because these are the "
+                + "parameters that determine offline attack cost against the stored record. "
+                + "Use fromServerConfig(cfg, true) to opt in locally.",
+            cfg.argon2MemoryKib(), MIN_ARGON2_MEMORY_KIB,
+            cfg.argon2Iterations(), MIN_ARGON2_ITERATIONS));
+      }
+      if (cfg.argon2MemoryKib() > MAX_ARGON2_MEMORY_KIB) {
+        throw new IllegalStateException(String.format(
+            "Server asks for %d KiB of Argon2id memory, above the client's ceiling of %d KiB. "
+                + "Refusing, to avoid a server-induced client DoS.",
+            cfg.argon2MemoryKib(), MAX_ARGON2_MEMORY_KIB));
+      }
+      if (cfg.argon2Iterations() > MAX_ARGON2_ITERATIONS) {
+        throw new IllegalStateException(String.format(
+            "Server asks for %d Argon2id iterations, above the client's ceiling of %d. Refusing, "
+                + "to avoid a server-induced client DoS — Argon2id cost is linear in iterations "
+                + "and otherwise unbounded.",
+            cfg.argon2Iterations(), MAX_ARGON2_ITERATIONS));
+      }
+      if (cfg.argon2Parallelism() < 1 || cfg.argon2Parallelism() > MAX_ARGON2_PARALLELISM) {
+        throw new IllegalStateException(String.format(
+            "Server offers argon2Parallelism=%d; must be between 1 and %d.",
+            cfg.argon2Parallelism(), MAX_ARGON2_PARALLELISM));
+      }
+    }
     if (cfg.argon2MemoryKib() == 0) {
       return forTesting(cfg.cipherSuite(), cfg.context());
     }

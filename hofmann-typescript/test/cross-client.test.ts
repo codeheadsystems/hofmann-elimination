@@ -72,7 +72,11 @@ describe.skipIf(skip)('cross-client OPAQUE', () => {
   let client: OpaqueHttpClient;
 
   beforeAll(async () => {
-    client = await OpaqueHttpClient.create(SERVER_URL!);
+    // The integration server runs real Argon2id but tuned down to 1024 KiB / 1 iteration for
+    // test speed (see hofmann-integration-tests/src/test/resources/application.yml), which is
+    // below the client's floor of 19456 KiB / 2. Opt in explicitly, as a developer running
+    // against a deliberately weakened dev server must.
+    client = await OpaqueHttpClient.create(SERVER_URL!, { allowWeakServerKsf: true });
   });
 
   it('authenticates with a credential registered by Java', async () => {

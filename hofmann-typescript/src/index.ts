@@ -62,6 +62,13 @@ export { type KSF, identityKsf, argon2idKsf } from './opaque/ksf.js';
 export {
   OpaqueHttpClient,
   OpaqueAuthenticationError,
+  assertKsfMeetsMinimum,
+  MIN_ARGON2_MEMORY_KIB,
+  MIN_ARGON2_ITERATIONS,
+  MAX_ARGON2_MEMORY_KIB,
+  MAX_ARGON2_ITERATIONS,
+  MAX_ARGON2_PARALLELISM,
+  type ValidatedKsfParams,
   type OpaqueHttpClientOptions,
   type OpaqueConfigResponseDto,
   type RecoveryStartRequest,
