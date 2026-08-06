@@ -65,6 +65,25 @@ public class HofmannOpaqueServerManager {
    */
   private static final long RECOVERY_VERIFY_MIN_NANOS = 250L * 1_000_000L; // 250 ms
 
+  /**
+   * Minimum wall-clock duration of the non-recovery {@code registrationFinish} path.
+   * <p>
+   * The two branches do different amounts of work: an already-registered credential returns
+   * straight after the store lookup, while an unregistered one additionally reads the key
+   * detail and performs a write. Against {@link
+   * com.codeheadsystems.hofmann.server.store.InMemoryCredentialStore} that difference measures
+   * around 340 ns and is unexploitable, but the documented production path is a database-backed
+   * {@code CredentialStore}, where the extra work is an INSERT — commonly 0.2–5 ms, which is
+   * remotely measurable and would reopen the very enumeration oracle unifying the two responses
+   * was meant to close.
+   * <p>
+   * 25 ms comfortably covers a typical INSERT while staying far below the 250 ms recovery floor,
+   * since this runs on every registration rather than only on recovery. Note the floor only
+   * masks work that finishes inside it: a store whose writes routinely exceed 25 ms would leak
+   * again, which is the same caveat that applies to {@link #RECOVERY_VERIFY_MIN_NANOS}.
+   */
+  private static final long REGISTRATION_FINISH_MIN_NANOS = 25L * 1_000_000L; // 25 ms
+
   private final Supplier<OpaqueServerKeyDetail> keyDetailSupplier;
   private final CredentialStore credentialStore;
   private final JwtManager jwtManager;
@@ -318,15 +337,44 @@ public class HofmannOpaqueServerManager {
       log.info("Recovery re-registration for credential {}", req.credentialIdentifierBase64());
       credentialStore.delete(req.credentialIdentifier());
       jwtManager.revokeByCredentialIdentifier(req.credentialIdentifierBase64());
-    } else if (credentialStore.loadVersioned(req.credentialIdentifier()).isPresent()) {
-      // Normal (non-recovery) registration must not overwrite an existing record.
-      // registrationStart/Finish are unauthenticated, so without this guard anyone
-      // who knows a victim's credential identifier could re-register it with their
-      // own password and take over the account. Existing credentials must be
-      // updated through the authenticated change-password flow or the recovery flow
-      // (which deletes the old record above before storing the new one).
-      throw new IllegalArgumentException(
-          "Credential already registered; use change-password or recovery to update it");
+    } else {
+      // Normal (non-recovery) registration. Both branches below must be indistinguishable to an
+      // unauthenticated caller, in latency as well as in response, so the whole path runs under
+      // a fixed floor — see REGISTRATION_FINISH_MIN_NANOS. The floor deliberately wraps only
+      // this branch: the recovery path above is already authenticated by a bearer token and
+      // carries its own limiter.
+      final long deadlineNanos = System.nanoTime() + REGISTRATION_FINISH_MIN_NANOS;
+      try {
+        // Consume a token BEFORE looking the credential up:
+        // registrationStart is throttled but finish previously was not, so an attacker could
+        // probe this endpoint without limit. The check has to precede the existence lookup so
+        // that every attempt costs the same whether or not the credential turns out to exist.
+        if (!registrationRateLimiter.tryConsume(req.credentialIdentifierBase64())) {
+          throw new RateLimitExceededException();
+        }
+        if (credentialStore.loadVersioned(req.credentialIdentifier()).isPresent()) {
+          // Must not overwrite an existing record: registrationStart/Finish are unauthenticated,
+          // so without this guard anyone who knows a victim's credential identifier could
+          // re-register it with their own password and take over the account. Existing
+          // credentials are updated through the authenticated change-password flow or the
+          // recovery flow (which deletes the old record above before storing the new one).
+          //
+          // Return normally rather than throwing. Throwing produced HTTP 400 for an existing
+          // credential and 204 for a new one, which is an unauthenticated existence oracle — it
+          // defeated the enumeration resistance authStart goes to real trouble to provide, where
+          // an unknown credential gets a manufactured KE2 precisely so this bit cannot be read.
+          // The security property that matters is "does not overwrite", and that is preserved;
+          // signalling *why* nothing was written is what leaked. A legitimate client re-running
+          // registration therefore sees success without its record being replaced.
+          log.debug("registrationFinish: credential already registered, record left unchanged");
+          return;
+        }
+        int currentVersion = keyDetailSupplier.get().currentVersion();
+        credentialStore.store(req.credentialIdentifier(), req.registrationRecord(), currentVersion);
+        return;
+      } finally {
+        sleepUntil(deadlineNanos);
+      }
     }
     int currentVersion = keyDetailSupplier.get().currentVersion();
     credentialStore.store(req.credentialIdentifier(), req.registrationRecord(), currentVersion);

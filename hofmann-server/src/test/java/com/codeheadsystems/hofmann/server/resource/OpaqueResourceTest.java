@@ -152,7 +152,10 @@ class OpaqueResourceTest {
 
   @Test
   void registrationFinish_illegalArgument_mapsTo400() {
-    Mockito.doThrow(new IllegalArgumentException("Credential already registered"))
+    // Any IllegalArgumentException must map to 400. Uses a validation-shaped message on
+    // purpose: registrationFinish no longer throws on an already-registered credential — it
+    // returns 204 so the response cannot be used to enumerate accounts.
+    Mockito.doThrow(new IllegalArgumentException("Missing required field: credentialIdentifier"))
         .when(manager).registrationFinish(any(), any());
     assertStatus(() -> resource.registrationFinish(null, null),
         Response.Status.BAD_REQUEST.getStatusCode());
