@@ -43,19 +43,25 @@ argon2Parallelism: 1
 #
 #     openssl rand -hex 32
 #
+# The `:-` is load-bearing: Dropwizard's substitutor is non-strict, so a bare ${VAR} for an unset
+# variable is left as the literal text "${VAR}", which looks like a configured value. The
+# fail-closed check would be skipped and startup would die in hex parsing instead, and the
+# allowEphemeralKeys escape hatch below would never be reached. `${VAR:-}` yields empty, which is
+# what both of those paths test for.
+#
 # For a throwaway local run, set allowEphemeralKeys: true instead and accept that all state is
 # lost on restart.
-serverKeySeedHex: ${SERVER_KEY_SEED_HEX}
-oprfSeedHex: ${OPRF_SEED_HEX}
+serverKeySeedHex: ${SERVER_KEY_SEED_HEX:-}
+oprfSeedHex: ${OPRF_SEED_HEX:-}
 
 # ── Standalone OPRF ───────────────────────────────────────────────────────────
 
 oprfCipherSuite: P256_SHA256
-oprfMasterKeyHex: ${OPRF_MASTER_KEY_HEX}
+oprfMasterKeyHex: ${OPRF_MASTER_KEY_HEX:-}
 oprfProcessorId: hofmann-testserver
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
 
-jwtSecretHex: ${JWT_SECRET_HEX}
+jwtSecretHex: ${JWT_SECRET_HEX:-}
 jwtTtlSeconds: 3600
 jwtIssuer: hofmann-testserver

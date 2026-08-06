@@ -315,7 +315,7 @@ public class HofmannAutoConfiguration {
   @Bean(destroyMethod = "shutdown")
   @ConditionalOnMissingBean(name = "authRateLimiter")
   public RateLimiter authRateLimiter(RateLimitConfigSupplier rateLimitConfigSupplier) {
-    return new InMemoryRateLimiter(rateLimitConfigSupplier.authRateLimitConfig());
+    return new FixedCapacityRateLimiter(rateLimitConfigSupplier.authRateLimitConfig());
   }
 
   /**
@@ -328,7 +328,7 @@ public class HofmannAutoConfiguration {
   @Bean(destroyMethod = "shutdown")
   @ConditionalOnMissingBean(name = "registrationRateLimiter")
   public RateLimiter registrationRateLimiter(RateLimitConfigSupplier rateLimitConfigSupplier) {
-    return new InMemoryRateLimiter(rateLimitConfigSupplier.registrationRateLimitConfig());
+    return new FixedCapacityRateLimiter(rateLimitConfigSupplier.registrationRateLimitConfig());
   }
 
   /**
@@ -341,7 +341,7 @@ public class HofmannAutoConfiguration {
   @Bean(destroyMethod = "shutdown")
   @ConditionalOnMissingBean(name = "oprfRateLimiter")
   public RateLimiter oprfRateLimiter(RateLimitConfigSupplier rateLimitConfigSupplier) {
-    return new InMemoryRateLimiter(rateLimitConfigSupplier.oprfRateLimitConfig());
+    return new FixedCapacityRateLimiter(rateLimitConfigSupplier.oprfRateLimitConfig());
   }
 
   /**
@@ -386,7 +386,7 @@ public class HofmannAutoConfiguration {
   @ConditionalOnBean(RecoveryChallenger.class)
   @ConditionalOnMissingBean(name = "recoveryRateLimiter")
   public RateLimiter recoveryRateLimiter(RateLimitConfigSupplier rateLimitConfigSupplier) {
-    return new InMemoryRateLimiter(rateLimitConfigSupplier.recoveryRateLimitConfig());
+    return new FixedCapacityRateLimiter(rateLimitConfigSupplier.recoveryRateLimitConfig());
   }
 
   /**
@@ -521,6 +521,17 @@ public class HofmannAutoConfiguration {
   @ConditionalOnMissingBean
   public Supplier<ServerProcessorDetail> serverProcessorDetailSupplier(HofmannProperties props) {
     String masterKeyHex = props.getOprfMasterKeyHex();
+    if ((masterKeyHex == null || masterKeyHex.isEmpty()) && props.isAllowEphemeralKeys()) {
+      // allowEphemeralKeys has to cover every piece of key material or it is not an escape hatch.
+      log.warn("No OPRF master key configured — generating an ephemeral one because "
+          + "allow-ephemeral-keys is set. OPRF outputs will not be stable across restarts. "
+          + "Do not use in production.");
+      OprfCipherSuite suite =
+          OprfCipherSuite.builder().withSuite(props.getOprfCipherSuite()).build();
+      ServerProcessorDetail ephemeral =
+          new ServerProcessorDetail(suite.randomScalar(), props.getOprfProcessorId());
+      return () -> ephemeral;
+    }
     if (masterKeyHex == null || masterKeyHex.isEmpty()) {
       throw new IllegalStateException(
           "hofmann.oprfMasterKeyHex must be configured for the OPRF endpoint. "

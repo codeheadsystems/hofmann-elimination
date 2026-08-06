@@ -102,30 +102,84 @@ class FixedCapacityRateLimiterTest {
   }
 
   /**
-   * Slot assignment is seeded per process. Without that an attacker could compute which keys
-   * collide with a chosen victim and drain that slot deliberately, turning a precision trade-off
-   * into a targeting primitive.
+   * The property the whole design rests on, and the one an earlier version got wrong.
+   *
+   * <p>That version computed {@code key.hashCode() ^ seed}. Because {@code String.hashCode}
+   * collapses to 32 bits first, two keys with equal hashCode shared a slot under EVERY seed — and
+   * such pairs are constructible offline with no knowledge of it, since the function is linear in
+   * the characters. The seed randomised the slot number while leaving the collision relation
+   * fully predictable, so an attacker who could choose their own key could compute one sharing a
+   * chosen victim's slot and drain that victim's budget at the refill rate.
+   *
+   * <p>"Aa" and "BB" are the canonical equal-hashCode pair. They must now land together only by
+   * chance, at roughly the collision rate of any unrelated pair.
    */
   @Test
-  void slotAssignmentDiffersBetweenInstances() {
-    RateLimitConfig cfg = config(1);
-    int differing = 0;
-    for (int attempt = 0; attempt < 20; attempt++) {
-      FixedCapacityRateLimiter a = new FixedCapacityRateLimiter(cfg, 1024);
-      FixedCapacityRateLimiter b = new FixedCapacityRateLimiter(cfg, 1024);
-      // Exhaust one key's slot in each, then see whether the same probe key collides in both.
-      a.tryConsume("victim");
-      b.tryConsume("victim");
-      if (a.tryConsume("probe") != b.tryConsume("probe")) {
-        differing++;
+  void keysWithEqualStringHashCodeDoNotShareASlot() {
+    assertThat("Aa".hashCode())
+        .as("premise: these are the classic equal-hashCode pair")
+        .isEqualTo("BB".hashCode());
+
+    int collisions = 0;
+    int trials = 200;
+    for (int i = 0; i < trials; i++) {
+      FixedCapacityRateLimiter limiter = new FixedCapacityRateLimiter(config(1), 1024);
+      limiter.tryConsume("Aa");
+      if (!limiter.tryConsume("BB")) {
+        collisions++;
       }
     }
-    // With a shared seed this would be 0 every time.
-    assertThat(differing)
-        .as("collision layout must not be reproducible across processes")
-        .isGreaterThanOrEqualTo(0);
-    assertThat(new FixedCapacityRateLimiter(cfg, 1024)).isNotSameAs(
-        new FixedCapacityRateLimiter(cfg, 1024));
+    // With the seed applied before the collapse this is ~1/1024 per trial; with the old scheme it
+    // was 200/200. Anything approaching the trial count means the seed is not reaching the key.
+    assertThat(collisions)
+        .as("equal String.hashCode must not imply an equal slot; saw %d/%d collisions",
+            collisions, trials)
+        .isLessThan(trials / 10);
+  }
+
+  /**
+   * Same property from the other direction: an attacker who can pick their own key must not be
+   * able to reproduce a collision across processes.
+   */
+  @Test
+  void collisionLayoutIsNotReproducibleAcrossInstances() {
+    int reproduced = 0;
+    int trials = 200;
+    for (int i = 0; i < trials; i++) {
+      FixedCapacityRateLimiter a = new FixedCapacityRateLimiter(config(1), 64);
+      FixedCapacityRateLimiter b = new FixedCapacityRateLimiter(config(1), 64);
+      a.tryConsume("victim");
+      b.tryConsume("victim");
+      boolean collidesInA = !a.tryConsume("attacker-chosen");
+      boolean collidesInB = !b.tryConsume("attacker-chosen");
+      if (collidesInA && collidesInB) {
+        reproduced++;
+      }
+    }
+    // Independent 1/64 events, so ~1/4096 of trials. A shared layout would give ~1/64.
+    assertThat(reproduced)
+        .as("a collision must not carry across independently seeded processes; saw %d/%d",
+            reproduced, trials)
+        .isLessThan(trials / 20);
+  }
+
+  @Test
+  void nonPositiveSlotCountIsRejected() {
+    for (int bad : new int[]{0, -1, Integer.MIN_VALUE}) {
+      org.assertj.core.api.Assertions
+          .assertThatThrownBy(() -> new FixedCapacityRateLimiter(config(5), bad))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+  }
+
+  /** {@code highestOneBit(x) * 2} overflows to a negative array size above 2^30. */
+  @Test
+  void absurdSlotCountsDoNotOverflow() {
+    for (int big : new int[]{1 << 30, (1 << 30) + 1, Integer.MAX_VALUE}) {
+      assertThat(new FixedCapacityRateLimiter(config(5), big).slotCount())
+          .as("slot count %d must be capped rather than overflowing", big)
+          .isPositive();
+    }
   }
 
   @Test

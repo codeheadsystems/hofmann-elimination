@@ -24,8 +24,11 @@ import org.junit.jupiter.params.provider.MethodSource;
 class DeployedConfigHasNoCommittedKeysTest {
 
   /** Any hex run long enough to be key material, sitting in a shell-style default. */
-  private static final Pattern COMMITTED_KEY =
-      Pattern.compile("\\$\\{[A-Z_]+:-\\s*([0-9a-fA-F]{16,})\\s*}");
+  private static final Pattern COMMITTED_KEY = Pattern.compile(
+      // ${VAR:-<hex>} — a fallback that becomes the key when the variable is unset ...
+      "\\$\\{[A-Z_]+:-\\s*[0-9a-fA-F]{16,}\\s*}"
+      // ... or a hex literal committed outright, which an earlier version of this test missed.
+      + "|(?i:seed|key|secret)[A-Za-z]*\\s*:\\s*\"?[0-9a-fA-F]{16,}\"?");
 
   static Stream<Path> deployedConfigs() {
     Path root = repositoryRoot();
@@ -43,6 +46,18 @@ class DeployedConfigHasNoCommittedKeysTest {
       throw new IllegalStateException("could not locate the repository root");
     }
     return dir;
+  }
+
+  /** Guards the regex itself: a plainly committed key must be detected, not only a fallback. */
+  @org.junit.jupiter.api.Test
+  void theDetectorCatchesAPlainlyCommittedKey() {
+    assertThat(COMMITTED_KEY.matcher(
+        "jwtSecretHex: 04fb50080c93c055a4195cb535c9311381975a94eaaac8aeef3df0776aca4f6d").find())
+        .as("a key committed without a ${VAR:-} wrapper must still be caught")
+        .isTrue();
+    assertThat(COMMITTED_KEY.matcher("jwtSecretHex: ${JWT_SECRET_HEX:-}").find())
+        .as("the correct form must not be flagged")
+        .isFalse();
   }
 
   @ParameterizedTest(name = "{0}")
@@ -68,9 +83,13 @@ class DeployedConfigHasNoCommittedKeysTest {
   @MethodSource("deployedConfigs")
   void keySettingsAreStillWiredToTheEnvironment(Path config) throws Exception {
     String text = Files.readString(config);
-    assertThat(text).contains("${SERVER_KEY_SEED_HEX}");
-    assertThat(text).contains("${OPRF_SEED_HEX}");
-    assertThat(text).contains("${OPRF_MASTER_KEY_HEX}");
-    assertThat(text).contains("${JWT_SECRET_HEX}");
+    // The ":-" matters. Dropwizard's substitutor is non-strict, so a bare ${VAR} for an unset
+    // variable is left as the literal string "${VAR}" — which reads as a configured value, skips
+    // the fail-closed check, and dies in hex parsing instead. Asserting the bare form would pin
+    // that bug in place, which an earlier version of this test did.
+    assertThat(text).contains("${SERVER_KEY_SEED_HEX:-}");
+    assertThat(text).contains("${OPRF_SEED_HEX:-}");
+    assertThat(text).contains("${OPRF_MASTER_KEY_HEX:-}");
+    assertThat(text).contains("${JWT_SECRET_HEX:-}");
   }
 }

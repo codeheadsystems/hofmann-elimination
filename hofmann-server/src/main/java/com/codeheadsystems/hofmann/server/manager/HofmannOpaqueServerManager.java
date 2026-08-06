@@ -334,12 +334,18 @@ public class HofmannOpaqueServerManager {
       // tokens from this bucket (recoveryStart + recoveryVerify + registrationFinish), which the
       // default capacity (maxTokens=6) accommodates with retry headroom; size the recovery limit
       // accordingly if you tune it.
-      // Keyed on the TOKEN, not on the credential identifier. Keying it on the identifier let
-      // anyone drain a victim's recovery budget with six unauthenticated requests carrying
-      // garbage tokens, locking them out of recoveryStart and recoveryVerify for a minute at a
-      // time — on the endpoint whose whole purpose is rescuing an account they have lost access
-      // to. An attacker guessing tokens now burns a bucket belonging to their own guesses.
-      // Token-guessing is still bounded, because a guess must be presented to be checked.
+      // Keyed on the TOKEN, not on the credential identifier, so a junk token presented HERE no
+      // longer spends the victim's recovery budget.
+      //
+      // Scope, because this is narrower than it looks: recoveryStart and recoveryVerify still key
+      // on the credential identifier, and both are unauthenticated, so six requests naming a
+      // victim still lock them out of those two endpoints for around a minute. That is inherent
+      // to rate-limiting an account-scoped operation on behalf of an unauthenticated caller —
+      // there is nothing else to key on before a token exists — and the origin limiter bounds how
+      // fast one source can do it. Recorded as open in TODO.md rather than described as fixed.
+      //
+      // Note this key space is attacker-chosen, so the limiter backing it must be one that cannot
+      // be exhausted; see the FixedCapacityRateLimiter wiring in both framework integrations.
       if (recoveryRateLimiter != null && !recoveryRateLimiter.tryConsume("token:" + bearerToken)) {
         throw new RateLimitExceededException();
       }

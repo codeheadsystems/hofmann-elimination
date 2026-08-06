@@ -49,7 +49,10 @@ public interface RateLimitConfigSupplier {
     // subscriber line, and keying on the full address let a single host mint 2^64 distinct keys.
     // maxEntries is unused: the origin limiter is backed by a fixed-capacity structure that
     // cannot be filled.
-    return new RateLimitConfig(600, 600.0 / 60, 0);
+    // maxEntries is meaningless for the fixed-capacity limiter that backs this, but it is set to
+    // a real value rather than 0 so that a consumer wiring this config into the map-backed
+    // implementation gets a working limiter instead of one that denies every request.
+    return new RateLimitConfig(600, 600.0 / 60, 50_000);
   }
 
 

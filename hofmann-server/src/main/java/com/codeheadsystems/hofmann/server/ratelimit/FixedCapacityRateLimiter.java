@@ -23,8 +23,10 @@ import org.slf4j.LoggerFactory;
  * <p><strong>The trade is precision.</strong> Distinct keys can share a slot and therefore share a
  * budget. With {@code slots} buckets the chance a given key collides with a specific victim is
  * {@code 1/slots}, so at the default 65,536 an attacker cannot meaningfully target one account by
- * flooding — and, critically, the hash is seeded from a per-process random value, so which keys
- * collide cannot be computed offline or reproduced across restarts. Collisions cost accuracy, not
+ * flooding — and the per-process seed is folded through the key's characters, so which keys
+ * collide cannot be solved for offline or reproduced across restarts. (Seeding only the final
+ * 32-bit hash would not achieve this: equal {@code String.hashCode} values would collide under
+ * every seed, and those collisions are constructible with no knowledge of it.) Collisions cost accuracy, not
  * safety; exhausting a map costs availability. This trades the second for the first.
  *
  * <p><strong>What this does not do.</strong> Bounding memory does not bound request volume. An
@@ -43,6 +45,9 @@ public class FixedCapacityRateLimiter implements RateLimiter {
 
   /** Bucket count. A power of two so slot selection is a mask rather than a modulo. */
   public static final int DEFAULT_SLOTS = 65_536;
+
+  private static final long FNV_OFFSET_BASIS = 0xcbf29ce484222325L;
+  private static final long FNV_PRIME = 0x100000001b3L;
 
   private final int mask;
   private final long seed;
@@ -67,7 +72,12 @@ public class FixedCapacityRateLimiter implements RateLimiter {
    * @param requestedSlots number of buckets; rounded up to a power of two
    */
   public FixedCapacityRateLimiter(final RateLimitConfig config, final int requestedSlots) {
-    int size = Integer.highestOneBit(Math.max(2, requestedSlots - 1)) * 2;
+    if (requestedSlots < 1) {
+      throw new IllegalArgumentException("slots must be positive, got " + requestedSlots);
+    }
+    // Cap before doubling: highestOneBit(x) * 2 overflows to a negative array size above 2^30.
+    int bounded = Math.min(requestedSlots, 1 << 20);
+    int size = Integer.highestOneBit(Math.max(2, bounded - 1)) * 2;
     this.mask = size - 1;
     this.maxTokens = config.maxTokens();
     this.refillPerSecond = config.refillPerSecond();
@@ -90,16 +100,43 @@ public class FixedCapacityRateLimiter implements RateLimiter {
   }
 
   private int slotFor(final String key) {
-    // A seeded 64-bit mix of the key's hash. String.hashCode alone is trivially collidable by
-    // construction, which would let an attacker land on a chosen slot; mixing with a secret seed
-    // makes the mapping unpredictable without needing a full cryptographic hash on a path that
-    // runs per request.
-    long h = (key == null ? 0 : key.hashCode()) ^ seed;
+    if (key == null) {
+      return (int) (mix(seed) & mask);
+    }
+    // The seed must enter BEFORE the key is collapsed to a fixed width, and must be combined with
+    // the key's CHARACTERS rather than with String.hashCode.
+    //
+    // An earlier version computed `key.hashCode() ^ seed`. Because hashCode collapses to 32 bits
+    // first, any two keys with equal hashCode landed in the same slot for every possible seed —
+    // and String.hashCode collisions are constructible offline with no knowledge of the seed,
+    // since the function is linear in the characters. That let an attacker who could choose their
+    // own key (any IPv6 prefix they route, or any credential identifier) compute one colliding
+    // with a chosen victim and drain the victim's budget at the refill rate. The seed made the
+    // slot NUMBER unpredictable while leaving the collision RELATION fully predictable, which is
+    // the property that mattered.
+    //
+    // Folding the seed through a 64-bit FNV-1a over the characters removes that: two keys collide
+    // only if they collide after mixing under this process's seed, which cannot be solved for
+    // without knowing it. Not a cryptographic MAC — an attacker who learns the seed can still
+    // grind collisions — but it costs a few nanoseconds per request and removes the offline
+    // attack, which is the one that matters here.
+    long h = FNV_OFFSET_BASIS ^ seed;
+    for (int i = 0; i < key.length(); i++) {
+      h ^= key.charAt(i);
+      h *= FNV_PRIME;
+    }
+    return (int) (mix(h) & mask);
+  }
+
+  /** Final avalanche so low-order bits, which the mask selects, depend on the whole hash. */
+  private static long mix(final long value) {
+    long h = value;
+    h ^= h >>> 33;
     h *= 0xff51afd7ed558ccdL;
     h ^= h >>> 33;
     h *= 0xc4ceb9fe1a85ec53L;
     h ^= h >>> 33;
-    return (int) (h & mask);
+    return h;
   }
 
   @Override

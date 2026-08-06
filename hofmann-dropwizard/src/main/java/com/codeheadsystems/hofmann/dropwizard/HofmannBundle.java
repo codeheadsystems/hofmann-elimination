@@ -121,7 +121,12 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     this.processorDetailSupplier = null;
     this.ephemeralKey = true;
     this.rateLimitConfigSupplier = new RateLimitConfigSupplier.DefaultRateLimitConfigSupplier();
-    this.rateLimiterFunction = InMemoryRateLimiter::new;
+    // FixedCapacityRateLimiter, not InMemoryRateLimiter: every key these limiters see is
+    // attacker-chosen — a credential identifier from an unauthenticated body, a recovery token, a
+    // client address — and a map keyed on attacker-chosen values cannot be made safe by bounding
+    // it. Filling it denies every caller whose bucket is not resident. The fixed-capacity
+    // implementation pre-allocates, so there is no capacity condition to reach.
+    this.rateLimiterFunction = FixedCapacityRateLimiter::new;
     log.warn("""
         #################################################################
         # WARNING: Using ephemeral in-memory stores and a random OPRF  #
@@ -305,12 +310,11 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     // only dimension that bounds a flood of distinct identifiers, and therefore the only thing
     // standing between that flood and exhaustion of the bucket map and pending-session store.
     RateLimitConfig originConfig = rateLimitConfigSupplier.originRateLimitConfig();
-    // Deliberately NOT rateLimiterFunction: that builds the map-backed limiter, whose capacity an
-    // attacker can exhaust by varying the key — which is exactly what this limiter is defending
-    // against, so using it here would put a second copy of the vulnerability in front of every
-    // endpoint. FixedCapacityRateLimiter pre-allocates and cannot be filled.
+    // Uses rateLimiterFunction like every other limiter, so a consumer supplying a distributed
+    // (e.g. Redis-backed) implementation gets cluster-wide limiting here too. Hardcoding the
+    // in-process one would have silently given an N-node cluster N times the configured rate.
     RateLimiter opaqueOriginRateLimiter =
-        originConfig == null ? null : new FixedCapacityRateLimiter(originConfig);
+        originConfig == null ? null : rateLimiterFunction.apply(originConfig);
     environment.jersey().register(new OpaqueResource(hofmannOpaqueServerManager, opaqueClientConfig,
         opaqueOriginRateLimiter, configuration.isTrustForwardedHeaders()));
     environment.healthChecks().register("opaque-server", new OpaqueServerHealthCheck(server));
@@ -580,6 +584,19 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
 
   private Supplier<ServerProcessorDetail> buildDefaultProcessorSupplier(C configuration) {
     String masterKeyHex = configuration.getOprfMasterKeyHex();
+    if ((masterKeyHex == null || masterKeyHex.isEmpty()) && configuration.isAllowEphemeralKeys()) {
+      // allowEphemeralKeys has to cover every piece of key material or it is not an escape hatch:
+      // leaving this one out meant the documented "set allowEphemeralKeys for a throwaway run"
+      // still failed on the next setting along.
+      log.warn("No OPRF master key configured — generating an ephemeral one because "
+          + "allowEphemeralKeys is set. OPRF outputs will not be stable across restarts. "
+          + "Do not use in production.");
+      OprfCipherSuite suite =
+          OprfCipherSuite.builder().withSuite(configuration.getOprfCipherSuite()).build();
+      ServerProcessorDetail ephemeral =
+          new ServerProcessorDetail(suite.randomScalar(), configuration.getOprfProcessorId());
+      return () -> ephemeral;
+    }
     if (masterKeyHex == null || masterKeyHex.isEmpty()) {
       throw new IllegalStateException(
           "oprfMasterKeyHex must be configured for the OPRF endpoint. "
