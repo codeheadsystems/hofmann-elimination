@@ -35,9 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- A junk recovery bearer token drained the victim's recovery rate limit, locking them out of the
-  flow that exists to rescue an account they have lost access to. The limiter is keyed on the
-  token now, so guesses burn the attacker's own budget.
+- A junk recovery bearer token drained the victim's recovery rate limit at
+  `registration/finish`. That path is keyed on the token now, so guesses burn the attacker's own
+  budget. `recovery/start` and `recovery/verify` still key on the credential identifier, so a
+  targeted lockout of those two remains possible — see known limitations.
 - `recoveryVerify`'s constant-time floor held a request thread for 250 ms with no ceiling on
   concurrency, so a few hundred sources — well under one IPv6 /64 — could exhaust the servlet
   pool and take down the whole application, not just recovery. Concurrency is capped, with excess
@@ -199,8 +200,14 @@ Recorded in `TODO.md` rather than left implied:
   by passing one. Requiring it would break every existing caller, so the default still accepts the
   server's value.
 - Rate-limit slots are shared: distinct keys can hash to the same bucket and therefore share a
-  budget. The hash is seeded per process so collisions cannot be computed offline and used to
-  target an account, but per-key accounting is approximate rather than exact.
+  budget. The per-process seed is folded through the key's characters, so collisions cannot be
+  solved for offline, but per-key accounting is approximate rather than exact.
+- **An unauthenticated caller can still lock a victim out of account recovery.**
+  `recovery/start` and `recovery/verify` bound guessing per account, so a handful of requests
+  naming a victim spend that victim's budget. The origin limiter bounds the rate per source and
+  the limiter can no longer be exhausted, but a targeted lockout is cheap. Closing it needs
+  something an attacker cannot supply on the victim's behalf — proof-of-work, or the email round
+  trip that recovery ownership rests on anyway.
 
 ## [3.0.0] - 2026-08-04
 

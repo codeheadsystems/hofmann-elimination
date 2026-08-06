@@ -109,7 +109,13 @@ completeness.
 
 - [x] **Spring Boot flattens every error status to 401** — `45ff4ca` (3.1.0). The ERROR dispatch is now permitted, bound to the configured error path so a custom error page aimed at a protected controller cannot be reached unauthenticated.
 
-- [x] **A junk recovery bearer token drains the recovery limiter before validation** — `67e3d08`. Re-keyed onto the token, so an attacker's guesses burn their own bucket rather than locking the victim out of recovery.
+- [x] **A junk recovery bearer token drains the recovery limiter before validation** — `67e3d08`.
+      Re-keyed onto the token at `registrationFinish`, so an attacker's guesses burn their own
+      bucket. **Narrower than it first read:** `recoveryStart` and `recoveryVerify` still key on
+      the credential identifier, so six unauthenticated requests naming a victim still lock them
+      out of those two endpoints for about a minute. Inherent to rate-limiting an account-scoped
+      operation for an unauthenticated caller — before a token exists there is nothing else to key
+      on — and the origin limiter bounds how fast one source can do it. See the open item below.
 
 - [x] **Bound the rate limiter's key space** — `67e3d08`. `FixedCapacityRateLimiter` pre-allocates and hashes into existing slots, with a per-process seed so collisions cannot be computed offline. **Bounding memory does not bound volume** — enough traffic to drain every slot still denies service; what is gone is exhausting capacity far more cheaply than saturating the buckets.
 
@@ -118,6 +124,15 @@ completeness.
 - [x] **Pin `context` locally instead of adopting the server's** — `67e3d08`. Both clients accept an expected context and verify the server's against it. Opt-in, since requiring it would break every existing caller.
 
 - [x] **`OpaqueHttpClient`'s constructor still defaults to `identityKsf`** — `67e3d08`. The constructor now requires an explicit KSF.
+
+- [ ] **Unauthenticated callers can still lock a victim out of account recovery**
+      `recoveryStart` and `recoveryVerify` key their limiter on the credential identifier, which
+      is right for bounding guessing against one account and wrong given the caller is
+      unauthenticated: six requests naming a victim spend that victim's budget. The origin limiter
+      bounds the rate per source, and moving to the non-exhaustible limiter stopped the flood
+      becoming a global recovery outage — but a targeted lockout stays cheap. Closing it needs
+      something an attacker cannot supply on the victim's behalf: proof-of-work on recoveryStart,
+      or the email round trip that recovery ownership rests on anyway.
 
 ---
 
