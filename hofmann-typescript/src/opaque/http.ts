@@ -24,7 +24,13 @@ export class OpaqueAuthenticationError extends Error {
 export interface OpaqueHttpClientOptions {
   /** OPAQUE protocol context — must match the server's configured context exactly. */
   context?: string;
-  /** Key stretching function — must match the server's KSF configuration. Default: identity. */
+  /**
+   * Key stretching function — must match the server's KSF configuration.
+   *
+   * Omitting this means NO PASSWORD STRETCHING: the identity KSF returns the OPRF output
+   * unchanged, leaving the stored record open to an offline dictionary attack. Prefer the
+   * static `create()` factory, which negotiates the KSF and enforces a minimum.
+   */
   ksf?: KSF;
   /** Cipher suite to use. Resolved automatically from server config when using create(). */
   suite?: CipherSuite;
@@ -108,6 +114,115 @@ export interface OpaqueConfigResponseDto {
 // ── Client ─────────────────────────────────────────────────────────────────
 
 /**
+ * Minimum Argon2id memory cost, in KiB, accepted from a server-supplied config.
+ *
+ * 19456 KiB (19 MiB) is the OWASP Password Storage Cheat Sheet minimum for Argon2id at
+ * t=2, p=1. The server's own default is 65536 KiB. Matches MIN_ARGON2_MEMORY_KIB in the
+ * Java client.
+ */
+export const MIN_ARGON2_MEMORY_KIB = 19456;
+
+/** Minimum Argon2id iteration count accepted from a server-supplied config. */
+export const MIN_ARGON2_ITERATIONS = 2;
+
+/**
+ * Upper bound on server-requested Argon2id memory, 4 GiB. Not a security floor — it stops a
+ * server from inducing a client-side denial of service through an absurd allocation.
+ */
+export const MAX_ARGON2_MEMORY_KIB = 4194304;
+
+/**
+ * Upper bound on server-requested Argon2id iterations. Argon2id cost is linear in iterations
+ * and unbounded, so an absurd value hangs the client on its first registration just as surely
+ * as an absurd memory request. OWASP's published parameter sets top out at 4; 10 is generous.
+ * Like {@link MAX_ARGON2_MEMORY_KIB} this is DoS hardening, not a security floor.
+ */
+export const MAX_ARGON2_ITERATIONS = 10;
+
+/** Upper bound on server-requested Argon2id parallelism. DoS hardening, not a security floor. */
+export const MAX_ARGON2_PARALLELISM = 16;
+
+/** Argon2id parameters that have been type-checked and range-checked. */
+export interface ValidatedKsfParams {
+  readonly argon2MemoryKib: number;
+  readonly argon2Iterations: number;
+  readonly argon2Parallelism: number;
+}
+
+/**
+ * Rejects server-supplied key-stretching parameters weak enough to make an offline
+ * dictionary attack cheap.
+ *
+ * In OPAQUE the KSF runs entirely on the client, so these parameters decide how expensive
+ * it is to attack the record the server stores. Taking them from the server unchecked lets
+ * a malicious, breached, or MITM'd server turn its own users' password hashing off:
+ * `argon2MemoryKib: 0` selects the identity KSF, which returns the OPRF output unchanged.
+ * Registration then stores a record derived from an unstretched password, and since the
+ * server keeps serving the same config, authentication still succeeds and nothing looks
+ * wrong. The server gates this behind an `allowIdentityKsf` flag and refuses to start
+ * without it; this is the client-side counterpart.
+ */
+export function assertKsfMeetsMinimum(cfg: OpaqueConfigResponseDto): ValidatedKsfParams {
+  const memoryKib = cfg.argon2MemoryKib;
+  const iterations = cfg.argon2Iterations;
+  const parallelism = cfg.argon2Parallelism;
+
+  // Type-check BEFORE comparing magnitudes. `await r.json() as OpaqueConfigResponseDto` is a
+  // compile-time assertion with no runtime force, so these fields are whatever the server sent.
+  // A missing field, a string, or an object yields NaN in any numeric comparison — and every
+  // comparison with NaN is false, so a magnitude-only guard passes and control falls through to
+  // the identity KSF. Omitting a single JSON key would otherwise restore the whole
+  // vulnerability this function exists to prevent. Java is immune to the same payload only
+  // because Jackson refuses to bind a non-integer to `int`.
+  if (!Number.isInteger(memoryKib)
+    || !Number.isInteger(iterations)
+    || !Number.isInteger(parallelism)) {
+    throw new Error(
+      'Server config has non-integer Argon2id parameters: '
+      + `memory=${JSON.stringify(memoryKib)}, iterations=${JSON.stringify(iterations)}, `
+      + `parallelism=${JSON.stringify(parallelism)}. Refusing, because a non-numeric value `
+      + 'silently defeats the key-stretching floor.',
+    );
+  }
+  if (memoryKib === 0) {
+    throw new Error(
+      'Server offers the identity KSF (argon2MemoryKib=0), which performs no password '
+      + 'stretching and leaves the stored record open to an offline dictionary attack. '
+      + 'Refusing. Pass { allowWeakServerKsf: true } to opt in locally.',
+    );
+  }
+  if (memoryKib < MIN_ARGON2_MEMORY_KIB || iterations < MIN_ARGON2_ITERATIONS) {
+    throw new Error(
+      `Server offers Argon2id parameters below the client's minimum: `
+      + `memory=${memoryKib} KiB (minimum ${MIN_ARGON2_MEMORY_KIB}), `
+      + `iterations=${iterations} (minimum ${MIN_ARGON2_ITERATIONS}). `
+      + 'Refusing, because these determine offline attack cost against the stored record. '
+      + 'Pass { allowWeakServerKsf: true } to opt in locally.',
+    );
+  }
+  if (memoryKib > MAX_ARGON2_MEMORY_KIB) {
+    throw new Error(
+      `Server asks for ${memoryKib} KiB of Argon2id memory, above the client's ceiling of `
+      + `${MAX_ARGON2_MEMORY_KIB} KiB. Refusing, to avoid a server-induced client DoS.`,
+    );
+  }
+  if (iterations > MAX_ARGON2_ITERATIONS) {
+    throw new Error(
+      `Server asks for ${iterations} Argon2id iterations, above the client's ceiling of `
+      + `${MAX_ARGON2_ITERATIONS}. Refusing, to avoid a server-induced client DoS — Argon2id `
+      + 'cost is linear in iterations and otherwise unbounded.',
+    );
+  }
+  if (parallelism < 1 || parallelism > MAX_ARGON2_PARALLELISM) {
+    throw new Error(
+      `Server offers argon2Parallelism=${parallelism}; must be between 1 and `
+      + `${MAX_ARGON2_PARALLELISM}.`,
+    );
+  }
+  return { argon2MemoryKib: memoryKib, argon2Iterations: iterations, argon2Parallelism: parallelism };
+}
+
+/**
  * HTTP wrapper for the OPAQUE registration and authentication flow.
  *
  * Use the static `create()` factory to automatically resolve the cipher suite
@@ -144,16 +259,30 @@ export class OpaqueHttpClient {
    * The cipherSuite field in the server response must be one of:
    *   "P256_SHA256", "P384_SHA384", "P521_SHA512"
    */
-  static async create(baseUrl: string): Promise<OpaqueHttpClient> {
+  static async create(
+    baseUrl: string,
+    options?: { allowWeakServerKsf?: boolean },
+  ): Promise<OpaqueHttpClient> {
     const r = await fetch(`${baseUrl}/opaque/config`);
     if (!r.ok) {
       throw new Error(`Failed to fetch OPAQUE config: ${r.status} ${r.statusText}`);
     }
     const cfg = await r.json() as OpaqueConfigResponseDto;
     const suite = getCipherSuite(cfg.cipherSuite);
-    const ksf = cfg.argon2MemoryKib > 0
-      ? argon2idKsf(cfg.argon2MemoryKib, cfg.argon2Iterations, cfg.argon2Parallelism, suite.Nh)
-      : identityKsf;
+    let ksf: KSF;
+    if (options?.allowWeakServerKsf) {
+      // Opt-in path. Still require an integer before choosing Argon2id, so an unexpected value
+      // lands on the branch the caller explicitly accepted rather than on an accident.
+      ksf = Number.isInteger(cfg.argon2MemoryKib) && cfg.argon2MemoryKib > 0
+        ? argon2idKsf(cfg.argon2MemoryKib, cfg.argon2Iterations, cfg.argon2Parallelism, suite.Nh)
+        : identityKsf;
+    } else {
+      // On the strict path there is deliberately no branch to identityKsf at all: the guard
+      // guarantees memory >= MIN_ARGON2_MEMORY_KIB, so Argon2id is the only reachable outcome.
+      // A ternary here would be one coercion bug away from silently selecting no stretching.
+      const p = assertKsfMeetsMinimum(cfg);
+      ksf = argon2idKsf(p.argon2MemoryKib, p.argon2Iterations, p.argon2Parallelism, suite.Nh);
+    }
     const client = new OpaqueHttpClient(baseUrl, { context: cfg.context, ksf, suite });
     client.configResponse = cfg;
     return client;

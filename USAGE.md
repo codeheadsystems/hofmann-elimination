@@ -34,7 +34,7 @@ at their default in a real deployment.
 | Field              | Default           | Required for production | Description                                                                                                                                                                                                                                           |
 |--------------------|-------------------|-------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `oprfCipherSuite`  | `P256_SHA256`     | No                      | Cipher suite for the standalone `/oprf` endpoint. Independent of `opaqueCipherSuite`.                                                                                                                                                                 |
-| `oprfMasterKeyHex` | `""` (random)     | **Yes**                 | Hex-encoded scalar used as the OPRF master key. Must be a valid non-zero scalar in the chosen curve group. Generate with `openssl rand -hex 32`. An empty value generates a random key on each startup, making OPRF outputs unstable across restarts. |
+| `oprfMasterKeyHex` | none (required)   | **Yes**                 | Hex-encoded scalar used as the OPRF master key. Generate with `openssl rand -hex 32`. An empty value fails startup with `IllegalStateException`. A key congruent to zero modulo the group order is rejected — every evaluation would return the identity element. A key at or above the group order is accepted and reduced modulo it, which changes no output (scalar multiplication reduces anyway) but logs a warning, since it means the key was generated for a wider range than the suite uses: `openssl rand -hex 32` exceeds ristretto255's order roughly 94% of the time. |
 | `oprfProcessorId`  | `hofmann-oprf-v1` | No                      | Human-readable identifier returned in every OPRF response. Useful for tracing which key produced a given output during key rotation.                                                                                                                  |
 
 ### JWT
@@ -223,7 +223,30 @@ dependencies {
 }
 ```
 
-Autoconfiguration activates automatically.  Every bean is `@ConditionalOnMissingBean` — override any by declaring your own `@Bean`:
+Autoconfiguration activates automatically — the controllers, security configuration and health
+indicator are registered by the autoconfiguration itself, so no component scanning of
+`com.codeheadsystems.hofmann.springboot` is required. Most beans are `@ConditionalOnMissingBean`
+— override those by declaring your own `@Bean`:
+
+> **If your application declares its own `SecurityFilterChain`**, Hofmann's default chain backs
+> off entirely rather than competing with it. Two chains are applied in order and the first match
+> wins per request, so a library chain that stayed registered would be incompatible with yours —
+> on Spring Security 6.2+ two any-request chains fail fast with `UnreachableFilterChainException`
+> and the application will not start.
+>
+> **Taking over means taking over completely.** The back-off triggers on the *presence* of a
+> chain, not on what it matches. A chain scoped with `securityMatcher("/api/**")` still displaces
+> Hofmann's, and every URL outside that matcher is then served with **no chain at all** — a
+> fail-open gap in your application. Prefer one chain ending in `anyRequest().authenticated()`
+> over a scoped one, unless you have deliberately arranged coverage for the remainder.
+>
+> When you take over: permit `/opaque/**` and `/oprf/**` (the OPAQUE handshake is how a caller
+> obtains a token, so requiring one to reach it would be circular), permit the `ERROR` dispatch to
+> your error path so 400 / 429 / 503 responses are not rewritten as 401, and wire in the
+> `JwtAuthenticationFilter` bean, which remains available for exactly this purpose.
+>
+> Note also that adopting Hofmann's default chain makes **every** URL in your application require
+> a Hofmann JWT unless you permit it explicitly — including endpoints you intend to be public.
 
 ```java
 // Persistent credential store backed by your database

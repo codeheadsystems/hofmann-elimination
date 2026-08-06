@@ -13,9 +13,14 @@ import com.codeheadsystems.hofmann.model.opaque.RegistrationFinishRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartResponse;
 import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
+import com.codeheadsystems.hofmann.server.ratelimit.ClientIpResolver;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitExceededException;
+import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -46,6 +51,8 @@ public class OpaqueController {
 
   private final HofmannOpaqueServerManager manager;
   private final OpaqueClientConfigResponse clientConfig;
+  private final RateLimiter originRateLimiter;
+  private final boolean trustForwardedHeaders;
 
   /**
    * Instantiates a new Opaque controller.
@@ -54,9 +61,36 @@ public class OpaqueController {
    * @param clientConfig the client config response to expose via GET /opaque/config
    */
   public OpaqueController(HofmannOpaqueServerManager manager,
-                          OpaqueClientConfigResponse clientConfig) {
+                          OpaqueClientConfigResponse clientConfig,
+                          @Qualifier("opaqueOriginRateLimiter") RateLimiter originRateLimiter,
+                          @Value("${hofmann.trust-forwarded-headers:false}")
+                          boolean trustForwardedHeaders) {
     this.manager = manager;
     this.clientConfig = clientConfig;
+    this.originRateLimiter = originRateLimiter;
+    this.trustForwardedHeaders = trustForwardedHeaders;
+  }
+
+  /**
+   * Bounds how fast a single origin can reach the unauthenticated OPAQUE endpoints.
+   * <p>
+   * The manager's limiters key on the credential identifier, which bounds attempts against one
+   * account but nothing else: every distinct identifier gets a fresh bucket, so an attacker who
+   * varies it is unthrottled. That is what lets a flood exhaust the limiter's bucket map and the
+   * pending-session store, and denying on either takes service away from everyone. The manager is
+   * framework-agnostic and never sees the request, so this dimension can only be added here.
+   */
+  private void enforceOriginLimit(HttpServletRequest httpRequest) {
+    if (originRateLimiter == null) {
+      return;
+    }
+    String origin = ClientIpResolver.resolve(
+        httpRequest == null ? null : httpRequest.getHeader("X-Forwarded-For"),
+        httpRequest == null ? null : httpRequest.getRemoteAddr(),
+        trustForwardedHeaders);
+    if (!originRateLimiter.tryConsume(origin)) {
+      throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Rate limit exceeded");
+    }
   }
 
   /**
@@ -80,8 +114,10 @@ public class OpaqueController {
   @PostMapping("/registration/start")
   public RegistrationStartResponse registrationStart(
       @RequestBody RegistrationStartRequest req,
-      @RequestHeader(value = "Authorization", required = false) String authHeader) {
+      @RequestHeader(value = "Authorization", required = false) String authHeader,
+      HttpServletRequest httpRequest) {
     log.trace("registrationStart()");
+    enforceOriginLimit(httpRequest);
     try {
       return manager.registrationStart(req, extractBearerToken(authHeader));
     } catch (RateLimitExceededException e) {
@@ -105,8 +141,10 @@ public class OpaqueController {
   @PostMapping("/registration/finish")
   public ResponseEntity<Void> registrationFinish(
       @RequestBody RegistrationFinishRequest req,
-      @RequestHeader(value = "Authorization", required = false) String authHeader) {
+      @RequestHeader(value = "Authorization", required = false) String authHeader,
+      HttpServletRequest httpRequest) {
     log.trace("registrationFinish()");
+    enforceOriginLimit(httpRequest);
     try {
       manager.registrationFinish(req, extractBearerToken(authHeader));
       return ResponseEntity.noContent().build();
@@ -208,8 +246,10 @@ public class OpaqueController {
    * @return 202 Accepted
    */
   @PostMapping("/recovery/start")
-  public ResponseEntity<Void> recoveryStart(@RequestBody RecoveryStartRequest req) {
+  public ResponseEntity<Void> recoveryStart(@RequestBody RecoveryStartRequest req,
+                                            HttpServletRequest httpRequest) {
     log.trace("recoveryStart()");
+    enforceOriginLimit(httpRequest);
     try {
       manager.recoveryStart(req);
       return ResponseEntity.accepted().build();
@@ -230,8 +270,10 @@ public class OpaqueController {
    * @return the recovery verify response containing the recovery token
    */
   @PostMapping("/recovery/verify")
-  public RecoveryVerifyResponse recoveryVerify(@RequestBody RecoveryVerifyRequest req) {
+  public RecoveryVerifyResponse recoveryVerify(@RequestBody RecoveryVerifyRequest req,
+                                               HttpServletRequest httpRequest) {
     log.trace("recoveryVerify()");
+    enforceOriginLimit(httpRequest);
     try {
       return manager.recoveryVerify(req);
     } catch (UnsupportedOperationException e) {
@@ -252,12 +294,23 @@ public class OpaqueController {
    * @return the auth start response
    */
   @PostMapping("/auth/start")
-  public AuthStartResponse authStart(@RequestBody AuthStartRequest req) {
+  public AuthStartResponse authStart(@RequestBody AuthStartRequest req,
+                                     HttpServletRequest httpRequest) {
     log.trace("authStart()");
+    enforceOriginLimit(httpRequest);
     try {
       return manager.authStart(req);
     } catch (RateLimitExceededException e) {
       throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Rate limit exceeded");
+    } catch (SecurityException e) {
+      // Group-element validation (deserializePoint / decodeRistretto255) signals malformed
+      // input with SecurityException, so without this catch a malformed blindedElement or
+      // clientAkePublicKey returns 500 on an unauthenticated endpoint. Mapped to 400 rather
+      // than 401 because nothing has been authenticated at this stage — the input is simply
+      // not a well-formed group element. Both the registered and unknown-credential paths
+      // reach this identically, so it does not distinguish the two.
+      log.debug("authStart invalid group element: {}", e.getMessage());
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid request");
     } catch (IllegalArgumentException e) {
       log.debug("authStart bad request: {}", e.getMessage());
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid request");
@@ -274,8 +327,10 @@ public class OpaqueController {
    * @return the auth finish response
    */
   @PostMapping("/auth/finish")
-  public AuthFinishResponse authFinish(@RequestBody AuthFinishRequest req) {
+  public AuthFinishResponse authFinish(@RequestBody AuthFinishRequest req,
+                                       HttpServletRequest httpRequest) {
     log.trace("authFinish()");
+    enforceOriginLimit(httpRequest);
     try {
       return manager.authFinish(req);
     } catch (SecurityException e) {

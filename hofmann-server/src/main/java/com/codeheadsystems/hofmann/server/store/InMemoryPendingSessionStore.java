@@ -62,11 +62,7 @@ public class InMemoryPendingSessionStore implements PendingSessionStore {
     // Guard the reaper period so a short TTL (e.g. 1-3s in tests) cannot produce a
     // zero period, which scheduleAtFixedRate rejects with IllegalArgumentException.
     long reaperPeriod = Math.max(1, ttlSeconds / 4);
-    reaper.scheduleAtFixedRate(
-        () -> {
-          Instant cutoff = Instant.now().minusSeconds(ttlSeconds);
-          sessions.entrySet().removeIf(e -> e.getValue().createdAt().isBefore(cutoff));
-        }, ttlSeconds, reaperPeriod, TimeUnit.SECONDS);
+    reaper.scheduleAtFixedRate(this::evictExpired, ttlSeconds, reaperPeriod, TimeUnit.SECONDS);
   }
 
   @Override
@@ -78,7 +74,20 @@ public class InMemoryPendingSessionStore implements PendingSessionStore {
   public void store(String sessionToken, ServerAuthState state,
                     String credentialIdentifierBase64, int keyVersion) {
     if (sessions.size() >= maxSessions) {
-      throw new IllegalStateException("Too many pending sessions");
+      // Reclaim expired entries before refusing. authStart stores a pending session for EVERY
+      // request — including the manufactured-KE2 path for unknown credentials, which exists so
+      // that an unknown identifier is indistinguishable from a known one — so a flood of
+      // handshakes that are never finished fills this store with entries that are already dead
+      // but not yet reaped. Refusing at that point returns 503 to every legitimate user, which
+      // is a far worse outcome than the memory growth the cap defends against.
+      evictExpired();
+      if (sessions.size() >= maxSessions) {
+        log.warn("Pending session store at capacity ({} entries) after reclaiming expired "
+            + "entries; rejecting new handshakes. Sustained occurrences indicate handshakes "
+            + "being started and abandoned faster than the {}s TTL retires them.",
+            maxSessions, ttlSeconds);
+        throw new IllegalStateException("Too many pending sessions");
+      }
     }
     sessions.put(sessionToken,
         new TimestampedEntry(state, credentialIdentifierBase64, keyVersion, Instant.now()));
@@ -96,6 +105,12 @@ public class InMemoryPendingSessionStore implements PendingSessionStore {
     }
     return Optional.of(new PendingSession(entry.state(), entry.credentialIdentifierBase64(),
         entry.keyVersion()));
+  }
+
+  /** Drops every entry past its TTL. Safe to call from the request path — it is a map scan. */
+  private void evictExpired() {
+    Instant cutoff = Instant.now().minusSeconds(ttlSeconds);
+    sessions.entrySet().removeIf(e -> e.getValue().createdAt().isBefore(cutoff));
   }
 
   @Override

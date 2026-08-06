@@ -68,7 +68,9 @@ class HofmannOpaqueClientManagerTest {
   @BeforeEach
   void setUp() {
     lenient().when(accessor.getOpaqueConfig(SERVER_ID)).thenReturn(SERVER_CONFIG);
-    manager = new HofmannOpaqueClientManager(accessor);
+    // The stub server config advertises the identity KSF, which the client now refuses by
+    // default. Opt in explicitly, exactly as a developer running against a dev server must.
+    manager = new HofmannOpaqueClientManager(accessor, java.util.Collections.emptyMap(), true);
   }
 
   /**

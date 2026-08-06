@@ -3,6 +3,7 @@ package com.codeheadsystems.hofmann.springboot.controller;
 import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
 import com.codeheadsystems.hofmann.model.oprf.OprfRequest;
 import com.codeheadsystems.hofmann.model.oprf.OprfResponse;
+import com.codeheadsystems.hofmann.server.ratelimit.ClientIpResolver;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
 import com.codeheadsystems.rfc.oprf.manager.OprfServerManager;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -100,38 +101,17 @@ public class OprfController {
     }
   }
 
-  private String extractClientIp(HttpServletRequest request) {
-    // Only honour X-Forwarded-For when explicitly configured to be behind a trusted proxy;
-    // otherwise the spoofable header lets a client rotate it to mint unlimited rate-limit
-    // buckets against this unauthenticated OPRF oracle.
-    if (trustForwardedHeaders) {
-      String clientIp = rightmostForwardedFor(request.getHeader("X-Forwarded-For"));
-      if (clientIp != null) {
-        return clientIp;
-      }
-    }
-    return request.getRemoteAddr();
-  }
-
   /**
-   * Returns the right-most entry of an {@code X-Forwarded-For} header, or {@code null} if absent.
-   * <p>
-   * The right-most entry is the address appended by the immediate (trusted) proxy and is the only
-   * value an external client cannot forge: proxies that <em>append</em> to XFF (the common default,
-   * e.g. HAProxy {@code option forwardfor}) place attacker-supplied values to the left, so taking
-   * the left-most entry would let a client spoof its rate-limit key even in trusted-proxy mode.
+   * Resolves the rate-limit key for this request.
+   *
+   * <p>Delegates to {@link ClientIpResolver} so the OPRF and OPAQUE endpoints, in both
+   * frameworks, cannot drift apart on whether to believe {@code X-Forwarded-For} — the one
+   * decision that determines whether an origin-keyed limiter is worth anything.
    */
-  private static String rightmostForwardedFor(String header) {
-    if (header == null || header.isBlank()) {
-      return null;
-    }
-    String[] parts = header.split(",");
-    for (int i = parts.length - 1; i >= 0; i--) {
-      String entry = parts[i].trim();
-      if (!entry.isEmpty()) {
-        return entry;
-      }
-    }
-    return null;
+  private String extractClientIp(HttpServletRequest request) {
+    return ClientIpResolver.resolve(
+        request == null ? null : request.getHeader("X-Forwarded-For"),
+        request == null ? null : request.getRemoteAddr(),
+        trustForwardedHeaders);
   }
 }

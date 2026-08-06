@@ -7,6 +7,7 @@ import com.codeheadsystems.hofmann.server.manager.JwtKeyDetail;
 import com.codeheadsystems.hofmann.server.manager.JwtManager;
 import com.codeheadsystems.hofmann.server.manager.OpaqueServerKeyDetail;
 import com.codeheadsystems.hofmann.server.ratelimit.InMemoryRateLimiter;
+import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfig;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfigSupplier;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
 import com.codeheadsystems.hofmann.server.recovery.RecoveryChallenger;
@@ -39,6 +40,11 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import com.codeheadsystems.hofmann.springboot.controller.OpaqueController;
+import com.codeheadsystems.hofmann.springboot.controller.OprfController;
+import com.codeheadsystems.hofmann.springboot.health.OpaqueServerHealthIndicator;
+import com.codeheadsystems.hofmann.springboot.security.HofmannSecurityConfig;
+import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Bean;
 
 /**
@@ -46,6 +52,12 @@ import org.springframework.context.annotation.Bean;
  */
 @AutoConfiguration
 @EnableConfigurationProperties(HofmannProperties.class)
+@Import({
+    OpaqueController.class,
+    OprfController.class,
+    HofmannSecurityConfig.class,
+    OpaqueServerHealthIndicator.class,
+})
 public class HofmannAutoConfiguration {
 
   private static final Logger log = LoggerFactory.getLogger(HofmannAutoConfiguration.class);
@@ -457,6 +469,27 @@ public class HofmannAutoConfiguration {
    * @param props the props
    * @return the supplier
    */
+  /**
+   * Origin-keyed limiter in front of the unauthenticated OPAQUE endpoints.
+   * <p>
+   * The manager's limiters key on the credential identifier, which an attacker varies freely;
+   * this is the only dimension that bounds a flood of distinct identifiers, and therefore the
+   * only thing between that flood and exhaustion of the limiter's bucket map and the
+   * pending-session store.
+   *
+   * @param supplier the rate limit config supplier
+   * @return the origin rate limiter
+   */
+  @Bean
+  @ConditionalOnMissingBean(name = "opaqueOriginRateLimiter")
+  @Qualifier("opaqueOriginRateLimiter")
+  public RateLimiter opaqueOriginRateLimiter(RateLimitConfigSupplier supplier) {
+    RateLimitConfig config = supplier.originRateLimitConfig();
+    // Null means origin-based limiting is disabled, which is the default. A no-op limiter is
+    // returned rather than a null bean so the controller's constructor injection stays simple.
+    return config == null ? key -> true : new InMemoryRateLimiter(config);
+  }
+
   @Bean
   @ConditionalOnMissingBean
   public Supplier<ServerProcessorDetail> serverProcessorDetailSupplier(HofmannProperties props) {
@@ -468,6 +501,15 @@ public class HofmannAutoConfiguration {
               + "Alternatively, provide a custom Supplier<ServerProcessorDetail> bean.");
     }
     BigInteger masterKey = new BigInteger(masterKeyHex, 16);
+    // Fail at startup rather than silently running with an unusable key: a key congruent to
+    // zero modulo the group order makes every OPRF evaluation return the identity element, and
+    // on ristretto255 that decodes cleanly, so the deployment would look healthy while having
+    // no effective key at all. Normalizing also folds a key at or above the order into range —
+    // the documented `openssl rand -hex 32` exceeds ristretto255's order about 94% of the time
+    // — so two configs differing by a multiple of the order stop looking like distinct keys.
+    // This changes no output: scalar multiplication reduces modulo the order regardless.
+    masterKey = OprfCipherSuite.builder().withSuite(props.getOprfCipherSuite()).build()
+        .normalizeSecretKey(masterKey);
     String processorId = props.getOprfProcessorId();
     ServerProcessorDetail detail = new ServerProcessorDetail(masterKey, processorId);
     return () -> detail;

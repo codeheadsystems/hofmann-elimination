@@ -13,7 +13,11 @@ import com.codeheadsystems.hofmann.model.opaque.RegistrationFinishRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartRequest;
 import com.codeheadsystems.hofmann.model.opaque.RegistrationStartResponse;
 import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
+import com.codeheadsystems.hofmann.server.ratelimit.ClientIpResolver;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitExceededException;
+import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
@@ -48,17 +52,67 @@ public class OpaqueResource {
 
   private final HofmannOpaqueServerManager manager;
   private final OpaqueClientConfigResponse clientConfig;
+  private final RateLimiter ipRateLimiter;
+  private final boolean trustForwardedHeaders;
 
   /**
-   * Instantiates a new Opaque resource.
+   * Instantiates a new Opaque resource with no origin-based rate limiting.
    *
    * @param manager      the manager
    * @param clientConfig the client config response to expose via GET /opaque/config
    */
   public OpaqueResource(HofmannOpaqueServerManager manager,
                         OpaqueClientConfigResponse clientConfig) {
+    this(manager, clientConfig, null, false);
+  }
+
+  /**
+   * Instantiates a new Opaque resource with an origin-keyed rate limiter.
+   *
+   * @param manager               the manager
+   * @param clientConfig          the client config response to expose via GET /opaque/config
+   * @param ipRateLimiter         limiter keyed by request origin, or null to disable
+   * @param trustForwardedHeaders whether to believe X-Forwarded-For (only behind a trusted proxy)
+   */
+  public OpaqueResource(HofmannOpaqueServerManager manager,
+                        OpaqueClientConfigResponse clientConfig,
+                        RateLimiter ipRateLimiter,
+                        boolean trustForwardedHeaders) {
     this.manager = manager;
     this.clientConfig = clientConfig;
+    this.ipRateLimiter = ipRateLimiter;
+    this.trustForwardedHeaders = trustForwardedHeaders;
+  }
+
+  /**
+   * Bounds how fast a single origin can reach the unauthenticated OPAQUE endpoints.
+   * <p>
+   * The manager's limiters are keyed by credential identifier, which bounds attempts against one
+   * account but nothing else: every distinct identifier gets a fresh bucket, so an attacker who
+   * varies it is unthrottled. That is what lets a flood exhaust the limiter's bucket map and the
+   * pending-session store, and denying on either exhausts service for everyone. The manager is
+   * framework-agnostic and never sees the request, so this dimension can only be added here.
+   * <p>
+   * Applied to the unauthenticated entry points only. The authenticated ones already require a
+   * JWT whose subject must match, which bounds them by account.
+   */
+  private void enforceOriginLimit(final HttpServletRequest httpRequest) {
+    if (ipRateLimiter == null) {
+      return;
+    }
+    // The request MUST arrive as a method parameter. @Context field injection into this
+    // singleton resource silently yields null, which collapses every caller onto the single
+    // "unknown" key — turning a per-origin limiter into one global bucket that any single
+    // client can drain to deny the whole deployment. That is strictly worse than no limiter,
+    // so the request is threaded explicitly rather than injected.
+    String origin = ClientIpResolver.resolve(
+        httpRequest == null ? null : httpRequest.getHeader("X-Forwarded-For"),
+        httpRequest == null ? null : httpRequest.getRemoteAddr(),
+        trustForwardedHeaders);
+    if (!ipRateLimiter.tryConsume(origin)) {
+      throw new WebApplicationException(Response.status(429)
+          .header("Retry-After", "60").entity("Rate limit exceeded").build());
+    }
   }
 
   /**
@@ -83,8 +137,10 @@ public class OpaqueResource {
   @POST
   @Path("/registration/start")
   public RegistrationStartResponse registrationStart(RegistrationStartRequest req,
-                                                     @HeaderParam(HttpHeaders.AUTHORIZATION) String authHeader) {
+                                                     @HeaderParam(HttpHeaders.AUTHORIZATION) String authHeader,
+                                                     @Context HttpServletRequest httpRequest) {
     log.trace("registrationStart()");
+    enforceOriginLimit(httpRequest);
     try {
       return manager.registrationStart(req, extractBearerToken(authHeader));
     } catch (RateLimitExceededException e) {
@@ -109,8 +165,10 @@ public class OpaqueResource {
   @POST
   @Path("/registration/finish")
   public Response registrationFinish(RegistrationFinishRequest req,
-                                     @HeaderParam(HttpHeaders.AUTHORIZATION) String authHeader) {
+                                     @HeaderParam(HttpHeaders.AUTHORIZATION) String authHeader,
+                                     @Context HttpServletRequest httpRequest) {
     log.trace("registrationFinish()");
+    enforceOriginLimit(httpRequest);
     try {
       manager.registrationFinish(req, extractBearerToken(authHeader));
       return Response.noContent().build();
@@ -215,8 +273,10 @@ public class OpaqueResource {
    */
   @POST
   @Path("/recovery/start")
-  public Response recoveryStart(RecoveryStartRequest req) {
+  public Response recoveryStart(RecoveryStartRequest req,
+                                @Context HttpServletRequest httpRequest) {
     log.trace("recoveryStart()");
+    enforceOriginLimit(httpRequest);
     try {
       manager.recoveryStart(req);
       return Response.accepted().build();
@@ -239,8 +299,10 @@ public class OpaqueResource {
    */
   @POST
   @Path("/recovery/verify")
-  public RecoveryVerifyResponse recoveryVerify(RecoveryVerifyRequest req) {
+  public RecoveryVerifyResponse recoveryVerify(RecoveryVerifyRequest req,
+                                               @Context HttpServletRequest httpRequest) {
     log.trace("recoveryVerify()");
+    enforceOriginLimit(httpRequest);
     try {
       return manager.recoveryVerify(req);
     } catch (UnsupportedOperationException e) {
@@ -262,13 +324,24 @@ public class OpaqueResource {
    */
   @POST
   @Path("/auth/start")
-  public AuthStartResponse authStart(AuthStartRequest req) {
+  public AuthStartResponse authStart(AuthStartRequest req,
+                                     @Context HttpServletRequest httpRequest) {
     log.trace("authStart()");
+    enforceOriginLimit(httpRequest);
     try {
       return manager.authStart(req);
     } catch (RateLimitExceededException e) {
       throw new WebApplicationException(Response.status(429)
           .header("Retry-After", "60").entity("Rate limit exceeded").build());
+    } catch (SecurityException e) {
+      // Group-element validation (deserializePoint / decodeRistretto255) signals malformed
+      // input with SecurityException, so without this catch a malformed blindedElement or
+      // clientAkePublicKey returns 500 on an unauthenticated endpoint. Mapped to 400 rather
+      // than 401 because nothing has been authenticated at this stage — the input is simply
+      // not a well-formed group element. Both the registered and unknown-credential paths
+      // reach this identically, so it does not distinguish the two.
+      log.debug("authStart invalid group element: {}", e.getMessage());
+      throw new WebApplicationException("Invalid request", Response.Status.BAD_REQUEST);
     } catch (IllegalArgumentException e) {
       log.debug("authStart bad request: {}", e.getMessage());
       throw new WebApplicationException("Invalid request", Response.Status.BAD_REQUEST);
@@ -286,8 +359,10 @@ public class OpaqueResource {
    */
   @POST
   @Path("/auth/finish")
-  public AuthFinishResponse authFinish(AuthFinishRequest req) {
+  public AuthFinishResponse authFinish(AuthFinishRequest req,
+                                       @Context HttpServletRequest httpRequest) {
     log.trace("authFinish()");
+    enforceOriginLimit(httpRequest);
     try {
       return manager.authFinish(req);
     } catch (SecurityException e) {

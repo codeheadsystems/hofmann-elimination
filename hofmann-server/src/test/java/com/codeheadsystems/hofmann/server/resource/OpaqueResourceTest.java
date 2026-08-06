@@ -104,20 +104,20 @@ class OpaqueResourceTest {
   @Test
   void authStart_illegalState_mapsTo503() {
     when(manager.authStart(any())).thenThrow(new IllegalStateException("Too many pending sessions"));
-    assertStatus(() -> resource.authStart(null),
+    assertStatus(() -> resource.authStart(null, null),
         Response.Status.SERVICE_UNAVAILABLE.getStatusCode());
   }
 
   @Test
   void authStart_rateLimit_mapsTo429() {
     when(manager.authStart(any())).thenThrow(new RateLimitExceededException());
-    assertStatus(() -> resource.authStart(null), 429);
+    assertStatus(() -> resource.authStart(null, null), 429);
   }
 
   @Test
   void authStart_illegalArgument_mapsTo400() {
     when(manager.authStart(any())).thenThrow(new IllegalArgumentException("bad"));
-    assertStatus(() -> resource.authStart(null), Response.Status.BAD_REQUEST.getStatusCode());
+    assertStatus(() -> resource.authStart(null, null), Response.Status.BAD_REQUEST.getStatusCode());
   }
 
   // ── authFinish ─────────────────────────────────────────────────────────────
@@ -125,13 +125,13 @@ class OpaqueResourceTest {
   @Test
   void authFinish_securityException_mapsTo401() {
     when(manager.authFinish(any())).thenThrow(new SecurityException("Session not found or expired"));
-    assertStatus(() -> resource.authFinish(null), Response.Status.UNAUTHORIZED.getStatusCode());
+    assertStatus(() -> resource.authFinish(null, null), Response.Status.UNAUTHORIZED.getStatusCode());
   }
 
   @Test
   void authFinish_illegalArgument_mapsTo400() {
     when(manager.authFinish(any())).thenThrow(new IllegalArgumentException("bad"));
-    assertStatus(() -> resource.authFinish(null), Response.Status.BAD_REQUEST.getStatusCode());
+    assertStatus(() -> resource.authFinish(null, null), Response.Status.BAD_REQUEST.getStatusCode());
   }
 
   // ── registrationFinish ─────────────────────────────────────────────────────
@@ -139,22 +139,25 @@ class OpaqueResourceTest {
   @Test
   void registrationFinish_rateLimit_mapsTo429() {
     Mockito.doThrow(new RateLimitExceededException()).when(manager).registrationFinish(any(), any());
-    assertStatus(() -> resource.registrationFinish(null, null), 429);
+    assertStatus(() -> resource.registrationFinish(null, null, null), 429);
   }
 
   @Test
   void registrationFinish_securityException_mapsTo401() {
     Mockito.doThrow(new SecurityException("Invalid or expired recovery token"))
         .when(manager).registrationFinish(any(), any());
-    assertStatus(() -> resource.registrationFinish(null, null),
+    assertStatus(() -> resource.registrationFinish(null, null, null),
         Response.Status.UNAUTHORIZED.getStatusCode());
   }
 
   @Test
   void registrationFinish_illegalArgument_mapsTo400() {
-    Mockito.doThrow(new IllegalArgumentException("Credential already registered"))
+    // Any IllegalArgumentException must map to 400. Uses a validation-shaped message on
+    // purpose: registrationFinish no longer throws on an already-registered credential — it
+    // returns 204 so the response cannot be used to enumerate accounts.
+    Mockito.doThrow(new IllegalArgumentException("Missing required field: credentialIdentifier"))
         .when(manager).registrationFinish(any(), any());
-    assertStatus(() -> resource.registrationFinish(null, null),
+    assertStatus(() -> resource.registrationFinish(null, null, null),
         Response.Status.BAD_REQUEST.getStatusCode());
   }
 
@@ -174,26 +177,26 @@ class OpaqueResourceTest {
   void recoveryStart_recoveryDisabled_mapsTo404() {
     Mockito.doThrow(new UnsupportedOperationException("Account recovery is not configured"))
         .when(manager).recoveryStart(any());
-    assertStatus(() -> resource.recoveryStart(null), Response.Status.NOT_FOUND.getStatusCode());
+    assertStatus(() -> resource.recoveryStart(null, null), Response.Status.NOT_FOUND.getStatusCode());
   }
 
   @Test
   void recoveryStart_rateLimit_mapsTo429() {
     Mockito.doThrow(new RateLimitExceededException()).when(manager).recoveryStart(any());
-    assertStatus(() -> resource.recoveryStart(null), 429);
+    assertStatus(() -> resource.recoveryStart(null, null), 429);
   }
 
   @Test
   void recoveryVerify_recoveryDisabled_mapsTo404() {
     when(manager.recoveryVerify(any()))
         .thenThrow(new UnsupportedOperationException("Account recovery is not configured"));
-    assertStatus(() -> resource.recoveryVerify(null), Response.Status.NOT_FOUND.getStatusCode());
+    assertStatus(() -> resource.recoveryVerify(null, null), Response.Status.NOT_FOUND.getStatusCode());
   }
 
   @Test
   void recoveryVerify_securityException_mapsTo401() {
     when(manager.recoveryVerify(any())).thenThrow(new SecurityException("Recovery verification failed"));
-    assertStatus(() -> resource.recoveryVerify(null), Response.Status.UNAUTHORIZED.getStatusCode());
+    assertStatus(() -> resource.recoveryVerify(null, null), Response.Status.UNAUTHORIZED.getStatusCode());
   }
 
   // ── changePassword ─────────────────────────────────────────────────────────
@@ -220,7 +223,7 @@ class OpaqueResourceTest {
         .thenReturn(new RegistrationStartResponse(new RegistrationResponse(new byte[33], new byte[33])));
     ArgumentCaptor<String> tokenCaptor = ArgumentCaptor.forClass(String.class);
 
-    resource.registrationStart(null, "Bearer my-secret-token");
+    resource.registrationStart(null, "Bearer my-secret-token", null);
 
     Mockito.verify(manager).registrationStart(any(), tokenCaptor.capture());
     assertThat(tokenCaptor.getValue()).isEqualTo("my-secret-token");
@@ -231,7 +234,7 @@ class OpaqueResourceTest {
     when(manager.registrationStart(any(), nullable(String.class)))
         .thenReturn(new RegistrationStartResponse(new RegistrationResponse(new byte[33], new byte[33])));
 
-    resource.registrationStart(null, "Basic abc");
+    resource.registrationStart(null, "Basic abc", null);
 
     Mockito.verify(manager).registrationStart(any(), eq((String) null));
   }

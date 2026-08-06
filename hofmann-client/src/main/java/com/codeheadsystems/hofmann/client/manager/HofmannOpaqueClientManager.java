@@ -56,6 +56,7 @@ public class HofmannOpaqueClientManager {
   private final HofmannOpaqueAccessor accessor;
   private final Map<ServerIdentifier, OpaqueClientConfig> overrides;
   private final ConcurrentHashMap<ServerIdentifier, Client> clientCache;
+  private final boolean allowWeakServerKsf;
 
   /**
    * Production constructor — auto-fetches OPAQUE config from each server on first use.
@@ -76,9 +77,37 @@ public class HofmannOpaqueClientManager {
    */
   public HofmannOpaqueClientManager(final HofmannOpaqueAccessor accessor,
                                      final Map<ServerIdentifier, OpaqueClientConfig> overrides) {
-    log.info("OpaqueManager(overrides={})", overrides.size());
+    this(accessor, overrides, false);
+  }
+
+  /**
+   * Constructor that additionally allows accepting weak or absent server-supplied key
+   * stretching.
+   * <p>
+   * Pass {@code true} for {@code allowWeakServerKsf} only against a server deliberately
+   * configured with {@code allowIdentityKsf} — typically tests and local development. It
+   * disables the client's only check on parameters that decide offline attack cost, so it must
+   * be a local decision rather than something the server can induce. See
+   * {@link OpaqueClientConfig#fromServerConfig(com.codeheadsystems.hofmann.model.opaque.OpaqueClientConfigResponse,
+   * boolean)}.
+   *
+   * @param accessor           the accessor
+   * @param overrides          per-server config overrides (may be empty)
+   * @param allowWeakServerKsf true to accept the identity KSF and below-floor parameters
+   */
+  public HofmannOpaqueClientManager(final HofmannOpaqueAccessor accessor,
+                                     final Map<ServerIdentifier, OpaqueClientConfig> overrides,
+                                     final boolean allowWeakServerKsf) {
+    log.info("OpaqueManager(overrides={}, allowWeakServerKsf={})",
+        overrides.size(), allowWeakServerKsf);
+    if (allowWeakServerKsf) {
+      log.warn("allowWeakServerKsf is enabled: this client will accept password-stretching "
+          + "parameters from the server without enforcing a minimum, including the identity "
+          + "KSF. Do not use this in production.");
+    }
     this.accessor = accessor;
     this.overrides = overrides;
+    this.allowWeakServerKsf = allowWeakServerKsf;
     this.clientCache = new ConcurrentHashMap<>();
   }
 
@@ -86,7 +115,8 @@ public class HofmannOpaqueClientManager {
     return clientCache.computeIfAbsent(serverId, id -> {
       OpaqueClientConfig cfg = overrides.get(id);
       if (cfg == null) {
-        cfg = OpaqueClientConfig.fromServerConfig(accessor.getOpaqueConfig(id));
+        cfg = OpaqueClientConfig.fromServerConfig(
+            accessor.getOpaqueConfig(id), allowWeakServerKsf);
       }
       return new Client(cfg.opaqueConfig());
     });
