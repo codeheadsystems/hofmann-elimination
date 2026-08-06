@@ -1,5 +1,21 @@
 name: Approve Wolpert Pushes
-on: pull_request
+
+# DISABLED. This workflow auto-approved and auto-merged every pull request opened by `wolpert`,
+# with no human review and no test gate expressed here — the only reason CI ever gated a merge is
+# that auto-merge waits for required checks, which were not required until now.
+#
+# On 2026-08-06 it squash-merged PR #85 — a security release touching elliptic-curve arithmetic
+# and the Spring security chain — into main roughly a minute after the conflicts were resolved,
+# approved by github-actions, before the human review that had been explicitly requested.
+#
+# Merges into main are now gated by branch protection requiring the `build`, `typescript` and
+# `rust` checks. Re-enabling this would let a PR bypass review again; if it is ever restored, it
+# should at minimum exclude PRs carrying a review label.
+#
+# Also disabled at the repository level (`gh workflow disable "Approve Wolpert Pushes"`), so the
+# trigger below is inert either way.
+on:
+  workflow_dispatch:
 
 permissions:
   contents: write
