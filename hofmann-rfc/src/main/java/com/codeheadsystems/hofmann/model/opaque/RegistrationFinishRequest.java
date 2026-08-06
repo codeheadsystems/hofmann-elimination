@@ -77,6 +77,19 @@ public record RegistrationFinishRequest(
   }
 
   /**
+   * Returns the credential identifier in its canonical base64 spelling.
+   *
+   * <p>Overrides the generated accessor so that downstream consumers — the session index,
+   * the JWT subject, and every rate-limiter bucket key — see one spelling per identifier.
+   * See {@link CredentialIdentifiers} for why the raw client string cannot be used directly.
+   *
+   * @return the canonical base64 credential identifier
+   */
+  public String credentialIdentifierBase64() {
+    return CredentialIdentifiers.canonicalize(credentialIdentifierBase64);
+  }
+
+  /**
    * Registration record registration record.
    *
    * @return the registration record
