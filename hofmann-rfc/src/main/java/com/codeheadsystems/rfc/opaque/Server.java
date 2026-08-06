@@ -61,6 +61,65 @@ public class Server {
   }
 
   /**
+   * Validates a client-uploaded registration record before it is stored.
+   * <p>
+   * The record arrives from an unauthenticated endpoint as four independent base64 fields, so
+   * nothing about its shape can be assumed. Storing it unchecked defers the failure to
+   * authentication time, where it becomes worse than a bad request: {@code createCredentialResponse}
+   * XORs {@code serverPublicKey || envelope} against a fixed-width pad, so a wrong-length
+   * envelope throws on the length mismatch and {@code /auth/start} answers a poisoned identifier
+   * with an error while an unknown one gets a fake KE2 — an enumeration oracle.
+   * <p>
+   * Checks every field against the suite's fixed sizes and, for the client public key, that the
+   * bytes actually decode to a valid non-identity group element rather than merely being the
+   * right length.
+   * <p>
+   * <strong>Scope.</strong> This closes the enumeration oracle. It does <em>not</em> prevent a
+   * caller from storing a record that is well-formed but cryptographically meaningless — a valid
+   * point with random envelope bytes passes every check here and still leaves the identifier
+   * unauthenticatable, because only the password holder can produce a record that actually
+   * verifies. On an unauthenticated registration endpoint that is inherent, and the answer is
+   * proof of identifier ownership at the deployment layer rather than more validation here.
+   *
+   * @param record the client-supplied registration record
+   * @throws IllegalArgumentException if any field is null or the wrong length, and — on the
+   *                                  NIST suites — if the client public key does not decode
+   * @throws SecurityException        if the client public key is rejected by a suite that
+   *                                  signals decode failures that way (ristretto255). Callers
+   *                                  that map exceptions to HTTP statuses should normalise the
+   *                                  two, since which one fires depends on the suite rather
+   *                                  than on the nature of the fault
+   */
+  public void validateRegistrationRecord(final RegistrationRecord record) {
+    if (record == null) {
+      throw new IllegalArgumentException("Registration record is required");
+    }
+    requireLength(record.clientPublicKey(), config.Npk(), "clientPublicKey");
+    requireLength(record.maskingKey(), config.Nh(), "maskingKey");
+    if (record.envelope() == null) {
+      throw new IllegalArgumentException("Registration record envelope is required");
+    }
+    requireLength(record.envelope().envelopeNonce(), OpaqueConfig.Nn, "envelopeNonce");
+    requireLength(record.envelope().authTag(), config.Nm(), "authTag");
+    // Length alone is not enough: the client public key is used as a Diffie-Hellman peer
+    // element during authentication, so it must be a real point on the curve and not the
+    // identity. Multiplying by one is the interface-level way to force a decode — GroupSpec
+    // exposes no deserialize method, and scalarMultiply routes through the same validation
+    // (on-curve, non-identity, canonical ristretto encoding) that the AKE relies on. The
+    // result is discarded; only the decode matters.
+    config.cipherSuite().oprfSuite().groupSpec()
+        .scalarMultiply(java.math.BigInteger.ONE, record.clientPublicKey());
+  }
+
+  private static void requireLength(final byte[] value, final int expected, final String field) {
+    if (value == null || value.length != expected) {
+      throw new IllegalArgumentException(
+          "Invalid " + field + ": expected " + expected + " bytes, got "
+              + (value == null ? "null" : String.valueOf(value.length)));
+    }
+  }
+
+  /**
    * Returns the server's public key.
    *
    * @return the byte [ ]

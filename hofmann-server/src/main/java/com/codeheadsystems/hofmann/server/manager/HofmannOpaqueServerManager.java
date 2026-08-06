@@ -322,6 +322,11 @@ public class HofmannOpaqueServerManager {
           && !recoveryRateLimiter.tryConsume(req.credentialIdentifierBase64())) {
         throw new RateLimitExceededException();
       }
+      // Validate the uploaded record here: after the limiter, so the work is throttled, but
+      // before remove() consumes the token, so a malformed record does not burn a legitimate
+      // recovery attempt, and before the delete below, so it cannot destroy an existing
+      // registration.
+      validateRecord(req);
       // Recovery-token lifecycle: registrationStart only peeks the token (non-consuming) so the
       // client can safely retry start after a network failure. This finish step is the single,
       // atomic consume gate: remove() returns the bound credential id exactly once, so the
@@ -352,6 +357,9 @@ public class HofmannOpaqueServerManager {
         if (!registrationRateLimiter.tryConsume(req.credentialIdentifierBase64())) {
           throw new RateLimitExceededException();
         }
+        // Validate after the token is consumed, so the group-element decode — the only
+        // expensive part, and up to ~1.2 ms on ristretto255 — cannot be driven unthrottled.
+        validateRecord(req);
         if (credentialStore.loadVersioned(req.credentialIdentifier()).isPresent()) {
           // Must not overwrite an existing record: registrationStart/Finish are unauthenticated,
           // so without this guard anyone who knows a victim's credential identifier could
@@ -459,10 +467,34 @@ public class HofmannOpaqueServerManager {
     if (!result.subject().equals(req.credentialIdentifierBase64())) {
       throw new SecurityException("Authentication failed");
     }
+    // Third write path to the credential store, and it needs the same guarantee as the other
+    // two: the record is still client-supplied, so an unvalidated one is stored and then breaks
+    // authentication permanently. Validated after the JWT check (only the account owner reaches
+    // here) but before the delete, so a malformed record cannot destroy a working registration
+    // and leave the account unregistered.
+    validateRecord(req);
     credentialStore.delete(req.credentialIdentifier());
     jwtManager.revokeByCredentialIdentifier(req.credentialIdentifierBase64());
     int currentVersion = keyDetailSupplier.get().currentVersion();
     credentialStore.store(req.credentialIdentifier(), req.registrationRecord(), currentVersion);
+  }
+
+  /**
+   * Validates a client-supplied registration record against the current server's cipher suite.
+   * <p>
+   * Normalises the failure to {@link IllegalArgumentException} so every write path reports a
+   * malformed record as HTTP 400. Without this the status would depend on the suite rather than
+   * the fault: BouncyCastle rejects a bad compressed point with {@code IllegalArgumentException}
+   * on the NIST curves, while ristretto255 raises {@link SecurityException} — which the adapters
+   * map to 401, an authentication challenge for an unauthenticated endpoint where the caller has
+   * no credentials to correct.
+   */
+  private void validateRecord(final RegistrationFinishRequest req) {
+    try {
+      keyDetailSupplier.get().currentServer().validateRegistrationRecord(req.registrationRecord());
+    } catch (SecurityException e) {
+      throw new IllegalArgumentException("Invalid registration record", e);
+    }
   }
 
   // ── Recovery ───────────────────────────────────────────────────────────
