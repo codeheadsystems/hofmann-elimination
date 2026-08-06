@@ -270,6 +270,15 @@ public class OprfCipherSuite {
     // in time proportional to the exponent length and is significantly more constant-time
     // than the Extended Euclidean Algorithm used by BigInteger.modInverse().
     BigInteger n = groupSpec.groupOrder();
+    // A blind congruent to 0 mod n inverts to 0, and 0 * anything is the identity, which
+    // collapses the output to H(len||input||len||identity||"Finalize") — the same
+    // key-independent value an identity evaluated element would produce, reached from the
+    // caller's side instead of the server's. randomScalar() samples from [1, n-1] so no
+    // in-tree path can hit this, but finalize() is public API and a caller supplying its own
+    // blind must not be able to silently disable the OPRF.
+    if (blind.mod(n).signum() == 0) {
+      throw new IllegalArgumentException("Blind must be a non-zero scalar mod the group order");
+    }
     BigInteger inverseBlind = blind.modPow(n.subtract(BigInteger.TWO), n);
     // Before using Fermat's inversion, the above was this:
     // BigInteger inverseBlind = blind.modInverse(groupSpec.groupOrder());

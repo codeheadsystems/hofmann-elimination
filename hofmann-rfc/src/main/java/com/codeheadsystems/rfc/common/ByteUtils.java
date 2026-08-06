@@ -87,10 +87,12 @@ public class ByteUtils {
    * Returns true if every byte of {@code element} is zero.
    * <p>
    * For ristretto255 the all-zero 32-byte string is the canonical encoding of the
-   * identity (neutral) element, which {@code decodeRistretto255} accepts. Callers use
-   * this to reject the identity as a group-element input, as required by RFC 9497
-   * (BlindEvaluate) and OPAQUE (DH outputs must be non-identity). It is also safe to
-   * apply to other suites, whose valid encodings are never all-zero.
+   * identity (neutral) element. {@code decodeRistretto255} now rejects it outright, so
+   * this method is a pre-check that lets callers reject the identity with their own
+   * exception type and message before decoding. Used to reject the identity as a
+   * group-element input, as required by RFC 9497 (BlindEvaluate) and OPAQUE (DH outputs
+   * must be non-identity). It is also safe to apply to other suites, whose valid
+   * encodings are never all-zero.
    *
    * @param element a serialized group element
    * @return true if {@code element} is all zero bytes

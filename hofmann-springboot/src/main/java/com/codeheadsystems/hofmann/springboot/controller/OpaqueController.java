@@ -258,6 +258,15 @@ public class OpaqueController {
       return manager.authStart(req);
     } catch (RateLimitExceededException e) {
       throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Rate limit exceeded");
+    } catch (SecurityException e) {
+      // Group-element validation (deserializePoint / decodeRistretto255) signals malformed
+      // input with SecurityException, so without this catch a malformed blindedElement or
+      // clientAkePublicKey returns 500 on an unauthenticated endpoint. Mapped to 400 rather
+      // than 401 because nothing has been authenticated at this stage — the input is simply
+      // not a well-formed group element. Both the registered and unknown-credential paths
+      // reach this identically, so it does not distinguish the two.
+      log.debug("authStart invalid group element: {}", e.getMessage());
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid request");
     } catch (IllegalArgumentException e) {
       log.debug("authStart bad request: {}", e.getMessage());
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid request");

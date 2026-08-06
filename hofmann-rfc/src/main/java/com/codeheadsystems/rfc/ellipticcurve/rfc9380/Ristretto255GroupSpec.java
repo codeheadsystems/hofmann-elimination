@@ -1,5 +1,6 @@
 package com.codeheadsystems.rfc.ellipticcurve.rfc9380;
 
+import com.codeheadsystems.rfc.common.ByteUtils;
 import java.math.BigInteger;
 import java.util.Arrays;
 
@@ -222,6 +223,24 @@ public class Ristretto255GroupSpec implements GroupSpec {
   static BigInteger[] decodeRistretto255(byte[] s) {
     if (s.length != 32) {
       throw new IllegalArgumentException("Ristretto255 encoding must be 32 bytes");
+    }
+    // RFC 9497 §2.1: DeserializeElement MUST reject the identity element. This check is a
+    // protocol-layer requirement layered on top of RFC 9496 §4.3.1 — the all-zero encoding
+    // is a *valid* ristretto255 encoding (it is the canonical encoding of the identity's
+    // equivalence class), so every §4.3.1 check below passes for it and cannot catch it.
+    //
+    // Without this, blindInv * O = O and OprfCipherSuite.finalize() degrades to
+    // H(len||input||len||0^32||"Finalize") — a function of the input alone, independent of
+    // both the blind and the server key. A malicious server answering with 32 zero bytes
+    // would silently turn the OPRF into an unkeyed, unsalted hash, and mode 0x00 has no
+    // verifiability proof for the client to detect it with.
+    //
+    // The guard lives here rather than in finalize() because decodeRistretto255 is reached
+    // only via scalarMultiply(), which is the shared entry point for the OPRF unblind *and*
+    // all six OPAQUE 3DH operations, so one check covers every caller. This mirrors the
+    // Rust port, which guards inside decompress_point for the same reason.
+    if (ByteUtils.isAllZero(s)) {
+      throw new SecurityException("Invalid ristretto255 encoding: identity element not allowed");
     }
     BigInteger sInt = decodeLittleEndian(s);
     if (sInt.compareTo(P) >= 0) {

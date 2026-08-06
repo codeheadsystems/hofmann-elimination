@@ -258,5 +258,121 @@ class OprfCipherSuiteTest {
       byte[] r2 = cs.finalize(input, blind, element);
       assertThat(r1).isEqualTo(r2);
     }
+
+    /**
+     * RFC 9497 §2.1: DeserializeElement MUST reject the identity element.
+     *
+     * <p>The identity is the all-zero encoding on every supported suite. If a suite accepts
+     * it, {@code blindInv * O = O} and the OPRF output collapses to a function of the input
+     * alone — independent of both the blind and the server key — so a malicious server can
+     * silently downgrade the OPRF to an unkeyed hash. ristretto255 is the suite that
+     * regressed: the all-zero encoding is a legitimate ristretto255 encoding, so the
+     * RFC 9496 §4.3.1 decode checks pass for it and only this protocol-layer check catches
+     * it. Mirrors the TypeScript regression in test/oprf.test.ts.
+     */
+    @ParameterizedTest
+    @EnumSource(CurveHashSuite.class)
+    void finalize_identityEvaluatedElement_isRejected(CurveHashSuite suite) {
+      OprfCipherSuite cs = OprfCipherSuite.builder().withSuite(suite).build();
+      byte[] identity = new byte[cs.groupSpec().elementSize()];
+      byte[] input = "correct-horse-battery-staple".getBytes(StandardCharsets.UTF_8);
+
+      assertThatThrownBy(() -> cs.finalize(input, cs.randomScalar(), identity))
+          .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
+    }
+
+    /**
+     * The consequence the check above prevents: without it the output is identical across
+     * different blinds, proving it no longer depends on the blind or the server key.
+     */
+    @ParameterizedTest
+    @EnumSource(CurveHashSuite.class)
+    void finalize_identityEvaluatedElement_neverProducesKeyIndependentOutput(
+        CurveHashSuite suite) {
+      OprfCipherSuite cs = OprfCipherSuite.builder().withSuite(suite).build();
+      byte[] identity = new byte[cs.groupSpec().elementSize()];
+      byte[] input = "correct-horse-battery-staple".getBytes(StandardCharsets.UTF_8);
+
+      byte[] first;
+      try {
+        first = cs.finalize(input, cs.randomScalar(), identity);
+      } catch (SecurityException | IllegalArgumentException expected) {
+        return; // rejected, which is the desired behaviour
+      }
+      byte[] second = cs.finalize(input, cs.randomScalar(), identity);
+      assertThat(first)
+          .as("identity was accepted and two different blinds produced the same output, "
+              + "so the OPRF has degraded to an unkeyed hash")
+          .isNotEqualTo(second);
+    }
+  }
+
+  @Nested
+  class BlindValidation {
+
+    /**
+     * A blind congruent to 0 mod n inverts to 0, and 0 * anything is the identity — the same
+     * key-independent collapse an identity evaluated element causes, reached from the
+     * caller's side. Not hit by any in-tree path (randomScalar samples [1, n-1]), but
+     * finalize() is public API.
+     */
+    @ParameterizedTest
+    @EnumSource(CurveHashSuite.class)
+    void finalize_zeroBlind_isRejected(CurveHashSuite suite) {
+      OprfCipherSuite cs = OprfCipherSuite.builder().withSuite(suite).build();
+      byte[] element = cs.groupSpec().scalarMultiplyGenerator(BigInteger.valueOf(5));
+      byte[] input = "test".getBytes(StandardCharsets.UTF_8);
+
+      assertThatThrownBy(() -> cs.finalize(input, BigInteger.ZERO, element))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("non-zero scalar");
+    }
+
+    /** The group order itself is congruent to zero and must be rejected the same way. */
+    @ParameterizedTest
+    @EnumSource(CurveHashSuite.class)
+    void finalize_blindEqualToGroupOrder_isRejected(CurveHashSuite suite) {
+      OprfCipherSuite cs = OprfCipherSuite.builder().withSuite(suite).build();
+      byte[] element = cs.groupSpec().scalarMultiplyGenerator(BigInteger.valueOf(5));
+      byte[] input = "test".getBytes(StandardCharsets.UTF_8);
+
+      assertThatThrownBy(() -> cs.finalize(input, cs.groupSpec().groupOrder(), element))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("non-zero scalar");
+    }
+
+    @ParameterizedTest
+    @EnumSource(CurveHashSuite.class)
+    void finalize_validBlind_stillWorks(CurveHashSuite suite) {
+      OprfCipherSuite cs = OprfCipherSuite.builder().withSuite(suite).build();
+      byte[] element = cs.groupSpec().scalarMultiplyGenerator(BigInteger.valueOf(5));
+      byte[] input = "test".getBytes(StandardCharsets.UTF_8);
+
+      assertThat(cs.finalize(input, cs.randomScalar(), element))
+          .hasSize(cs.hashOutputLength());
+    }
+  }
+
+  @Nested
+  class IdentityElementRejection {
+
+    @Test
+    void ristretto255_decodeIdentity_isRejected() {
+      OprfCipherSuite cs =
+          OprfCipherSuite.builder().withSuite(CurveHashSuite.RISTRETTO255_SHA512).build();
+
+      assertThatThrownBy(() -> cs.groupSpec().scalarMultiply(BigInteger.TWO, new byte[32]))
+          .isInstanceOf(SecurityException.class)
+          .hasMessageContaining("identity");
+    }
+
+    @Test
+    void ristretto255_nonIdentityElement_stillDecodes() {
+      OprfCipherSuite cs =
+          OprfCipherSuite.builder().withSuite(CurveHashSuite.RISTRETTO255_SHA512).build();
+      byte[] generator = cs.groupSpec().scalarMultiplyGenerator(BigInteger.valueOf(9));
+
+      assertThat(cs.groupSpec().scalarMultiply(BigInteger.TWO, generator)).hasSize(32);
+    }
   }
 }
