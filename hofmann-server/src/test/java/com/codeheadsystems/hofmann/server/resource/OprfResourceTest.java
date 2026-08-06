@@ -109,7 +109,7 @@ class OprfResourceTest {
     EvaluatedResponse evaluatedResponse = new EvaluatedResponse(EVALUATED_POINT, PROCESS_ID);
     when(oprfServerManager.process(request.blindedRequest())).thenReturn(evaluatedResponse);
 
-    OprfResponse response = resource.evaluate(request, ctx);
+    OprfResponse response = resource.evaluate(request, ctx, null);
 
     assertThat(response.ecPoint()).isEqualTo(EVALUATED_POINT);
     assertThat(response.processIdentifier()).isEqualTo(PROCESS_ID);
@@ -122,7 +122,7 @@ class OprfResourceTest {
   void evaluate_nullEcPoint_throwsBadRequest() {
     OprfRequest request = new OprfRequest(null, REQUEST_ID);
 
-    assertThatThrownBy(() -> resource.evaluate(request, ctx))
+    assertThatThrownBy(() -> resource.evaluate(request, ctx, null))
         .isInstanceOf(WebApplicationException.class)
         .satisfies(e -> assertThat(((WebApplicationException) e).getResponse().getStatus())
             .isEqualTo(Response.Status.BAD_REQUEST.getStatusCode()));
@@ -135,7 +135,7 @@ class OprfResourceTest {
   void evaluate_blankEcPoint_throwsBadRequest() {
     OprfRequest request = new OprfRequest("   ", REQUEST_ID);
 
-    assertThatThrownBy(() -> resource.evaluate(request, ctx))
+    assertThatThrownBy(() -> resource.evaluate(request, ctx, null))
         .isInstanceOf(WebApplicationException.class)
         .satisfies(e -> assertThat(((WebApplicationException) e).getResponse().getStatus())
             .isEqualTo(Response.Status.BAD_REQUEST.getStatusCode()));
@@ -148,7 +148,7 @@ class OprfResourceTest {
   void evaluate_nullRequestId_throwsBadRequest() {
     OprfRequest request = new OprfRequest(EC_POINT, null);
 
-    assertThatThrownBy(() -> resource.evaluate(request, ctx))
+    assertThatThrownBy(() -> resource.evaluate(request, ctx, null))
         .isInstanceOf(WebApplicationException.class)
         .satisfies(e -> assertThat(((WebApplicationException) e).getResponse().getStatus())
             .isEqualTo(Response.Status.BAD_REQUEST.getStatusCode()));
@@ -161,7 +161,7 @@ class OprfResourceTest {
   void evaluate_blankRequestId_throwsBadRequest() {
     OprfRequest request = new OprfRequest(EC_POINT, "  ");
 
-    assertThatThrownBy(() -> resource.evaluate(request, ctx))
+    assertThatThrownBy(() -> resource.evaluate(request, ctx, null))
         .isInstanceOf(WebApplicationException.class)
         .satisfies(e -> assertThat(((WebApplicationException) e).getResponse().getStatus())
             .isEqualTo(Response.Status.BAD_REQUEST.getStatusCode()));
@@ -175,7 +175,7 @@ class OprfResourceTest {
     when(rateLimiter.tryConsume(anyString())).thenReturn(false);
     OprfRequest request = new OprfRequest(EC_POINT, REQUEST_ID);
 
-    assertThatThrownBy(() -> resource.evaluate(request, ctx))
+    assertThatThrownBy(() -> resource.evaluate(request, ctx, null))
         .isInstanceOf(WebApplicationException.class)
         .satisfies(e -> assertThat(((WebApplicationException) e).getResponse().getStatus())
             .isEqualTo(429));
@@ -195,7 +195,7 @@ class OprfResourceTest {
     when(oprfServerManager.process(request.blindedRequest()))
         .thenReturn(new EvaluatedResponse(EVALUATED_POINT, PROCESS_ID));
 
-    trusting.evaluate(request, ctx);
+    trusting.evaluate(request, ctx, null);
 
     ArgumentCaptor<String> key = ArgumentCaptor.forClass(String.class);
     verify(rateLimiter).tryConsume(key.capture());
@@ -211,7 +211,7 @@ class OprfResourceTest {
     when(oprfServerManager.process(request.blindedRequest()))
         .thenThrow(new IllegalArgumentException("bad point"));
 
-    assertThatThrownBy(() -> resource.evaluate(request, ctx))
+    assertThatThrownBy(() -> resource.evaluate(request, ctx, null))
         .isInstanceOf(WebApplicationException.class)
         .satisfies(e -> assertThat(((WebApplicationException) e).getResponse().getStatus())
             .isEqualTo(Response.Status.BAD_REQUEST.getStatusCode()));

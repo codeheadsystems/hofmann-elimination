@@ -7,6 +7,7 @@ import com.codeheadsystems.hofmann.server.manager.JwtKeyDetail;
 import com.codeheadsystems.hofmann.server.manager.JwtManager;
 import com.codeheadsystems.hofmann.server.manager.OpaqueServerKeyDetail;
 import com.codeheadsystems.hofmann.server.ratelimit.InMemoryRateLimiter;
+import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfig;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfigSupplier;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
 import com.codeheadsystems.hofmann.server.recovery.RecoveryChallenger;
@@ -457,6 +458,27 @@ public class HofmannAutoConfiguration {
    * @param props the props
    * @return the supplier
    */
+  /**
+   * Origin-keyed limiter in front of the unauthenticated OPAQUE endpoints.
+   * <p>
+   * The manager's limiters key on the credential identifier, which an attacker varies freely;
+   * this is the only dimension that bounds a flood of distinct identifiers, and therefore the
+   * only thing between that flood and exhaustion of the limiter's bucket map and the
+   * pending-session store.
+   *
+   * @param supplier the rate limit config supplier
+   * @return the origin rate limiter
+   */
+  @Bean
+  @ConditionalOnMissingBean(name = "opaqueOriginRateLimiter")
+  @Qualifier("opaqueOriginRateLimiter")
+  public RateLimiter opaqueOriginRateLimiter(RateLimitConfigSupplier supplier) {
+    RateLimitConfig config = supplier.originRateLimitConfig();
+    // Null means origin-based limiting is disabled, which is the default. A no-op limiter is
+    // returned rather than a null bean so the controller's constructor injection stays simple.
+    return config == null ? key -> true : new InMemoryRateLimiter(config);
+  }
+
   @Bean
   @ConditionalOnMissingBean
   public Supplier<ServerProcessorDetail> serverProcessorDetailSupplier(HofmannProperties props) {

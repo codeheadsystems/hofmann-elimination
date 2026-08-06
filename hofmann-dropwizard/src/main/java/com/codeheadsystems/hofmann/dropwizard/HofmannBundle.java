@@ -299,7 +299,15 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     HofmannOpaqueServerManager hofmannOpaqueServerManager = new HofmannOpaqueServerManager(
         keySupplier, credentialStore, jwtManager, authRateLimiter, registrationRateLimiter, pendingSessionStore,
         recoveryChallenger, recoveryTokenStore, recoveryRateLimiter);
-    environment.jersey().register(new OpaqueResource(hofmannOpaqueServerManager, opaqueClientConfig));
+    // Origin-keyed limiter in front of the unauthenticated OPAQUE endpoints. The manager's
+    // limiters key on the credential identifier, which an attacker varies freely; this is the
+    // only dimension that bounds a flood of distinct identifiers, and therefore the only thing
+    // standing between that flood and exhaustion of the bucket map and pending-session store.
+    RateLimitConfig originConfig = rateLimitConfigSupplier.originRateLimitConfig();
+    RateLimiter opaqueOriginRateLimiter =
+        originConfig == null ? null : rateLimiterFunction.apply(originConfig);
+    environment.jersey().register(new OpaqueResource(hofmannOpaqueServerManager, opaqueClientConfig,
+        opaqueOriginRateLimiter, configuration.isTrustForwardedHeaders()));
     environment.healthChecks().register("opaque-server", new OpaqueServerHealthCheck(server));
 
     // JWT auth filter

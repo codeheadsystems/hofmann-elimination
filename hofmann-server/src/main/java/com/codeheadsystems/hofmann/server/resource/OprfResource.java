@@ -4,6 +4,7 @@ import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
 import com.codeheadsystems.hofmann.model.oprf.OprfRequest;
 import com.codeheadsystems.hofmann.model.oprf.OprfResponse;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitExceededException;
+import com.codeheadsystems.hofmann.server.ratelimit.ClientIpResolver;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
 import com.codeheadsystems.rfc.oprf.manager.OprfServerManager;
 import com.codeheadsystems.rfc.oprf.model.EvaluatedResponse;
@@ -41,8 +42,6 @@ public class OprfResource {
   private final RateLimiter rateLimiter;
   private final boolean trustForwardedHeaders;
 
-  @Context
-  private HttpServletRequest httpServletRequest;
 
   /**
    * Instantiates a new Oprf resource that does not trust forwarded headers
@@ -103,9 +102,11 @@ public class OprfResource {
   @POST
   @Consumes(MediaType.APPLICATION_JSON)
   @Produces(MediaType.APPLICATION_JSON)
-  public OprfResponse evaluate(final OprfRequest request, @Context ContainerRequestContext ctx) {
+  public OprfResponse evaluate(final OprfRequest request,
+                               @Context ContainerRequestContext ctx,
+                               @Context HttpServletRequest httpRequest) {
     log.trace("evaluate(requestId={})", request.requestId());
-    String clientIp = extractClientIp(ctx);
+    String clientIp = extractClientIp(ctx, httpRequest);
     if (!rateLimiter.tryConsume(clientIp)) {
       throw new WebApplicationException(Response.status(429)
           .header("Retry-After", "60").entity("Rate limit exceeded").build());
@@ -131,44 +132,21 @@ public class OprfResource {
     }
   }
 
-  private String extractClientIp(ContainerRequestContext ctx) {
-    // Only honour X-Forwarded-For when explicitly told we are behind a trusted proxy.
-    // Otherwise the header is fully attacker-controlled: rotating it per request would mint a
-    // fresh rate-limit bucket every time, defeating the only control on this unauthenticated
-    // OPRF oracle.
-    if (trustForwardedHeaders) {
-      String clientIp = rightmostForwardedFor(ctx.getHeaderString("X-Forwarded-For"));
-      if (clientIp != null) {
-        return clientIp;
-      }
-    }
-    if (httpServletRequest != null) {
-      return httpServletRequest.getRemoteAddr();
-    }
-    // No servlet context available (e.g. a unit test constructing the resource directly).
-    // Never fall back to the spoofable header here.
-    return "unknown";
-  }
-
   /**
-   * Returns the right-most entry of an {@code X-Forwarded-For} header, or {@code null} if absent.
-   * <p>
-   * The right-most entry is the address appended by the immediate (trusted) proxy and is the only
-   * value an external client cannot forge: proxies that <em>append</em> to XFF (the common default,
-   * e.g. HAProxy {@code option forwardfor}) place attacker-supplied values to the left, so taking
-   * the left-most entry would let a client spoof its rate-limit key even in trusted-proxy mode.
+   * Resolves the rate-limit key for this request.
+   *
+   * <p>The request is threaded in as a method parameter rather than injected into a field:
+   * {@code @Context} field injection into this singleton resource silently yields null, which
+   * collapses every caller onto one key and turns a per-origin limiter into a single global
+   * bucket — capping the whole deployment rather than each client.
+   *
+   * <p>Delegates to {@link ClientIpResolver} so the OPRF and OPAQUE endpoints cannot drift apart
+   * on whether to believe {@code X-Forwarded-For}.
    */
-  private static String rightmostForwardedFor(final String header) {
-    if (header == null || header.isBlank()) {
-      return null;
-    }
-    final String[] parts = header.split(",");
-    for (int i = parts.length - 1; i >= 0; i--) {
-      final String entry = parts[i].trim();
-      if (!entry.isEmpty()) {
-        return entry;
-      }
-    }
-    return null;
+  private String extractClientIp(ContainerRequestContext ctx, HttpServletRequest httpRequest) {
+    return ClientIpResolver.resolve(
+        ctx == null ? null : ctx.getHeaderString("X-Forwarded-For"),
+        httpRequest == null ? null : httpRequest.getRemoteAddr(),
+        trustForwardedHeaders);
   }
 }

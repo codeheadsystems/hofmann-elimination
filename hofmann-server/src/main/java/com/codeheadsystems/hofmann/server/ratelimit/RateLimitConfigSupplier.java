@@ -10,6 +10,42 @@ public interface RateLimitConfigSupplier {
 
   RateLimitConfig recoveryRateLimitConfig();
 
+  /**
+   * Limit applied per request origin across the unauthenticated OPAQUE endpoints, or {@code null}
+   * to disable it. <strong>Disabled by default.</strong>
+   *
+   * <p>The other limiters key on the credential identifier, which bounds attempts against one
+   * account and nothing else — an attacker who varies the identifier is unthrottled, which is how
+   * a flood exhausts the bucket map and the pending-session store. Bounding by origin is the
+   * missing dimension, but it is off by default because as a blanket default it does more harm
+   * than good:
+   *
+   * <ul>
+   *   <li><strong>It throttles real deployments.</strong> One login draws two tokens, so a limit
+   *       of N per minute allows N/2 logins per minute for an entire origin. Behind a corporate
+   *       NAT or mobile CGNAT that is one bucket for thousands of users, and a morning login peak
+   *       will hit it.</li>
+   *   <li><strong>It does not stop a determined attacker.</strong> The key is a single address
+   *       with no prefix aggregation, so a distributed source — or one IPv6 /64 — sidesteps it
+   *       entirely.</li>
+   *   <li><strong>Its own bucket map is bounded the same way.</strong> Filling it denies every
+   *       origin whose bucket is not resident, in front of all six endpoints, which reproduces
+   *       the outage this was meant to prevent one layer earlier.</li>
+   * </ul>
+   *
+   * <p>So it is a useful control for a deployment that knows its client-address distribution, and
+   * a liability as a default. Operators who want it should override this method and size it for
+   * their traffic. Properly bounding the key space — prefix aggregation and a fixed-size
+   * structure that cannot be filled — is recorded as follow-up work in TODO.md; until then the
+   * flood remains possible and pretending otherwise with a default-on limiter would be worse
+   * than saying so.
+   *
+   * @return the origin rate limit config, or null to disable origin-based limiting
+   */
+  default RateLimitConfig originRateLimitConfig() {
+    return null;
+  }
+
   class DefaultRateLimitConfigSupplier implements RateLimitConfigSupplier {
 
     @Override
