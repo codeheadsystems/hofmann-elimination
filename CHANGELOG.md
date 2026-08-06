@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-> **Security release.** Fixes three critical and nine high-severity findings from an August 2026
+> **Security release.** Fixes three critical and eight high-severity findings from an August 2026
 > review. Two are exploitable by a malicious or compromised server against its own clients, and
 > one lets a session survive the password change meant to revoke it — so upgrading is strongly
 > recommended for anyone running OPAQUE or the standalone OPRF in production.
@@ -148,6 +148,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Known limitations
 
 Recorded in `TODO.md` rather than left implied:
+
+- **One P1 finding from the review is NOT fixed in this release.** Unset `jwtSecretHex`,
+  `serverKeySeedHex` and `oprfSeedHex` still generate random key material with only a warning,
+  rather than failing startup behind an explicit opt-in the way `oprfMasterKeyHex` and
+  `allowIdentityKsf` already do. The generated key is random per process, so there is no
+  hardcoded secret in the library and no token-forgery vulnerability in library code — the
+  failure is availability and consistency: nodes disagree about signing keys and every restart
+  invalidates all accounts. Where it does bite is deployment, because
+  `hofmann-demo/server/config.yml` and `hofmann-testserver/config/config.yml` ship working
+  `${VAR:-<committed-value>}` fallbacks that both Dockerfiles copy into the image, so an
+  operator running the published image without the environment variables set gets a publicly
+  known HMAC signing key. Both halves need to change together: emptying the demo defaults alone
+  would trade a known key for a silently random one.
 
 - The rate-limiter flood is only half-closed. Reclaim-before-deny converts a persistent outage
   into a self-healing one, but an attacker who keeps 50,000 keys warm inside the stale window

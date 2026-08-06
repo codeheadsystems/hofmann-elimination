@@ -1,21 +1,40 @@
 # Security TODO
 
-**Status: all P0 and P1 items are fixed on branch `3.1`.** Completed entries are retained with
-their commit hashes because each records a reproduction worth not losing. What remains below is
-P2 and lower, plus items surfaced by verifying the fixes themselves.
+Findings from the security review of **August 2026** (six-reviewer fan-out across `hofmann-rfc`,
+`hofmann-server`, `hofmann-client`, both framework integrations, and the Rust/TypeScript ports).
 
-Open items from the security review of **August 2026** (six-reviewer fan-out across
-`hofmann-rfc`, `hofmann-server`, `hofmann-client`, both framework integrations, and the
-Rust/TypeScript ports).
+## Status
 
-The Feb 2026 DONE list has been removed: each entry was re-verified against the current
-tree, and the ones that hold are recorded in "Confirmed sound" at the bottom rather than
-carried as checklist noise. **Four entries did not hold and are now open items below,
-marked `[was marked DONE]`.** Treat this file as a claim log that must be re-verified, not
-as evidence.
+| Section | Done | Open |
+|---|---:|---:|
+| **P0 Critical** | 3 | 0 |
+| **P1 High** | 8 | **1** |
+| Follow-ups from verifying the 3.1.0 fixes | 1 | 6 |
+| **P2 Medium** | 1 | 13 |
+| **P3 Low** | 0 | 11 |
+| Documentation | 0 | 4 |
+| Test coverage gaps | 0 | 4 |
+| **Total** | **13** | **39** |
 
-Findings marked **[reproduced]** were demonstrated by executing code against the compiled
-classes, not by reading alone.
+Everything marked `[x]` shipped in **3.1.0** and carries its commit hash. Everything marked `[ ]`
+is outstanding.
+
+> **One P1 item is still open.** An earlier summary of this work claimed all P0 and P1 findings
+> were fixed. That was wrong: *Fail closed on unset JWT secret and OPAQUE seeds* was skipped and
+> never implemented. The 3.1.0 CHANGELOG inherits the same error and is corrected in the same
+> commit as this note.
+
+## How to read this file
+
+Entries record the reproduction as well as the fix, so a completed item is kept rather than
+deleted — several of them exist because a *previous* checklist claimed work was done that was
+not, and the analysis is what makes that checkable.
+
+Treat this file as **a claim log to be re-verified, not as evidence**. Of the twenty-odd entries
+on the February 2026 DONE list, four did not survive verification; they are the items tagged
+`[was marked DONE]` below.
+
+Findings tagged **[reproduced]** were demonstrated by executing code, not by reading it.
 
 ---
 
@@ -50,120 +69,17 @@ for the full analysis and the reproduction each was verified against.
       2000 identifiers were squatted in 9 ms with the default limiter installed. See the new
       P1 item below.
 
-- [ ] **Bound identifier squatting with an IP-dimension limiter in the adapters**
-      Discovered while verifying `e63db78`. `HofmannOpaqueServerManager` is framework-agnostic
-      and never sees the request context, so it can only key on the credential identifier —
-      which bounds repeated attempts against one account and does nothing at all against
-      squatting across many. `OpaqueResource` and `OpaqueController` do hold the request
-      context and neither applies an IP-keyed limiter; `OprfResource.extractClientIp:134-151`
-      already shows the correct pattern. Note the `maxEntries` cap turns a squatting flood into
-      a registration outage for everyone, so this interacts with the item below. Eliminating
-      squatting outright needs proof of identifier ownership at the deployment layer — that
-      belongs in the docs, not in a rate-limit claim.
-
-- [ ] **Spring Boot flattens every error status to 401** — pre-existing, found while verifying
-      `e63db78`. `HofmannSecurityConfig` permits `/opaque/**` and `/oprf/**` but not `/error`,
-      with `anyRequest().authenticated()` and an `HttpStatusEntryPoint(UNAUTHORIZED)`, so the
-      ERROR dispatch is rejected by the security chain and every `ResponseStatusException`
-      surfaces as a bare 401. Confirmed on endpoints the fix never touched: a malformed
-      `auth/start` body returns 401 where the controller maps 400, and a throttled
-      `registration/start` returns 401 where the controller maps 429. Dropwizard returns the
-      correct codes. Consequence: the new `registration/finish` throttle is invisible to Spring
-      Boot clients — no 429, no `Retry-After` — and they cannot distinguish rate-limited from
-      unauthorized. Likely fixed by permitting `/error` in the chain.
-
-- [ ] **A junk recovery bearer token drains the recovery limiter before validation**
-      `HofmannOpaqueServerManager.registrationFinish` consumes the recovery limiter (6 tokens)
-      on the `bearerToken != null` path *before* the token is validated, so six unauthenticated
-      requests carrying garbage drain a victim's bucket and lock them out of `recoveryStart` /
-      `recoveryVerify` for about a minute, sustainable indefinitely at 6/min. Pre-existing —
-      unchanged by `e63db78`, which only touched the else branch — but it denies recovery on
-      the endpoint whose whole purpose is recovering a squatted or lost account.
-
 - [x] **Validate uploaded `RegistrationRecord` fields before storing** — `55798f2`. Also guarded changePasswordFinish, the third write path, which was missed on the first pass. Failures normalised to 400: which exception the crypto layer raises depends on the suite, not the fault. Tests run all four suites — P-256 hides Nn/Nh/Nm confusion.
-
--->
--->
--->
--->
--->
--->
 
 - [x] **Validate the server OPRF key at supplier construction** — `bfae3a2`. Rejects keys congruent to zero mod n. Does NOT reject k >= n: those already work (scalar multiplication reduces anyway) and `openssl rand -hex 32` exceeds ristretto255's order ~94% of the time, so refusing would break live deployments. Normalised instead.
 
-<!--** — [reproduced]
-      `HofmannBundle.java:550` / `HofmannAutoConfiguration.java:470` do
-      `new BigInteger(masterKeyHex, 16)` with no nonzero check, no `[1, n-1]` range check,
-      and no reduction mod n. `oprfMasterKeyHex: "00"` on ristretto255 makes the server
-      return the identity for every request; combined with the P0 above, the deployment
-      silently runs with **no OPRF key at all**. On the Weierstrass suites, `k` and `k+n`
-      are distinct config values producing identical output under different
-      `processorIdentifier`s — a key-rotation footgun — and the raw bit length feeds the
-      wNAF window size.
-
 - [x] **Use a constant-time multiplier for the NIST curves** — `df4fd03`. Explicit Montgomery ladder — BouncyCastle 1.85 no longer ships one. Covers scalarMultiplyGenerator too, which carries the client's long-term key. Hamming-weight signal 17-19% -> noise; bit-length signal closed by a fixed-width rescale.
-
-<!--**
-      `WeierstrassGroupSpecImpl.scalarMultiply:102` calls BouncyCastle `ECPoint.multiply`,
-      which resolves to `WNafL2RMultiplier` for the NIST prime curves — confirmed by
-      reflection on the live curve object, with a measured ~12% Hamming-weight signal at
-      equal bit length. Every scalar reaching it is secret: the per-credential OPRF key,
-      the server long-term and ephemeral AKE keys, the client blind, and the client's
-      recovered private key. `P256_SHA256` is `OpaqueConfig.DEFAULT`.
-
-      Server-side `blindEvaluate` is the sharpest target — the attacker chooses the point
-      (so per-point wNAF precomputation misses every request, keeping the signal clean) and
-      can request unlimited evaluations against a long-lived key. The ristretto path is a
-      genuine Montgomery ladder with `cswap` (`Ristretto255GroupSpec.scalarMul:391-403`);
-      the hardening never reached the three NIST suites. Note the previous "constant-time"
-      work covered `modInverse` and scalar serialization only — `ECPoint.multiply` was
-      never addressed. Fix via `curve.configure().setMultiplier(...)`, or document the
-      suite choice as having a side-channel consequence.
 
 - [x] **Stop keying rate limits and DoS-sensitive stores on attacker-chosen values** — `049bbca`. PARTIAL — see the new item below. Reclaim-before-deny converts a persistent outage into a self-healing one but does not stop a live adversary. Fixed a null-keying bug that made both the OPAQUE and the pre-existing OPRF limiter global.
 
-<!--**
-      `InMemoryRateLimiter:49-58` denies any non-resident key once `maxEntries` (50,000) is
-      reached, and the key is entirely client-supplied. ~200 req/s of random identifiers
-      sustains a **total login outage** indefinitely. Separately,
-      `InMemoryPendingSessionStore:80-82` throws → **503** at 10,000 entries, and
-      `authStart` stores an entry for every request including the fake path, so ~84 req/s
-      of unfinished handshakes denies all logins. `recoveryVerify`'s 250 ms constant-time
-      floor (`:463-486`) is likewise bounded only per key, so fresh identifiers buy free
-      thread-holds and can saturate the servlet pool.
-
-      Deny-on-capacity is the right *security* direction; the defect is the unbounded,
-      attacker-controlled key space in front of it. `OprfResource.extractClientIp:134-151`
-      already does this correctly (socket peer address by default, `X-Forwarded-For` only
-      when explicitly trusted, right-most entry) — adopt that pattern on the OPAQUE
-      endpoints, or add an outer IP-keyed limiter.
-
 - [x] **Scope the Spring Boot security filter chain** — `45ff4ca`. Made conditional rather than scoped: scoping would stop the JWT filter authenticating the consumer's endpoints, which is the library's purpose.
 
-<!--**
-      `HofmannSecurityConfig.securityFilterChain` (`:44-65`) has no `securityMatcher`, no
-      `@Order`, and no `@ConditionalOnMissingBean`. It matches **every URL in the host
-      application** and globally disables CSRF, forces `STATELESS`, replaces the CORS
-      source, and redefines `anyRequest()` as "must present a Hofmann JWT". A consumer with
-      their own chain gets a silent first-match-wins collision: either Hofmann swallows
-      their entire authorization policy, or theirs swallows Hofmann's and `/opaque/**` +
-      `/oprf/**` inherit whatever they configured. No startup error either way. Not caught
-      by the repo's tests because `HofmannTestApplication` declares no chain of its own.
-      Add `http.securityMatcher("/opaque/**", "/oprf/**")`, an explicit `@Order`, and
-      `@ConditionalOnMissingBean`.
-
 - [x] **Register the Spring components from the auto-configuration** — `45ff4ca`. Also fixed the CORS bean, which @Import made universally present and which crashed any consumer following the documented override.
-
-<!--**
-      `META-INF/spring/...AutoConfiguration.imports` lists only `HofmannAutoConfiguration`,
-      which carries no `@Import` or `@ComponentScan`. `OpaqueController`, `OprfController`,
-      `HofmannSecurityConfig`, and `OpaqueServerHealthIndicator` load **only** if the
-      consumer's component scan reaches `com.codeheadsystems.hofmann.springboot.*`. The
-      repo's tests pass because `HofmannTestApplication` sits in exactly that package,
-      which masks the gap. A consumer who wires the controllers directly gets the OPAQUE
-      endpoints with no `HofmannSecurityConfig` and therefore none of Spring Security's
-      header writers — Dropwizard applies those unconditionally. `USAGE.md:222` claims
-      autoconfiguration "activates automatically" and never mentions component scanning.
 
 - [ ] **Fail closed on unset JWT secret and OPAQUE seeds — and empty the demo defaults in
       the same change**
@@ -189,17 +105,32 @@ for the full analysis and the reproduction each was verified against.
 
 - [x] **Harden the release pipeline** — `6e01e27`. All actions pinned by SHA at their existing major versions, signing material scrubbed after publish, manual release gated on main-ancestry.
 
-<!--** — `release.yml:41,105` and
-      `manual-release.yml:74,138` run unpinned third-party actions
-      (`gradle/actions/setup-gradle@v3`, `softprops/action-gh-release@v2`) in the **same
-      job** that imports the GPG private key (`release.yml:61`) and writes
-      `signing.gnupg.passphrase` into `~/.gradle/gradle.properties` (`:84-89`). Neither is
-      cleaned up. Whoever controls a mutable `v2`/`v3` tag can exfiltrate the code-signing
-      key and `CENTRAL_PORTAL_*` and publish signed artifacts under
-      `com.codeheadsystems:*`. `gradle.yml:34,153` already pins by commit SHA — apply the
-      same practice here. Separately, `manual-release.yml:4` is `workflow_dispatch` with no
-      branch restriction and publishes from the dispatch ref, so arbitrary unreviewed code
-      can ship to Maven Central; gate on `main` ancestry.
+## Follow-ups from verifying the 3.1.0 fixes
+
+Not from the original review — these surfaced while adversarially verifying the fixes above.
+Two are scope limits on work that shipped, recorded so partial coverage is not mistaken for
+completeness.
+
+- [ ] **Bound identifier squatting with an IP-dimension limiter in the adapters**
+      Discovered while verifying `e63db78`. `HofmannOpaqueServerManager` is framework-agnostic
+      and never sees the request context, so it can only key on the credential identifier —
+      which bounds repeated attempts against one account and does nothing at all against
+      squatting across many. `OpaqueResource` and `OpaqueController` do hold the request
+      context and neither applies an IP-keyed limiter; `OprfResource.extractClientIp:134-151`
+      already shows the correct pattern. Note the `maxEntries` cap turns a squatting flood into
+      a registration outage for everyone, so this interacts with the item below. Eliminating
+      squatting outright needs proof of identifier ownership at the deployment layer — that
+      belongs in the docs, not in a rate-limit claim.
+
+- [x] **Spring Boot flattens every error status to 401** — `45ff4ca` (3.1.0). The ERROR dispatch is now permitted, bound to the configured error path so a custom error page aimed at a protected controller cannot be reached unauthenticated.
+
+- [ ] **A junk recovery bearer token drains the recovery limiter before validation**
+      `HofmannOpaqueServerManager.registrationFinish` consumes the recovery limiter (6 tokens)
+      on the `bearerToken != null` path *before* the token is validated, so six unauthenticated
+      requests carrying garbage drain a victim's bucket and lock them out of `recoveryStart` /
+      `recoveryVerify` for about a minute, sustainable indefinitely at 6/min. Pre-existing —
+      unchanged by `e63db78`, which only touched the else branch — but it denies recovery on
+      the endpoint whose whole purpose is recovering a squatted or lost account.
 
 - [ ] **Bound the rate limiter's key space — the flood is only half-fixed** (from `049bbca`)
       Reclaim-before-deny converts a persistent outage into a self-healing one, but an attacker
@@ -322,11 +253,7 @@ for the full analysis and the reproduction each was verified against.
       anything that rate-limits, caches, dedups, or audits on the `blindedPoint` string.
       Require `length == elementSize()` and a `0x02`/`0x03` prefix.
 
-- [ ] **Snapshot `supplier.get()` once in `OprfServerManager.process`** (`:50-51`) — it is
-      called twice, so under the key rotation that `HofmannAutoConfiguration.java:452-456`
-      explicitly documents, a request straddling the swap gets a hash computed with key A
-      labelled as key B. That value can never be recomputed or verified — permanent data
-      loss for affected accounts.
+- [x] **Snapshot `supplier.get()` once in `OprfServerManager.process`** — `bfae3a2` (3.1.0). Fixed alongside the OPRF key validation, which needed the snapshot to avoid checking one key and using another.
 
 - [ ] **Range-check `Ristretto255GroupSpec.serializeScalar`** (`:147-150`) —
       `serializeScalar(2^300)` silently truncates to the identity scalar and
@@ -412,11 +339,13 @@ for the full analysis and the reproduction each was verified against.
       Dockerfiles (all run as root). `haproxy.cfg` has no `option forwardfor`, so the
       backend sees the proxy IP for every client and the whole demo shares one OPRF
       rate-limit bucket.
-- [ ] **Auto-merge without a test gate** — `auto-wolpert.yml:11-21` and
-      `auto-dependabot.yml:11-27` auto-approve and auto-merge with no test gate expressed
-      in the workflow; `auto-dependabot.yml:13-17` runs `fetch-metadata` then ignores its
-      outputs, so major-version bumps merge unreviewed. Mitigating: both use
-      `pull_request`, not `pull_request_target`, so fork PRs get a read-only token.
+- [x] **Auto-merge without a test gate** — partially addressed 2026-08-06. `auto-wolpert.yml` is
+      disabled, both at the repository level and in the workflow file, after it squash-merged a
+      security release into `main` without the requested human review. `main` now requires the
+      `build`, `typescript` and `rust` checks before merge, with force-pushes and deletions
+      blocked. **Still open:** `auto-dependabot.yml` continues to auto-approve and auto-merge, and
+      runs `dependabot/fetch-metadata` while ignoring its outputs, so a major-version bump merges
+      unreviewed. Branch protection now gates it on CI, but not on review.
 
 ---
 
