@@ -7,6 +7,158 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+> **Security release.** Fixes three critical and nine high-severity findings from an August 2026
+> review. Two are exploitable by a malicious or compromised server against its own clients, and
+> one lets a session survive the password change meant to revoke it — so upgrading is strongly
+> recommended for anyone running OPAQUE or the standalone OPRF in production.
+>
+> **This release contains breaking changes and is versioned 3.1.0, not 3.0.1.** Most deployments
+> need no code changes; the exceptions are listed under *Breaking changes* below. There is no
+> wire-format change and existing registration records remain valid, with one narrow exception
+> noted under *Upgrade notes*.
+
+### Security
+
+#### Critical
+
+- **The Java OPRF client accepted the identity element as the server's evaluated element**
+  (`hofmann-rfc`). RFC 9497 §2.1 requires `DeserializeElement` to reject the group identity. For
+  ristretto255 the identity is the canonical all-zero encoding, so every RFC 9496 decode check
+  passed for it; `blindInv · O = O`, and the OPRF output collapsed to a function of the input
+  alone — independent of both the blind and the server key. A malicious, breached, or MITM'd
+  server returning 32 zero bytes silently turned the OPRF into an unkeyed, unsalted hash, and
+  mode `0x00` has no verifiability proof for the client to detect it with. This affected the
+  standalone OPRF product as well as OPAQUE. The Rust and TypeScript ports already rejected it;
+  Java was the only affected implementation. Also closed a matching hole where a blind congruent
+  to zero mod n produced the same collapse from the caller's side, on all four suites.
+
+- **Session revocation was bypassable, so password change and account deletion did not terminate
+  an attacker's session** (`hofmann-server`). The credential store keyed on decoded bytes while
+  the JWT subject, the session index and every rate-limiter bucket keyed on the raw base64
+  string. `Base64.getDecoder()` ignores padding and the unused trailing bits of the final
+  character, so one identifier had up to 32 accepted spellings — 1 for `len%3==0`, 8 for
+  `len%3==2`, 32 for `len%3==1`. A session opened under one spelling survived a password change
+  or deletion performed under another. The same aliasing multiplied every per-account rate limit
+  by the same factor, including the gate on recovery-code guessing.
+
+- **Both clients accepted key-stretching parameters from the server** (`hofmann-client`,
+  `hofmann-typescript`). In OPAQUE the KSF runs entirely on the client, so these parameters
+  decide how expensive an offline dictionary attack is against the record the server stores.
+  A server answering `GET /opaque/config` with `argon2MemoryKib: 0` selected the identity KSF and
+  the client stored a record derived from an unstretched password — and since the server kept
+  serving the same config, authentication continued to work and nothing looked wrong from either
+  side. Clients now enforce a floor of 19456 KiB / 2 iterations (the OWASP Argon2id minimum at
+  t=2, p=1) and type-check the parameters before comparing them, because a non-numeric value
+  yields `NaN` in JavaScript and every comparison with `NaN` is false.
+
+#### High
+
+- **`POST /opaque/registration/finish` was an unauthenticated, unthrottled enumeration oracle.**
+  The rate limiter was consumed only on the recovery path, and the endpoint returned 400 for an
+  existing credential and 204 for a new one — defeating the enumeration resistance `authStart`
+  provides by manufacturing a KE2 for unknown credentials. Both branches now return 204, under a
+  rate-limit token consumed before the existence lookup and a 25 ms floor that covers the write
+  the not-exists branch performs.
+- **Client-uploaded registration records were stored without validation.** No length check
+  against Npk/Nh/Nn/Nm, and the client public key was never validated as a group element. A
+  poisoned record made `/auth/start` fail for that identifier while an unknown one received a
+  fake KE2 — a second enumeration oracle and a permanent per-identifier denial of service.
+  Validated on all three write paths, including `changePasswordFinish`.
+- **The server OPRF key was accepted from configuration unvalidated.** `oprfMasterKeyHex: "00"`
+  on ristretto255 made every evaluation return the identity element while the deployment appeared
+  healthy. Keys congruent to zero mod n are now rejected at startup and per request.
+- **Scalar multiplication on the NIST curves was not constant-time.** BouncyCastle resolves the
+  default multiplier to window-NAF for P-256/384/521, which leaks through the add/double
+  sequence, secret-indexed table lookups, and a window size taken from the bit length. Measured
+  17–19% timing separation between scalars of equal bit length and different Hamming weight, on
+  a path where the attacker chooses the point and can request unlimited evaluations against a
+  long-lived key. Replaced with a Montgomery ladder over a fixed-width scalar; the signal is now
+  within noise on every axis measured.
+- **Rate limiters and the pending-session store denied all new entries when full**, turning a
+  cheap flood of attacker-chosen keys into a total outage. Both now reclaim expired entries
+  before refusing. Also fixed a keying bug that made the OPAQUE origin limiter and the
+  pre-existing OPRF limiter *global* rather than per-client: `@Context` field injection into a
+  singleton JAX-RS resource yields null, so every caller shared one bucket.
+- **The Spring Boot security chain competed with the host application's.** It was unconditional
+  and matched every URL, so a consumer with their own chain hit
+  `UnreachableFilterChainException` at startup on Spring Security 6.2+. It is now registered only
+  when the application defines no chain of its own.
+- **Spring Boot rewrote every error status to 401.** The ERROR dispatch was not permitted, so
+  400, 429 and 503 all reached clients as "unauthorized" — a throttled client would re-prompt for
+  a password instead of backing off.
+- **The release pipeline ran unpinned third-party actions alongside the signing key.** Both
+  release workflows imported the GPG key and wrote the passphrase to disk, then ran actions
+  referenced by mutable tags in the same job. All actions are now pinned by commit SHA, signing
+  material is scrubbed after publish, and the manual release refuses to publish from a ref that
+  is not an ancestor of `main`.
+
+### Breaking changes
+
+- **`OpaqueClientConfig.fromServerConfig(cfg)` and `OpaqueHttpClient.create(url)` now throw**
+  against a server offering the identity KSF or parameters below the floor. Warning and
+  proceeding was considered and rejected: a warning that the attacker's own payload triggers does
+  not stop the client writing an unstretched record. To opt in locally — for a dev server
+  deliberately configured with `allowIdentityKsf` — use `fromServerConfig(cfg, true)` in Java or
+  `create(url, { allowWeakServerKsf: true })` in TypeScript, or pin an `OpaqueClientConfig`
+  through the client manager's overrides map, which does not consult the server at all.
+- **The Spring CORS bean is renamed** from `corsConfigurationSource` to
+  `hofmannCorsConfigurationSource` and is now `@ConditionalOnMissingBean`. The old name collided
+  with any application that declared its own bean of that name — failing startup — and silently
+  overrode applications configuring CORS through `WebMvcConfigurer`, because Spring Security
+  prefers a bean of that exact name. Override the new name to customise it.
+- **`POST /opaque/registration/finish` returns 204 for an already-registered credential**
+  instead of 400. The record is still never overwritten; only the signal changed. A client using
+  this endpoint to detect existing accounts must stop.
+- **JAX-RS resource method signatures changed.** `OpaqueResource`'s six unauthenticated endpoints
+  and `OprfResource.evaluate` take an additional `HttpServletRequest` parameter, needed to key
+  rate limits by origin. This affects callers invoking the resource classes directly; it is
+  transparent to HTTP clients.
+- **Spring Boot components are now registered by the autoconfiguration** via `@Import` rather
+  than requiring the consumer's component scan to reach
+  `com.codeheadsystems.hofmann.springboot`. Applications already scanning that package are
+  unaffected — the duplicate definition is discarded.
+
+### Changed
+
+- The origin-keyed rate limiter added for OPAQUE is **disabled by default**. As a blanket default
+  it throttled legitimate deployments — one login draws two tokens, so a corporate NAT or mobile
+  CGNAT shares one bucket — while an attacker sidesteps it with a few dozen addresses, or one
+  IPv6 /64. Enable it by overriding `RateLimitConfigSupplier.originRateLimitConfig()`.
+- OPRF keys at or above the group order are normalised rather than rejected. Such a key already
+  works, since scalar multiplication reduces modulo the order, and `openssl rand -hex 32` — the
+  documented recipe — exceeds ristretto255's order about 94% of the time. Rejecting would have
+  broken live deployments whose stored outputs only that key reproduces. A warning is logged.
+- Constant-time scalar multiplication costs roughly 2.4x on the primitive: about 0.5 ms extra per
+  login on P-256 server-side. On the client the production Argon2id KSF swamps it entirely.
+
+### Upgrade notes
+
+- **JWTs issued before this upgrade under a non-canonical credential identifier will no longer
+  match** on delete or change-password until the user re-authenticates. No client in this
+  repository ever emits a non-canonical spelling and sessions are in-memory with a 3600 s default
+  TTL, so this should not be observable in practice.
+- Existing registration records remain valid. There is no wire-format or protocol change, and all
+  RFC 9380, RFC 9497 and RFC 9807 vectors pass unchanged, as do the cross-implementation
+  (Java/TypeScript ↔ Rust) vectors.
+- Deployments that set `oprfMasterKeyHex` to a value congruent to zero modulo the group order
+  will now **fail to start**. This is intentional: such a deployment had no effective OPRF key.
+
+### Known limitations
+
+Recorded in `TODO.md` rather than left implied:
+
+- The rate-limiter flood is only half-closed. Reclaim-before-deny converts a persistent outage
+  into a self-healing one, but an attacker who keeps 50,000 keys warm inside the stale window
+  sustains the outage at roughly 167 req/s. Bounding the key space is the real fix.
+- Identifier squatting on `registration/finish` is not fixed and is not meaningfully mitigated by
+  rate limiting — the limiter is per identifier, and squatting an unused one costs a single
+  token. Proof of identifier ownership belongs at the deployment layer.
+- `recoveryVerify`'s 250 ms constant-time floor still amplifies across origins.
+- The OPAQUE `context` string is still taken from the server, although `USAGE.md` specifies it
+  should be shared out-of-band.
+
 ## [3.0.0] - 2026-08-04
 
 > **The only breaking change in this release is in the Rust `hofmann-rfc` crate**, whose

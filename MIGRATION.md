@@ -302,6 +302,23 @@ Test on your lowest-spec target client. OPAQUE authentication requires two Argon
 evaluations (registration and each login), so the latency impact is doubled compared
 to server-side Argon2id.
 
+**Since 3.1.0 the clients enforce a floor of 19456 KiB and 2 iterations** and refuse to
+proceed against a server offering less. Because the KSF runs entirely on the client, these
+parameters decide how expensive an offline dictionary attack is against the record the
+server stores — so a server that could lower them at will could switch off its own users'
+password stretching, and the client would keep working with no visible sign. The floor is
+the OWASP Argon2id minimum at `t=2, p=1`, and matches the lowest value recommended above.
+
+If you genuinely need to go below it — a constrained embedded client, say — the decision has
+to be made locally rather than accepted from the server: pass `allowWeakServerKsf` when
+constructing the client, or pin an `OpaqueClientConfig` through the client manager's
+overrides map, which does not consult the server at all. Both are documented in
+[USAGE.md](USAGE.md).
+
+There is also a ceiling of 4 GiB memory, 10 iterations and 16 parallelism. That is denial-of-
+service hardening rather than a security floor: Argon2id cost is linear in iterations and was
+otherwise unbounded, so a malicious server could hang the client on its first registration.
+
 **Changing Argon2id parameters after users have registered invalidates all existing
 OPAQUE registrations.** Plan parameter upgrades as a full re-registration migration.
 
