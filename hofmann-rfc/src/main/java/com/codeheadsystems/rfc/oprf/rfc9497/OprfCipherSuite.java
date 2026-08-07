@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.util.Arrays;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import javax.crypto.Mac;
@@ -20,9 +21,10 @@ import javax.crypto.spec.SecretKeySpec;
  * <p>
  * Supports:
  * <ul>
- *   <li>P256-SHA256 (RFC 9497 §4.1)</li>
- *   <li>P384-SHA384 (RFC 9497 §4.2)</li>
- *   <li>P521-SHA512 (RFC 9497 §4.3)</li>
+ *   <li>ristretto255-SHA512 (RFC 9497 §4.1)</li>
+ *   <li>P256-SHA256 (RFC 9497 §4.3)</li>
+ *   <li>P384-SHA384 (RFC 9497 §4.4)</li>
+ *   <li>P521-SHA512 (RFC 9497 §4.5)</li>
  * </ul>
  */
 public class OprfCipherSuite {
@@ -30,6 +32,7 @@ public class OprfCipherSuite {
   private static final Logger log = LoggerFactory.getLogger(OprfCipherSuite.class);
 
   private final String identifier;
+  private final OprfMode mode;
   private final byte[] contextString;
   private final byte[] hashToGroupDst;
   private final byte[] hashToScalarDst;
@@ -44,6 +47,7 @@ public class OprfCipherSuite {
    */
   private OprfCipherSuite(OprfCipherSuite source, RandomProvider randomProvider) {
     this.identifier = source.identifier;
+    this.mode = source.mode;
     this.contextString = source.contextString;
     this.hashToGroupDst = source.hashToGroupDst;
     this.hashToScalarDst = source.hashToScalarDst;
@@ -56,12 +60,14 @@ public class OprfCipherSuite {
 
   private OprfCipherSuite(String identifier,
                           String contextSuffix,
+                          OprfMode mode,
                           GroupSpec groupSpec,
                           String hashAlgorithm,
                           int hashOutputLength,
                           RandomProvider randomProvider) {
     this.identifier = identifier;
-    this.contextString = buildContextString(contextSuffix);
+    this.mode = mode;
+    this.contextString = buildContextString(mode, contextSuffix);
     this.hashToGroupDst = ByteUtils.concat(
         "HashToGroup-".getBytes(StandardCharsets.UTF_8), this.contextString);
     this.hashToScalarDst = ByteUtils.concat(
@@ -74,11 +80,11 @@ public class OprfCipherSuite {
     this.randomProvider = randomProvider;
   }
 
-  private static byte[] buildContextString(String suffix) {
-    // "OPRFV1-" + 0x00 + "-" + suffix
+  private static byte[] buildContextString(OprfMode mode, String suffix) {
+    // RFC 9497 §3.1: "OPRFV1-" || I2OSP(mode, 1) || "-" || identifier
     return ByteUtils.concat(
         "OPRFV1-".getBytes(StandardCharsets.UTF_8),
-        new byte[]{0x00},
+        new byte[]{mode.value()},
         ("-" + suffix).getBytes(StandardCharsets.UTF_8)
     );
   }
@@ -125,6 +131,39 @@ public class OprfCipherSuite {
   }
 
   // ─── Accessors ──────────────────────────────────────────────────────────────
+
+  /**
+   * The RFC 9497 protocol mode this suite is configured for.
+   *
+   * @return the mode
+   */
+  public OprfMode mode() {
+    return mode;
+  }
+
+  /**
+   * Fails unless this suite is configured for one of the given modes.
+   * <p>
+   * Called from the constructor of every mode-specific manager. Without it, handing a base-mode
+   * suite to a VOPRF manager is silent: every operation still computes, it just computes a
+   * different function under a different set of domain-separation tags, and the mistake surfaces
+   * as an interop failure or an unverifiable stored hash rather than an error.
+   *
+   * @param allowed the modes this caller supports
+   * @throws IllegalArgumentException if this suite's mode is not among them
+   */
+  public void assertMode(final OprfMode... allowed) {
+    for (OprfMode candidate : allowed) {
+      if (mode == candidate) {
+        return;
+      }
+    }
+    throw new IllegalArgumentException(
+        "Cipher suite is configured for " + mode + " but this operation requires one of "
+            + Arrays.toString(allowed)
+            + "; the mode byte changes every domain-separation tag, so the mismatch would "
+            + "silently compute a different function");
+  }
 
   /**
    * Context string byte [ ].
@@ -205,6 +244,55 @@ public class OprfCipherSuite {
    */
   public int elementSize() {
     return groupSpec.elementSize();
+  }
+
+  /**
+   * Serialized scalar size in bytes (Ns). A proof is exactly {@code 2 * Ns} bytes.
+   *
+   * @return the int
+   */
+  public int scalarSize() {
+    return groupSpec.scalarSize();
+  }
+
+  /**
+   * Derives the public key {@code pkS = skS * G} committed to by a server key.
+   * <p>
+   * Validating the secret key first is what guarantees the result is not the identity element.
+   * That matters beyond hygiene: {@code pkS} becomes {@code B} in the DLEQ challenge transcript,
+   * where the client has to deserialize it, and both group implementations reject the identity on
+   * deserialize. Without the guard a zero key would yield an encoding that fails confusingly
+   * several layers downstream instead of at the point of the mistake.
+   *
+   * @param skS the server secret key
+   * @return the serialized public key
+   * @throws IllegalArgumentException if the key is null, negative, or congruent to 0 mod n
+   */
+  public byte[] derivePublicKey(final BigInteger skS) {
+    validateSecretKey(skS);
+    return groupSpec.scalarMultiplyGenerator(skS);
+  }
+
+  /**
+   * Multiplicative inverse of a scalar modulo the group order.
+   * <p>
+   * Fermat inversion: {@code k^(n-2) mod n == k^-1 mod n} because {@code n} is prime. {@code modPow}
+   * with a fixed-length exponent runs in time proportional to the exponent length, which is
+   * significantly more constant-time than the Extended Euclidean Algorithm behind
+   * {@link BigInteger#modInverse} — that one's running time tracks the operands themselves. Every
+   * scalar inverted on this path is secret: the client's blind, and the POPRF tweaked key
+   * {@code t = skS + m}.
+   *
+   * @param k the scalar to invert
+   * @return the inverse modulo the group order
+   * @throws IllegalArgumentException if {@code k} is congruent to zero modulo the group order
+   */
+  public BigInteger scalarInverse(final BigInteger k) {
+    BigInteger n = groupSpec.groupOrder();
+    if (k.mod(n).signum() == 0) {
+      throw new IllegalArgumentException("Cannot invert a scalar congruent to zero mod the group order");
+    }
+    return k.modPow(n.subtract(BigInteger.TWO), n);
   }
 
   /**
@@ -327,6 +415,12 @@ public class OprfCipherSuite {
 
   /**
    * RFC 9497 §3.3.1 Finalize: unblind the evaluated element and produce the OPRF output.
+   * <p>
+   * <strong>This method performs no proof verification.</strong> In {@link OprfMode#VOPRF} and
+   * {@link OprfMode#POPRF} the caller MUST verify the server's DLEQ proof before calling it —
+   * unblinding an unverified element yields an output indistinguishable from a correct one, which
+   * is precisely the guarantee the verifiable modes exist to provide. Callers in those modes
+   * should go through the mode-specific managers rather than calling this directly.
    *
    * @param input            original client input bytes
    * @param blind            the blinding scalar used by the client
@@ -334,25 +428,7 @@ public class OprfCipherSuite {
    * @return Nh-byte OPRF output
    */
   public byte[] finalize(byte[] input, BigInteger blind, byte[] evaluatedElement) {
-    // Fermat inversion: blind^(n-2) mod n ≡ blind^(-1) mod n (n is prime).
-    // modPow with a fixed-length exponent (n-2 has the same bit-length as n) runs
-    // in time proportional to the exponent length and is significantly more constant-time
-    // than the Extended Euclidean Algorithm used by BigInteger.modInverse().
-    BigInteger n = groupSpec.groupOrder();
-    // A blind congruent to 0 mod n inverts to 0, and 0 * anything is the identity, which
-    // collapses the output to H(len||input||len||identity||"Finalize") — the same
-    // key-independent value an identity evaluated element would produce, reached from the
-    // caller's side instead of the server's. randomScalar() samples from [1, n-1] so no
-    // in-tree path can hit this, but finalize() is public API and a caller supplying its own
-    // blind must not be able to silently disable the OPRF.
-    if (blind.mod(n).signum() == 0) {
-      throw new IllegalArgumentException("Blind must be a non-zero scalar mod the group order");
-    }
-    BigInteger inverseBlind = blind.modPow(n.subtract(BigInteger.TWO), n);
-    // Before using Fermat's inversion, the above was this:
-    // BigInteger inverseBlind = blind.modInverse(groupSpec.groupOrder());
-
-    byte[] unblindedElement = groupSpec.scalarMultiply(inverseBlind, evaluatedElement);
+    byte[] unblindedElement = unblind(blind, evaluatedElement);
 
     byte[] finalizeLabel = "Finalize".getBytes(StandardCharsets.UTF_8);
     byte[] hashInput = ByteUtils.concat(
@@ -364,6 +440,67 @@ public class OprfCipherSuite {
     );
 
     return hash(hashInput);
+  }
+
+  /**
+   * RFC 9497 §3.3.3 POPRF Finalize: unblind and produce the OPRF output over a public input.
+   * <p>
+   * <strong>Performs no proof verification</strong> — see {@link #finalize} for why that matters
+   * in this mode.
+   * <p>
+   * Deliberately a separate method rather than an {@code info} parameter on {@link #finalize}. The
+   * two transcripts are genuinely different — POPRF emits {@code I2OSP(len(info), 2)} even when
+   * {@code info} is empty, which the base and verifiable modes omit entirely — so an API where
+   * {@code null} and {@code byte[0]} mean different things would be one "cleanup" away from a
+   * silent output change. Base-mode {@link #finalize} is what every stored OPAQUE credential and
+   * every persisted OPRF hash in every downstream port depends on; it is left exactly as it was.
+   *
+   * @param input            original client input bytes
+   * @param info             the public input, shared by client and server
+   * @param blind            the blinding scalar used by the client
+   * @param evaluatedElement the server's response as a serialized group element
+   * @return Nh-byte POPRF output
+   */
+  public byte[] finalizeWithInfo(byte[] input, byte[] info, BigInteger blind, byte[] evaluatedElement) {
+    byte[] unblindedElement = unblind(blind, evaluatedElement);
+
+    byte[] finalizeLabel = "Finalize".getBytes(StandardCharsets.UTF_8);
+    byte[] hashInput = ByteUtils.concat(
+        ByteUtils.I2OSP(input.length, 2),
+        input,
+        ByteUtils.I2OSP(info.length, 2),
+        info,
+        ByteUtils.I2OSP(unblindedElement.length, 2),
+        unblindedElement,
+        finalizeLabel
+    );
+
+    return hash(hashInput);
+  }
+
+  /**
+   * Removes the client's blind from an evaluated element: {@code N = blind^-1 * evaluatedElement}.
+   * <p>
+   * A blind congruent to 0 mod n inverts to 0, and 0 * anything is the identity, which collapses
+   * the output to a key-independent {@code H(len||input||len||identity||"Finalize")} — the same
+   * value an identity evaluated element would produce, reached from the caller's side instead of
+   * the server's. {@link #randomScalar()} samples from [1, n-1] so no in-tree path can hit this,
+   * but the finalize methods are public API and a caller supplying its own blind must not be able
+   * to silently disable the OPRF.
+   * <p>
+   * The result {@code N} cannot itself be the identity: that would need the inverse blind to be
+   * zero (foreclosed above) or {@code evaluatedElement} to be the identity, which both
+   * {@link GroupSpec} implementations reject when they deserialize it.
+   *
+   * @param blind            the blinding scalar used by the client
+   * @param evaluatedElement the server's response as a serialized group element
+   * @return the serialized unblinded element
+   */
+  byte[] unblind(BigInteger blind, byte[] evaluatedElement) {
+    if (blind.mod(groupSpec.groupOrder()).signum() == 0) {
+      throw new IllegalArgumentException("Blind must be a non-zero scalar mod the group order");
+    }
+    return groupSpec.scalarMultiply(scalarInverse(blind), evaluatedElement);
   }
 
   /**
@@ -404,7 +541,20 @@ public class OprfCipherSuite {
   public static class Builder {
 
     private CurveHashSuite curveHashSuite = CurveHashSuite.P256_SHA256;
+    private OprfMode mode = OprfMode.OPRF;
     private RandomProvider random = new RandomProvider();
+
+    /**
+     * Sets the RFC 9497 protocol mode. Defaults to {@link OprfMode#OPRF} (base mode), which is
+     * what OPAQUE and every existing caller in this repository use.
+     *
+     * @param mode the mode
+     * @return the builder
+     */
+    public Builder withMode(OprfMode mode) {
+      this.mode = mode;
+      return this;
+    }
 
     /**
      * With suite builder.
@@ -459,6 +609,7 @@ public class OprfCipherSuite {
         case P256_SHA256 -> new OprfCipherSuite(
             "P256-SHA256",
             "P256-SHA256",
+            mode,
             WeierstrassGroupSpecImpl.P256_SHA256,
             "SHA-256",
             32,
@@ -467,6 +618,7 @@ public class OprfCipherSuite {
         case P384_SHA384 -> new OprfCipherSuite(
             "P384-SHA384",
             "P384-SHA384",
+            mode,
             WeierstrassGroupSpecImpl.P384_SHA384,
             "SHA-384",
             48,
@@ -475,6 +627,7 @@ public class OprfCipherSuite {
         case P521_SHA512 -> new OprfCipherSuite(
             "P521-SHA512",
             "P521-SHA512",
+            mode,
             WeierstrassGroupSpecImpl.P521_SHA512,
             "SHA-512",
             64,
@@ -483,6 +636,7 @@ public class OprfCipherSuite {
         case RISTRETTO255_SHA512 -> new OprfCipherSuite(
             "ristretto255-SHA512",
             "ristretto255-SHA512",
+            mode,
             Ristretto255GroupSpec.INSTANCE,
             "SHA-512",
             64,

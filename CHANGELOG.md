@@ -9,10 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-> **Security release.** Fixes three critical and nine high-severity findings from an August 2026
-> review, plus six follow-ups found while verifying those fixes. Two are exploitable by a malicious or compromised server against its own clients, and
-> one lets a session survive the password change meant to revoke it — so upgrading is strongly
-> recommended for anyone running OPAQUE or the standalone OPRF in production.
+> **Security release, with one substantial feature.** Fixes three critical and nine high-severity
+> findings from an August 2026 review, plus six follow-ups found while verifying those fixes. Two
+> are exploitable by a malicious or compromised server against its own clients, and one lets a
+> session survive the password change meant to revoke it — so upgrading is strongly recommended for
+> anyone running OPAQUE or the standalone OPRF in production.
+>
+> It also adds RFC 9497 VOPRF and POPRF to `hofmann-rfc`. That part is a library addition: base
+> mode is unchanged, and no existing caller needs to do anything. See *Added* below.
 >
 > **This release contains breaking changes and is versioned 3.1.0, not 3.0.1.** Most deployments
 > need no code changes; the exceptions are listed under *Breaking changes* below. There is no
@@ -20,6 +24,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > noted under *Upgrade notes*.
 
 ### Added
+
+- **RFC 9497 VOPRF (mode 0x01) and POPRF (mode 0x02)** in `hofmann-rfc`, alongside the existing
+  base mode. VOPRF lets a client verify the server evaluated with the key it publicly committed
+  to; POPRF adds a public input, agreed by both parties, that separates evaluations. Both are
+  available on all four cipher suites and support batching under a single proof. See
+  `hofmann-rfc/OPRF.md`.
+
+  Base mode is unchanged and remains the default, so OPAQUE and every existing caller keep
+  byte-identical behaviour. This is a library addition only — no HTTP endpoints, TypeScript, or
+  Rust support yet.
+
+  Two requirements the verifiable modes place on callers, both of which the protocol cannot
+  enforce: the server public key must be **authenticated** out of band, since an attacker able to
+  substitute it can run a distinct key per client and still produce verifying proofs (RFC 9497
+  §7.3); and one secret must not serve two modes, because the static Diffie-Hellman budget of
+  §7.2.3 is per-key and POPRF exposes an inversion oracle where the other modes expose a
+  multiplication oracle. `VerifiableProcessorDetail.deriveFromSeed` makes the second
+  self-enforcing.
+
+  Conformance is pinned against the RFC's own Appendix A vectors — key derivation for all twelve
+  (suite, mode) pairs, the DLEQ proof bytes, and full end-to-end exchanges at batch sizes 1 and 2.
 
 - `allowEphemeralKeys` (Dropwizard) / `hofmann.allow-ephemeral-keys` (Spring Boot), and the
   removal of committed key fallbacks from the demo and testserver configs. See the ninth
@@ -35,6 +60,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `Ristretto255GroupSpec.serializeScalar` had no range check, and its little-endian encoder copies
+  at most 32 bytes and silently drops the rest — so a scalar at or above 2^256 was truncated into a
+  different, valid-looking scalar rather than rejected. Unreachable from any in-tree call path, since no
+  `src/main` code calls it and OPAQUE serializes scalars by a different route — and an external
+  caller would have to supply its own out-of-range `BigInteger`, which nothing this library
+  produces ever is. It would, however, have made the new proof encodings malleable. The Weierstrass implementation has always checked.
+- Malformed hex reached callers as `IllegalStateException`, because BouncyCastle's
+  `DecoderException` extends it rather than `IllegalArgumentException`. On the server that turned a
+  client's bad input into a 5xx under the HTTP adapters' convention, letting any caller manufacture
+  500s; on the client it let a server choose which exception type the application saw. Both
+  directions are now typed by whose fault the failure is, in all three modes.
 - A junk recovery bearer token drained the victim's recovery rate limit at
   `registration/finish`. That path is keyed on the token now, so guesses burn the attacker's own
   budget. `recovery/start` and `recovery/verify` still key on the credential identifier, so a

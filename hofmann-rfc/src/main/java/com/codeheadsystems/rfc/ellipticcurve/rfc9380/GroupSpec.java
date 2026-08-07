@@ -71,4 +71,99 @@ public interface GroupSpec {
    * @return Ns-byte encoding
    */
   byte[] serializeScalar(BigInteger k);
+
+  /**
+   * Size of a serialized scalar in bytes (Ns).
+   *
+   * @return the int
+   */
+  int scalarSize();
+
+  /**
+   * Inverse of {@link #serializeScalar(BigInteger)}.
+   * <p>
+   * Rejects any encoding that is not the canonical one for a scalar in {@code [0, n-1]}: wrong
+   * length, or a value at or above the group order. Both matter once scalars cross the wire, which
+   * they do for the first time in the RFC 9497 §2.2 proofs — {@code c} and {@code s} arrive from a
+   * remote party. Accepting {@code k} and {@code k + n} interchangeably would make the proof
+   * encoding malleable.
+   *
+   * @param bytes Ns-byte encoding
+   * @return the scalar in [0, n-1]
+   * @throws IllegalArgumentException if the encoding is the wrong length or not canonical
+   */
+  BigInteger deserializeScalar(byte[] bytes);
+
+  /**
+   * The serialized group generator G.
+   *
+   * @return serialized generator (Ne bytes)
+   */
+  byte[] generator();
+
+  /**
+   * Validates a serialized element that arrived from an untrusted source.
+   * <p>
+   * RFC 9497 §3.3 makes this a requirement: "Applications MUST check that input Element values
+   * received over the wire are not the group identity element." Both implementations already
+   * enforce that — along with on-curve and prime-order-subgroup checks — when they deserialize,
+   * but until now the only way to reach those checks through this interface was to perform an
+   * actual group operation. The verifiable modes need to validate a server public key on load,
+   * before any operation uses it, so the check needs its own entry point.
+   *
+   * @param element the serialized element
+   * @throws SecurityException        if the element is the identity, off-curve, outside the
+   *                                  prime-order subgroup, or otherwise not a canonical encoding
+   * @throws IllegalArgumentException if the encoding is the wrong length
+   */
+  void validateElement(byte[] element);
+
+  /**
+   * Adds two group elements.
+   *
+   * @param a serialized element
+   * @param b serialized element
+   * @return serialized sum
+   * @throws IdentityResultException if the sum is the identity element
+   */
+  byte[] add(byte[] a, byte[] b);
+
+  /**
+   * Computes {@code sum(scalars[i] * elements[i])} for scalars that are <em>secret</em>.
+   * <p>
+   * Intermediate sums are never serialized, which is what makes this the only usable shape for the
+   * RFC 9497 §2.2 proof arithmetic: the accumulator legitimately passes through the identity (the
+   * RFC's {@code ComputeComposites} starts there), and every serialized-element entry point in
+   * this interface rejects the identity. Individual terms may also be the identity — a caller-
+   * supplied scalar of zero produces one — so the terms must stay internal too.
+   * <p>
+   * Use this form only for scalars that must not leak through timing: the server's OPRF key, the
+   * POPRF tweaked key {@code t = skS + m}, and the proof randomness {@code r}. Everything else in
+   * the proof — the composite coefficients {@code d_i}, and the wire-supplied {@code c} and
+   * {@code s} — is public and belongs in {@link #linearCombinationPublic}.
+   *
+   * @param scalars  the scalars, same length as {@code elements}
+   * @param elements the serialized elements, at least one
+   * @return the serialized sum
+   * @throws IdentityResultException  if the sum is the identity element
+   * @throws IllegalArgumentException if the arrays are empty or of differing length
+   */
+  byte[] linearCombinationSecret(BigInteger[] scalars, byte[][] elements);
+
+  /**
+   * Computes {@code sum(scalars[i] * elements[i])} for scalars that are <em>public</em>.
+   * <p>
+   * Same contract as {@link #linearCombinationSecret} but free to use the group's fastest
+   * multiplier. On the Weierstrass curves that is roughly twice the speed of the constant-time
+   * ladder, which matters here because the batch proof path performs {@code 2m} of these on
+   * attacker-chosen batch sizes — putting public scalars on the ladder would double the cost of
+   * the one operation a client can order in bulk, for no security benefit.
+   *
+   * @param scalars  the scalars, same length as {@code elements}
+   * @param elements the serialized elements, at least one
+   * @return the serialized sum
+   * @throws IdentityResultException  if the sum is the identity element
+   * @throws IllegalArgumentException if the arrays are empty or of differing length
+   */
+  byte[] linearCombinationPublic(BigInteger[] scalars, byte[][] elements);
 }

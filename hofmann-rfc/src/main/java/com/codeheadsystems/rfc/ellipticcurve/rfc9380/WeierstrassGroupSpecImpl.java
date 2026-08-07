@@ -17,17 +17,17 @@ public record WeierstrassGroupSpecImpl(
 ) implements GroupSpec {
 
   /**
-   * P-256 / SHA-256 instance (RFC 9497 §4.1).
+   * P-256 / SHA-256 instance (RFC 9497 §4.3).
    */
   public static final WeierstrassGroupSpecImpl P256_SHA256 = buildP256();
 
   /**
-   * P-384 / SHA-384 instance (RFC 9497 §4.2).
+   * P-384 / SHA-384 instance (RFC 9497 §4.4).
    */
   public static final WeierstrassGroupSpecImpl P384_SHA384 = buildP384();
 
   /**
-   * P-521 / SHA-512 instance (RFC 9497 §4.3).
+   * P-521 / SHA-512 instance (RFC 9497 §4.5).
    */
   public static final WeierstrassGroupSpecImpl P521_SHA512 = buildP521();
 
@@ -221,8 +221,117 @@ public record WeierstrassGroupSpecImpl(
     if (k.signum() < 0 || k.compareTo(curve.n()) >= 0) {
       throw new IllegalArgumentException("Scalar out of range [0, n-1]");
     }
-    int ns = (curve.n().bitLength() + 7) / 8;
-    return ByteUtils.scalarToFixedBytes(k, ns);
+    return ByteUtils.scalarToFixedBytes(k, scalarSize());
+  }
+
+  @Override
+  public int scalarSize() {
+    return (curve.n().bitLength() + 7) / 8;
+  }
+
+  @Override
+  public BigInteger deserializeScalar(byte[] bytes) {
+    if (bytes == null || bytes.length != scalarSize()) {
+      throw new IllegalArgumentException(
+          "Scalar encoding must be exactly " + scalarSize() + " bytes");
+    }
+    BigInteger k = new BigInteger(1, bytes);
+    if (k.compareTo(curve.n()) >= 0) {
+      throw new IllegalArgumentException("Scalar encoding is not canonical: value >= group order");
+    }
+    return k;
+  }
+
+  @Override
+  public byte[] generator() {
+    return curve.g().getEncoded(true);
+  }
+
+  /**
+   * {@inheritDoc}
+   * <p>
+   * The length check is the substantive part. BouncyCastle's {@code decodePoint} accepts SEC1
+   * uncompressed ({@code 0x04}, 65 bytes on P-256) and hybrid ({@code 0x06}/{@code 0x07}) forms
+   * alongside the compressed one, but RFC 9497 §4.3-§4.5 specify deserialization as "attempting to
+   * deserialize a 33-byte input string ... using the compressed Octet-String-to-Elliptic-Curve-Point
+   * method". Accepting a wider set is not merely lax: the proof transcripts hash the element
+   * <em>bytes</em>, so an attacker who re-encodes a client's blinded element in flight from
+   * compressed to uncompressed leaves the server proving over bytes the client never sent. The
+   * composite coefficients differ, verification fails, and the client sees an apparently
+   * misbehaving server with no way to attribute it to a network attacker — a silent, unattributable
+   * denial of service against every verifiable exchange. A public key configured in uncompressed
+   * form would fail the same way, permanently.
+   * <p>
+   * The check lives here rather than in {@link #deserializePoint} deliberately. That method is on
+   * the OPAQUE and base-mode OPRF paths, where a non-canonical encoding is harmless — no transcript
+   * hashes the bytes, so the output is identical either way — and tightening it there is a wider
+   * behaviour change than this commit should carry.
+   */
+  @Override
+  public void validateElement(byte[] element) {
+    if (element == null || element.length != elementSize()) {
+      throw new IllegalArgumentException(
+          "Element encoding must be exactly " + elementSize() + " bytes (compressed SEC1), got "
+              + (element == null ? "null" : element.length));
+    }
+    deserializePoint(element);
+  }
+
+  @Override
+  public byte[] add(byte[] a, byte[] b) {
+    ECPoint sum = deserializePoint(a).add(deserializePoint(b)).normalize();
+    if (sum.isInfinity()) {
+      throw new IdentityResultException("Element addition produced the identity element");
+    }
+    return sum.getEncoded(true);
+  }
+
+  @Override
+  public byte[] linearCombinationSecret(BigInteger[] scalars, byte[][] elements) {
+    return linearCombination(scalars, elements, true);
+  }
+
+  @Override
+  public byte[] linearCombinationPublic(BigInteger[] scalars, byte[][] elements) {
+    return linearCombination(scalars, elements, false);
+  }
+
+  /**
+   * Accumulates {@code sum(scalars[i] * elements[i])} entirely in {@link ECPoint} form.
+   * <p>
+   * The accumulator starts at infinity and individual terms may be infinity (a zero scalar
+   * produces one, and a remote party controls {@code s} and {@code c} in a proof), so nothing here
+   * may round-trip through {@link #deserializePoint}, which rejects infinity. Only the final sum
+   * is serialized, and only after it has been shown not to be the identity.
+   *
+   * @param secret whether the scalars require the constant-time ladder
+   */
+  private byte[] linearCombination(BigInteger[] scalars, byte[][] elements, boolean secret) {
+    if (scalars == null || elements == null) {
+      throw new IllegalArgumentException("Scalars and elements are required");
+    }
+    if (scalars.length != elements.length) {
+      throw new IllegalArgumentException(
+          "Scalar and element counts differ: " + scalars.length + " vs " + elements.length);
+    }
+    if (scalars.length == 0) {
+      throw new IllegalArgumentException("Linear combination requires at least one term");
+    }
+    ECPoint acc = curve.params().getCurve().getInfinity();
+    for (int i = 0; i < scalars.length; i++) {
+      // deserializePoint still validates each *input* element — on-curve, non-identity,
+      // prime-order. Only the products and the running sum are allowed to be the identity.
+      ECPoint p = deserializePoint(elements[i]);
+      ECPoint term = secret
+          ? ladderMultiply(p, scalars[i])
+          : p.multiply(scalars[i].mod(curve.n()));
+      acc = acc.add(term);
+    }
+    acc = acc.normalize();
+    if (acc.isInfinity()) {
+      throw new IdentityResultException("Linear combination produced the identity element");
+    }
+    return acc.getEncoded(true);
   }
 
   /**
