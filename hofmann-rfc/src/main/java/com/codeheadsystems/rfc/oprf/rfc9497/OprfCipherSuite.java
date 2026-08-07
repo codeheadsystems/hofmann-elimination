@@ -21,9 +21,10 @@ import javax.crypto.spec.SecretKeySpec;
  * <p>
  * Supports:
  * <ul>
- *   <li>P256-SHA256 (RFC 9497 §4.1)</li>
- *   <li>P384-SHA384 (RFC 9497 §4.2)</li>
- *   <li>P521-SHA512 (RFC 9497 §4.3)</li>
+ *   <li>ristretto255-SHA512 (RFC 9497 §4.1)</li>
+ *   <li>P256-SHA256 (RFC 9497 §4.3)</li>
+ *   <li>P384-SHA384 (RFC 9497 §4.4)</li>
+ *   <li>P521-SHA512 (RFC 9497 §4.5)</li>
  * </ul>
  */
 public class OprfCipherSuite {

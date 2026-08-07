@@ -23,6 +23,60 @@ verification follow-ups and the last P1 land after it. Everything marked `[ ]`
 is outstanding.
 
 > Several completed items carry a scope limit in their entry — what the fix does *not* cover.
+
+---
+
+## RFC 9497 VOPRF/POPRF — deferred items
+
+Carried out of the August 2026 work that added modes 0x01 and 0x02 to `hofmann-rfc`. Each was
+raised during cryptographic review and consciously deferred rather than missed. Recorded here so
+they do not live only in a conversation.
+
+### Open — needs a decision
+
+- [ ] **OPAQUE ristretto255 scalar endianness.** `ByteUtils.scalarToFixedBytes` is big-endian, and
+  OPAQUE uses it to serialize private keys on the ristretto255 suite, whose scalar convention is
+  little-endian (`opaque/Server.java`, `HofmannBundle`, `HofmannAutoConfiguration`). Found while
+  confirming the new ristretto `serializeScalar` range check had no in-tree caller to break — it
+  does not, because OPAQUE never goes through `GroupSpec.serializeScalar` at all. Out of scope for
+  RFC 9497 work and `OpaqueCrossImplVectorsTest` passes, so it is either consistent across the
+  Java/Rust/TypeScript ports or simply not exercised for ristretto255. Unresolved either way, and
+  the only substantive open question left by that review.
+
+- [ ] **Transport-level request-size bound for batched OPRF requests.** The verifiable servers cap
+  a batch at 64 elements (1024 absolute) before any curve operation, but that fires only after the
+  HTTP layer has deserialized the whole body. A bound on request size belongs with the adapters.
+  Documented as owed in `hofmann-rfc/OPRF.md`.
+
+- [ ] **Phase 6: transport and ports.** HTTP endpoints for the verifiable modes,
+  `docs/oprf-api.yaml`, `hofmann-client`, TypeScript, Rust, and cross-client integration tests.
+  The Java core was designed not to block this — wire models are hex strings throughout — but
+  none of it exists. The 3.1.0 CHANGELOG says "library addition only" for this reason.
+
+### Accepted residuals — documented in code, no action planned
+
+- Proof generation is not fully constant-time: `s = r - c*k` in `GenerateProof` uses `BigInteger`
+  multiplication and reduction, which are variable-time in their operands, and RFC 9497 §7.4 names
+  `GenerateProof` as an operation that should be constant time. Far smaller than the scalar-
+  multiplication leaks already closed — operands are fixed width after the first reduction and `s`
+  is published in the proof anyway — but removing it needs constant-time scalar-field arithmetic
+  `BigInteger` does not offer. Stated in `DleqProver`'s javadoc and in `OPRF.md`.
+- The Montgomery ladder's two-element accumulator is indexed by a secret bit and remains
+  observable to a co-located cache-probing attacker. Pre-existing; documented in
+  `WeierstrassGroupSpecImpl`.
+
+### Minor test gaps — known, judged acceptable
+
+- [ ] `GroupSpecArithmeticTest` exercises the identity-input path properly only on ristretto255.
+  On the Weierstrass curves the equivalent test passes `elementSize()` zero bytes, which
+  BouncyCastle rejects as a malformed encoding before the identity check is reached; the real SEC1
+  identity is the single byte `0x00`. A per-suite split now covers the encoding case, but the
+  identity-specific rejection is still only genuinely tested on ristretto255.
+- [ ] `PoprfClientContext` does not defensively copy its `info` and `tweakedKey` arrays, though its
+  lists get `List.copyOf`. Consistent with house style across the module, so noted rather than
+  recommended.
+
+
 > Those are deliberate and load-bearing: identifier squatting is bounded but not eliminated, and
 > the rate limiter's memory is bounded but its throughput is not. Read them before assuming a
 > checked box means the whole class of attack is gone.

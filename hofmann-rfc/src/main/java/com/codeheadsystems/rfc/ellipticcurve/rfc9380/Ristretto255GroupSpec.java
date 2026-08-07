@@ -128,7 +128,7 @@ public class Ristretto255GroupSpec implements GroupSpec {
   }
 
   /**
-   * HashToScalar per RFC 9497 §4.4: expand to 64 bytes, decode as little-endian mod L.
+   * HashToScalar per RFC 9497 §4.1: expand to 64 bytes, decode as little-endian mod L.
    */
   @Override
   public BigInteger hashToScalar(byte[] msg, byte[] dst) {

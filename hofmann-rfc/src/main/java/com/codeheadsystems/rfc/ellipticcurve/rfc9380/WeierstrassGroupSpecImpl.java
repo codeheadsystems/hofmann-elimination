@@ -17,17 +17,17 @@ public record WeierstrassGroupSpecImpl(
 ) implements GroupSpec {
 
   /**
-   * P-256 / SHA-256 instance (RFC 9497 §4.1).
+   * P-256 / SHA-256 instance (RFC 9497 §4.3).
    */
   public static final WeierstrassGroupSpecImpl P256_SHA256 = buildP256();
 
   /**
-   * P-384 / SHA-384 instance (RFC 9497 §4.2).
+   * P-384 / SHA-384 instance (RFC 9497 §4.4).
    */
   public static final WeierstrassGroupSpecImpl P384_SHA384 = buildP384();
 
   /**
-   * P-521 / SHA-512 instance (RFC 9497 §4.3).
+   * P-521 / SHA-512 instance (RFC 9497 §4.5).
    */
   public static final WeierstrassGroupSpecImpl P521_SHA512 = buildP521();
 
