@@ -16,6 +16,7 @@ import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfig;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
 import com.codeheadsystems.hofmann.server.resource.OpaqueResource;
 import com.codeheadsystems.hofmann.server.resource.OprfResource;
+import com.codeheadsystems.hofmann.server.oprf.VerifiableKeyConfig;
 import com.codeheadsystems.hofmann.server.recovery.RecoveryChallenger;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemoryCredentialStore;
@@ -401,16 +402,13 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
    */
   private VoprfServerManager buildVoprfManager(C configuration) {
     String keyHex = configuration.getVoprfMasterKeyHex();
-    if (keyHex == null || keyHex.isEmpty()) {
+    if (!VerifiableKeyConfig.isConfigured(keyHex)) {
       return null;
     }
-    OprfCipherSuite suite = OprfCipherSuite.builder()
-        .withSuite(configuration.getOprfCipherSuite())
-        .withMode(OprfMode.VOPRF)
-        .withRandom(secureRandom)
-        .build();
-    VerifiableProcessorDetail detail = VerifiableProcessorDetail.derive(
-        suite, new BigInteger(keyHex, 16), configuration.getOprfProcessorId() + "-voprf");
+    OprfCipherSuite suite = VerifiableKeyConfig.suiteFor(
+        configuration.getOprfCipherSuite(), OprfMode.VOPRF, secureRandom);
+    VerifiableProcessorDetail detail = VerifiableKeyConfig.detailFrom(
+        suite, keyHex, configuration.getOprfProcessorId() + "-voprf", "voprfMasterKeyHex");
     log.info("VOPRF (mode 0x01) enabled");
     return new VoprfServerManager(suite, () -> detail);
   }
@@ -420,16 +418,13 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
    */
   private PoprfServerManager buildPoprfManager(C configuration) {
     String keyHex = configuration.getPoprfMasterKeyHex();
-    if (keyHex == null || keyHex.isEmpty()) {
+    if (!VerifiableKeyConfig.isConfigured(keyHex)) {
       return null;
     }
-    OprfCipherSuite suite = OprfCipherSuite.builder()
-        .withSuite(configuration.getOprfCipherSuite())
-        .withMode(OprfMode.POPRF)
-        .withRandom(secureRandom)
-        .build();
-    VerifiableProcessorDetail detail = VerifiableProcessorDetail.derive(
-        suite, new BigInteger(keyHex, 16), configuration.getOprfProcessorId() + "-poprf");
+    OprfCipherSuite suite = VerifiableKeyConfig.suiteFor(
+        configuration.getOprfCipherSuite(), OprfMode.POPRF, secureRandom);
+    VerifiableProcessorDetail detail = VerifiableKeyConfig.detailFrom(
+        suite, keyHex, configuration.getOprfProcessorId() + "-poprf", "poprfMasterKeyHex");
     log.info("POPRF (mode 0x02) enabled");
     return new PoprfServerManager(suite, () -> detail);
   }

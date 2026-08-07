@@ -11,6 +11,7 @@ import com.codeheadsystems.hofmann.server.ratelimit.InMemoryRateLimiter;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfig;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfigSupplier;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
+import com.codeheadsystems.hofmann.server.oprf.VerifiableKeyConfig;
 import com.codeheadsystems.hofmann.server.recovery.RecoveryChallenger;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemoryCredentialStore;
@@ -611,14 +612,11 @@ public class HofmannAutoConfiguration {
   @ConditionalOnMissingBean
   @ConditionalOnProperty(prefix = "hofmann", name = "voprf-master-key-hex")
   public VoprfServerManager voprfServerManager(HofmannProperties props, SecureRandom secureRandom) {
-    OprfCipherSuite suite = OprfCipherSuite.builder()
-        .withSuite(props.getOprfCipherSuite())
-        .withMode(OprfMode.VOPRF)
-        .withRandom(secureRandom)
-        .build();
-    VerifiableProcessorDetail detail = VerifiableProcessorDetail.derive(
-        suite, new BigInteger(props.getVoprfMasterKeyHex(), 16),
-        props.getOprfProcessorId() + "-voprf");
+    OprfCipherSuite suite = VerifiableKeyConfig.suiteFor(
+        props.getOprfCipherSuite(), OprfMode.VOPRF, secureRandom);
+    VerifiableProcessorDetail detail = VerifiableKeyConfig.detailFrom(
+        suite, props.getVoprfMasterKeyHex(), props.getOprfProcessorId() + "-voprf",
+        "hofmann.voprf-master-key-hex");
     return new VoprfServerManager(suite, () -> detail);
   }
 
@@ -634,14 +632,11 @@ public class HofmannAutoConfiguration {
   @ConditionalOnMissingBean
   @ConditionalOnProperty(prefix = "hofmann", name = "poprf-master-key-hex")
   public PoprfServerManager poprfServerManager(HofmannProperties props, SecureRandom secureRandom) {
-    OprfCipherSuite suite = OprfCipherSuite.builder()
-        .withSuite(props.getOprfCipherSuite())
-        .withMode(OprfMode.POPRF)
-        .withRandom(secureRandom)
-        .build();
-    VerifiableProcessorDetail detail = VerifiableProcessorDetail.derive(
-        suite, new BigInteger(props.getPoprfMasterKeyHex(), 16),
-        props.getOprfProcessorId() + "-poprf");
+    OprfCipherSuite suite = VerifiableKeyConfig.suiteFor(
+        props.getOprfCipherSuite(), OprfMode.POPRF, secureRandom);
+    VerifiableProcessorDetail detail = VerifiableKeyConfig.detailFrom(
+        suite, props.getPoprfMasterKeyHex(), props.getOprfProcessorId() + "-poprf",
+        "hofmann.poprf-master-key-hex");
     return new PoprfServerManager(suite, () -> detail);
   }
 }
