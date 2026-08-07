@@ -668,7 +668,7 @@ public class HofmannOpaqueServerManager {
 
   private void validateRecoveryToken(String token, String expectedCredentialIdentifierBase64) {
     if (recoveryTokenStore == null) {
-      throw new SecurityException("Invalid or expired recovery token");
+      throw new SecurityException(INVALID_RECOVERY_TOKEN);
     }
     // Intentionally non-consuming (peek): registrationStart performs no persistent state change
     // (it only returns a registration response), so a token may validate multiple start calls
@@ -676,9 +676,16 @@ public class HofmannOpaqueServerManager {
     // Single use is enforced by the atomic remove() in registrationFinish, which is the only step
     // that mutates account state. See registrationFinish for the full lifecycle.
     String credId = recoveryTokenStore.peek(token)
-        .orElseThrow(() -> new SecurityException("Invalid or expired recovery token"));
+        .orElseThrow(() -> new SecurityException(INVALID_RECOVERY_TOKEN));
     if (!credId.equals(expectedCredentialIdentifierBase64)) {
-      throw new SecurityException("Recovery token does not match credential");
+      // Same single message as registrationFinish, and it matters more here. This path is
+      // non-consuming by design, so a distinct "does not match credential" was a *freely
+      // repeatable* identifier-confirmation oracle for anyone holding a token — no token is
+      // spent to ask, and unlike the finish path there is no token-keyed limiter in front of it
+      // (registrationStart's limiter keys on the credential identifier, which is the very thing
+      // being guessed, so each guess draws from a different bucket).
+      log.debug("registrationStart: recovery token is valid but names a different credential");
+      throw new SecurityException(INVALID_RECOVERY_TOKEN);
     }
   }
 
