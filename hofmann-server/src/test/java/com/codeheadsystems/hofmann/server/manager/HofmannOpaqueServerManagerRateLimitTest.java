@@ -2,6 +2,7 @@ package com.codeheadsystems.hofmann.server.manager;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import com.codeheadsystems.hofmann.model.opaque.RecoveryVerifyRequest;
@@ -65,7 +66,7 @@ class HofmannOpaqueServerManagerRateLimitTest {
     // Each verification attempt draws one token; with verifyResponse=false every attempt that
     // clears the limiter fails authentication. The default capacity is 6, so the first six
     // attempts reach (and are rejected by) the challenger, and the seventh is throttled.
-    when(recoveryChallenger.verifyResponse(any(), any())).thenReturn(false);
+    when(recoveryChallenger.verifyResponse(any(), any(), any())).thenReturn(false);
     RecoveryVerifyRequest req = new RecoveryVerifyRequest(ALICE, "000000");
 
     for (int i = 0; i < 6; i++) {
@@ -86,7 +87,7 @@ class HofmannOpaqueServerManagerRateLimitTest {
     // The throttle is keyed by credential identifier, so exhausting alice's bucket must not
     // throttle a different credential — and rejection depends only on the identifier, never on
     // whether the account exists, so it is not an enumeration oracle.
-    when(recoveryChallenger.verifyResponse(any(), any())).thenReturn(false);
+    when(recoveryChallenger.verifyResponse(any(), any(), any())).thenReturn(false);
     RecoveryVerifyRequest aliceReq = new RecoveryVerifyRequest(ALICE, "000000");
     for (int i = 0; i < 6; i++) {
       assertThatThrownBy(() -> manager.recoveryVerify(aliceReq)).isInstanceOf(SecurityException.class);

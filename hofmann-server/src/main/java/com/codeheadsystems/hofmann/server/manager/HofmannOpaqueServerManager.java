@@ -589,10 +589,17 @@ public class HofmannOpaqueServerManager {
     if (recoveryChallenger == null) {
       throw new UnsupportedOperationException("Account recovery is not configured");
     }
-    if (!recoveryRateLimiter.tryConsume(req.credentialIdentifierBase64())) {
+    // Still keyed on the credential identifier, and that is inherent here rather than an
+    // oversight: before a challenge exists there is nothing to key on that an attacker cannot
+    // also supply. What the challenge id changes is recoveryVerify — see below — so a flood here
+    // can cost a victim a new challenge but no longer costs them the ability to complete one.
+    if (!recoveryRateLimiter.tryConsume("start:" + req.credentialIdentifierBase64())) {
       throw new RateLimitExceededException();
     }
-    recoveryChallenger.sendChallenge(req.credentialIdentifier());
+    // Generated unconditionally, even for a challenger that ignores it, so the value never
+    // depends on anything the caller sent and the two paths cost the same.
+    String challengeId = UUID.randomUUID().toString();
+    recoveryChallenger.sendChallenge(req.credentialIdentifier(), challengeId);
   }
 
   /**
@@ -612,9 +619,20 @@ public class HofmannOpaqueServerManager {
     // Throttle every verification attempt (not just recoveryStart). Without this the OOB
     // challenge code can be brute-forced at request rate, and the unconditional 250ms floor
     // below turns each unthrottled call into a thread-exhaustion DoS. Rate-limit rejection
-    // depends only on the credential identifier, not on whether the account exists, so it is
-    // not itself an enumeration oracle.
-    if (!recoveryRateLimiter.tryConsume(req.credentialIdentifierBase64())) {
+    // depends only on the key below, not on whether the account exists, so it is not itself an
+    // enumeration oracle either way.
+    //
+    // Keyed on the challenge id when the challenger delivers one out of band. That is what closes
+    // the targeted lockout: the id reaches the account owner's mailbox and nowhere else, so an
+    // attacker naming a victim spends their own budget rather than the victim's, and spending the
+    // victim's costs them a 122-bit guess. Keying on the credential identifier — which the caller
+    // supplies and an attacker knows — is what made six unauthenticated requests enough to lock
+    // someone out of their own recovery.
+    //
+    // Falls back to identifier keying for a challenger that has not opted in, because there is
+    // then no id to key on: the residual is real for those deployments and documented on
+    // RecoveryChallenger.
+    if (!recoveryRateLimiter.tryConsume(recoveryVerifyRateLimitKey(req))) {
       throw new RateLimitExceededException();
     }
     // Enforce a constant-time floor over the whole verification. A RecoveryChallenger may
@@ -637,7 +655,7 @@ public class HofmannOpaqueServerManager {
     final long deadlineNanos = System.nanoTime() + RECOVERY_VERIFY_MIN_NANOS;
     try {
       if (!recoveryChallenger.verifyResponse(
-          req.credentialIdentifier(), req.challengeResponse())) {
+          req.credentialIdentifier(), req.challengeId(), req.challengeResponse())) {
         throw new SecurityException("Recovery verification failed");
       }
       String token = UUID.randomUUID().toString();
@@ -664,6 +682,26 @@ public class HofmannOpaqueServerManager {
       }
       remaining = deadlineNanos - System.nanoTime();
     }
+  }
+
+  /**
+   * Chooses the rate-limit key for a verification attempt.
+   *
+   * <p>The challenge id when the challenger binds one, the credential identifier otherwise. A
+   * blank or absent id falls back too rather than being treated as a key: an attacker who could
+   * send no id and have that count as a distinct bucket would get an unlimited guessing budget,
+   * which is worse than the lockout this is fixing.
+   */
+  private String recoveryVerifyRateLimitKey(final RecoveryVerifyRequest req) {
+    if (recoveryChallenger.bindsChallengeId()) {
+      String challengeId = req.challengeId();
+      if (challengeId != null && !challengeId.isBlank()) {
+        return "challenge:" + challengeId;
+      }
+      log.debug("recoveryVerify: challenger binds challenge ids but none was presented; "
+          + "falling back to identifier keying for this request");
+    }
+    return "verify:" + req.credentialIdentifierBase64();
   }
 
   private void validateRecoveryToken(String token, String expectedCredentialIdentifierBase64) {

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -105,12 +106,12 @@ class HofmannOpaqueServerManagerRecoveryTest {
   @Test
   void recoveryStart_delegatesToChallenger() {
     manager.recoveryStart(new RecoveryStartRequest(ALICE));
-    verify(recoveryChallenger).sendChallenge(ALICE);
+    verify(recoveryChallenger).sendChallenge(eq(ALICE), any());
   }
 
   @Test
   void recoveryVerify_successReturnsToken() {
-    when(recoveryChallenger.verifyResponse(ALICE, "123456")).thenReturn(true);
+    when(recoveryChallenger.verifyResponse(eq(ALICE), any(), eq("123456"))).thenReturn(true);
 
     RecoveryVerifyResponse response = manager.recoveryVerify(
         new RecoveryVerifyRequest(ALICE, "123456"));
@@ -120,7 +121,7 @@ class HofmannOpaqueServerManagerRecoveryTest {
 
   @Test
   void recoveryVerify_failureThrowsSecurityException() {
-    when(recoveryChallenger.verifyResponse(any(), any())).thenReturn(false);
+    when(recoveryChallenger.verifyResponse(any(), any(), any())).thenReturn(false);
 
     assertThatThrownBy(() -> manager.recoveryVerify(
         new RecoveryVerifyRequest(ALICE, "wrong")))
@@ -129,7 +130,7 @@ class HofmannOpaqueServerManagerRecoveryTest {
 
   @Test
   void recoveryVerify_tokenCanBeUsedForReRegistration() {
-    when(recoveryChallenger.verifyResponse(ALICE, "123456")).thenReturn(true);
+    when(recoveryChallenger.verifyResponse(eq(ALICE), any(), eq("123456"))).thenReturn(true);
     // Store old credential
     RegistrationRecord oldRecord = new RegistrationRecord(
         new byte[33], new byte[32], new Envelope(new byte[32], new byte[32]));
@@ -155,7 +156,7 @@ class HofmannOpaqueServerManagerRecoveryTest {
 
   @Test
   void registrationFinish_recoveryTokenIsConsumedOnce() {
-    when(recoveryChallenger.verifyResponse(ALICE, "123456")).thenReturn(true);
+    when(recoveryChallenger.verifyResponse(eq(ALICE), any(), eq("123456"))).thenReturn(true);
 
     RecoveryVerifyResponse response = manager.recoveryVerify(
         new RecoveryVerifyRequest(ALICE, "123456"));
@@ -176,7 +177,7 @@ class HofmannOpaqueServerManagerRecoveryTest {
 
   @Test
   void registrationFinish_wrongCredentialThrowsSecurityException() {
-    when(recoveryChallenger.verifyResponse(ALICE, "123456")).thenReturn(true);
+    when(recoveryChallenger.verifyResponse(eq(ALICE), any(), eq("123456"))).thenReturn(true);
 
     RecoveryVerifyResponse response = manager.recoveryVerify(
         new RecoveryVerifyRequest(ALICE, "123456"));
@@ -203,7 +204,7 @@ class HofmannOpaqueServerManagerRecoveryTest {
    */
   @Test
   void registrationFinish_wrongCredentialAndBogusTokenAreIndistinguishable() {
-    when(recoveryChallenger.verifyResponse(ALICE, "123456")).thenReturn(true);
+    when(recoveryChallenger.verifyResponse(eq(ALICE), any(), eq("123456"))).thenReturn(true);
 
     String recoveryToken = manager.recoveryVerify(
         new RecoveryVerifyRequest(ALICE, "123456")).recoveryToken();
@@ -227,7 +228,7 @@ class HofmannOpaqueServerManagerRecoveryTest {
    */
   @Test
   void registrationFinish_wrongCredentialDoesNotConsumeTheToken() {
-    when(recoveryChallenger.verifyResponse(ALICE, "123456")).thenReturn(true);
+    when(recoveryChallenger.verifyResponse(eq(ALICE), any(), eq("123456"))).thenReturn(true);
 
     RecoveryVerifyResponse response = manager.recoveryVerify(
         new RecoveryVerifyRequest(ALICE, "123456"));
@@ -257,7 +258,7 @@ class HofmannOpaqueServerManagerRecoveryTest {
    */
   @Test
   void registrationFinish_recoveryTokenIsConsumedOnce_underConcurrency() throws Exception {
-    when(recoveryChallenger.verifyResponse(ALICE, "123456")).thenReturn(true);
+    when(recoveryChallenger.verifyResponse(eq(ALICE), any(), eq("123456"))).thenReturn(true);
 
     for (int round = 0; round < 200; round++) {
       recoveryTokenStore = new InMemoryRecoveryTokenStore();
@@ -329,7 +330,7 @@ class HofmannOpaqueServerManagerRecoveryTest {
 
   @Test
   void registrationStart_withValidRecoveryToken_succeeds() {
-    when(recoveryChallenger.verifyResponse(ALICE, "123456")).thenReturn(true);
+    when(recoveryChallenger.verifyResponse(eq(ALICE), any(), eq("123456"))).thenReturn(true);
     when(server.createRegistrationResponse(any(), any()))
         .thenReturn(new RegistrationResponse(new byte[33], new byte[33]));
 

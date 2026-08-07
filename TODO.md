@@ -4,30 +4,27 @@ Open work from the **August 2026** security review (six-reviewer fan-out across 
 `hofmann-server`, `hofmann-client`, both framework integrations, and the Rust/TypeScript ports),
 plus the RFC 9497 VOPRF/POPRF deferrals and one finding raised while closing the rest.
 
-**Every P0 and P1 is closed**, as are all but one of the verification follow-ups. What remains is
-P2 and below, the deferred register, and the documentation and test-coverage backlog.
+**Every P0, P1, verification follow-up and RFC 9497 deferral is closed.** What remains is P2 and
+below, plus the documentation and test-coverage backlog.
 
 ## Status
 
 | Section | Open |
 |---|---:|
-| RFC 9497 VOPRF/POPRF — deferred | 4 |
-| Recovery-lockout follow-up | 1 |
 | New findings | 1 |
 | **P2 Medium** | 6 |
 | **P3 Low** | 4 |
 | Documentation | 4 |
 | Test coverage gaps | 4 |
-| **Total** | **24** |
+| **Total** | **19** |
 
 Recount with `grep -c '^- \[ \]' TODO.md` after editing.
 
 ## How to read this file
 
-Every entry here is **outstanding**. Completed entries were removed in the 2026-08-07 cleanup;
-they had accumulated to 35, and the analysis each carried lives in the commit that closed it and
-in this file's own history (`git log -p -- TODO.md`). Nothing is lost, but it is no longer in
-front of you while you work.
+Every entry here is **outstanding**. Completed entries are removed rather than checked off; the
+analysis each carried lives in the commit that closed it and in this file's own history
+(`git log -p -- TODO.md`). Nothing is lost, but it is no longer in front of you while you work.
 
 Treat this file as **a claim log to be re-verified, not as evidence**. Of the twenty-odd entries
 on a February 2026 DONE list, four did not survive verification. Three more entries were found
@@ -39,45 +36,29 @@ Findings tagged **[reproduced]** were demonstrated by executing code, not by rea
 > **Line numbers in these entries predate the August 2026 fixes** and many have drifted. The file
 > and symbol names are reliable; the offsets are not. Grep rather than jumping to a line.
 
-## Decisions taken (2026-08-06)
+## Decisions taken (2026-08-06), all now carried out
 
-Recorded so the choice does not have to be made twice:
-
-- **ristretto255 scalar endianness** — investigate the Java/Rust/TypeScript ports first, and only
-  then choose between documenting the convention and changing it. No code change until we know
-  whether the ports actually agree.
-- **Phase 6** — Java HTTP endpoints, `docs/oprf-api.yaml` and the transport-level request-size
-  bound only. The `hofmann-client`, TypeScript and Rust ports stay deferred.
-- **Recovery lockout** — close it with the email round trip, not proof-of-work. That makes it a
-  documented deployment requirement rather than shipped library code.
+- **ristretto255 scalar endianness** — investigated. The ports did **not** agree: Java read every
+  suite's private key big-endian while Rust and TypeScript both use ristretto255's native
+  little-endian. Closed by routing OPAQUE through `GroupSpec.serializeScalar`/`deserializeScalar`,
+  which is per-suite canonical, rather than by picking a side. `OpaqueCrossImplVectorsTest` had
+  been reversing the bytes to compensate; that reversal is gone, so it is now a real
+  cross-implementation check.
+- **Phase 6** — Java HTTP endpoints, `docs/oprf-api.yaml` and the transport request-size bound,
+  done. `hofmann-client`, TypeScript and Rust remain deferred by design, and are the obvious next
+  scope if a client needs the verifiable modes.
+- **Recovery lockout** — closed with the challenge id. `RecoveryChallenger` gained
+  `bindsChallengeId()` plus challenge-id overloads; a challenger that opts in gets the
+  verification limiter keyed on a value only the account owner receives. Deployments that do not
+  opt in keep the old behaviour and the residual, documented on the interface and in
+  `RECOVERY.md`.
 
 ---
 
-## RFC 9497 VOPRF/POPRF — deferred items
+## RFC 9497 VOPRF/POPRF — accepted residuals
 
-Carried out of the work that added modes 0x01 and 0x02 to `hofmann-rfc`. Each was raised during
-cryptographic review and consciously deferred rather than missed.
-
-- [ ] **OPAQUE ristretto255 scalar endianness.** `ByteUtils.scalarToFixedBytes` is big-endian, and
-  OPAQUE uses it to serialize private keys on the ristretto255 suite, whose scalar convention is
-  little-endian (`opaque/Server.java`, `HofmannBundle`, `HofmannAutoConfiguration`). Found while
-  confirming the new ristretto `serializeScalar` range check had no in-tree caller to break — it
-  does not, because OPAQUE never goes through `GroupSpec.serializeScalar` at all. Out of scope for
-  RFC 9497 work and `OpaqueCrossImplVectorsTest` passes, so it is either consistent across the
-  Java/Rust/TypeScript ports or simply not exercised for ristretto255. Unresolved either way, and
-  the only substantive open question left by that review.
-
-- [ ] **Transport-level request-size bound for batched OPRF requests.** The verifiable servers cap
-  a batch at 64 elements (1024 absolute) before any curve operation, but that fires only after the
-  HTTP layer has deserialized the whole body. A bound on request size belongs with the adapters.
-  Documented as owed in `hofmann-rfc/OPRF.md`.
-
-- [ ] **Phase 6: transport and ports.** HTTP endpoints for the verifiable modes,
-  `docs/oprf-api.yaml`, `hofmann-client`, TypeScript, Rust, and cross-client integration tests.
-  The Java core was designed not to block this — wire models are hex strings throughout — but
-  none of it exists. The 3.1.0 CHANGELOG says "library addition only" for this reason.
-
-### Accepted residuals — documented in code, no action planned
+Carried out of the work that added modes 0x01 and 0x02. The deferred *items* are closed; these
+two are documented in code with no action planned.
 
 - Proof generation is not fully constant-time: `s = r - c*k` in `GenerateProof` uses `BigInteger`
   multiplication and reduction, which are variable-time in their operands, and RFC 9497 §7.4 names
@@ -88,35 +69,6 @@ cryptographic review and consciously deferred rather than missed.
 - The Montgomery ladder's two-element accumulator is indexed by a secret bit and remains
   observable to a co-located cache-probing attacker. Pre-existing; documented in
   `WeierstrassGroupSpecImpl`.
-
-### Minor test gaps — known, judged acceptable
-
-- [ ] `PoprfClientContext` does not defensively copy its `info` and `tweakedKey` arrays, though its
-  lists get `List.copyOf`. Consistent with house style across the module, so noted rather than
-  recommended.
-
----
-
-## Recovery-lockout follow-up
-
-Surfaced while adversarially verifying the 3.1.0 fixes; the last of that set still open.
-
-- [ ] **Unauthenticated callers can still lock a victim out of account recovery**
-      `recoveryStart` and `recoveryVerify` key their limiter on the credential identifier, which
-      is right for bounding guessing against one account and wrong given the caller is
-      unauthenticated: six requests naming a victim spend that victim's budget. The origin limiter
-      bounds the rate per source, and moving to the non-exhaustible limiter stopped the flood
-      becoming a global recovery outage — but a targeted lockout stays cheap. Closing it needs
-      something an attacker cannot supply on the victim's behalf: proof-of-work on recoveryStart,
-      or the email round trip that recovery ownership rests on anyway.
-
-      **Decided 2026-08-06: the email round trip**, not proof-of-work. The limiter key becomes
-      something only the account owner can produce, which actually closes it rather than pricing
-      it. The consequence is that the library cannot close this on its own — it has no way to
-      send mail — so the deliverable is a documented requirement on the `RecoveryChallenger`
-      integration plus whatever key material the round trip yields, and the residual stays real
-      for any deployment that does not implement it. Still open until that is written and the
-      keying change lands.
 
 ---
 

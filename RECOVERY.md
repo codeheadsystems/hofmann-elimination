@@ -313,6 +313,81 @@ with stricter defaults (3 tokens, 3 per 60 seconds refill). This prevents:
 - Email flooding / SMS cost abuse
 - Brute-force attempts on challenge codes
 
+### Targeted lockout, and the challenge id that closes it
+
+**Implement the challenge-id methods if you can.** This is the one place where the default
+`RecoveryChallenger` shape carries a real residual.
+
+Both recovery endpoints are unauthenticated, and the only thing the caller supplies is the
+credential identifier. Rate-limiting on that identifier is right for bounding guessing
+against one account and wrong given who the caller might be: a handful of requests naming a
+victim spend **that victim's** budget, so the victim cannot complete a recovery they
+legitimately started — without ever having been involved in the attack.
+
+It cannot be fixed by rate-limiting differently. Before a challenge exists there is nothing
+to key on that an attacker cannot also supply. What breaks it is a value the server
+generates and delivers *out of band*.
+
+`recoveryStart` generates a random challenge id and passes it to
+`sendChallenge(credentialIdentifier, challengeId)`. Deliver it to the user alongside the
+challenge — embedded in the recovery link is the usual shape. The client presents it at
+`recoveryVerify`, and the server keys the verification limiter on it instead of on the
+identifier. An attacker naming a victim now spends their own budget; spending the victim's
+costs them a 122-bit guess.
+
+```java
+public class EmailChallenger implements RecoveryChallenger {
+
+  @Override
+  public boolean bindsChallengeId() {
+    return true;                       // opt in — see the caveats below
+  }
+
+  @Override
+  public void sendChallenge(byte[] credentialIdentifier, String challengeId) {
+    String code = randomSixDigitCode();
+    challenges.put(challengeId, new Challenge(credentialIdentifier, code, Instant.now()));
+    // The id must reach the user, or they cannot present it at verification.
+    email(credentialIdentifier,
+        "Recovery code " + code + ": https://example.com/recover?c=" + challengeId);
+  }
+
+  @Override
+  public boolean verifyResponse(byte[] credentialIdentifier, String challengeId,
+                                String challengeResponse) {
+    Challenge challenge = challenges.remove(challengeId);       // single use
+    return challenge != null
+        && !challenge.isExpired()
+        && Arrays.equals(challenge.credentialIdentifier(), credentialIdentifier)
+        && MessageDigest.isEqual(challenge.code().getBytes(UTF_8),
+                                 challengeResponse.getBytes(UTF_8));
+  }
+
+  // The two-argument methods remain on the interface; with bindsChallengeId() returning
+  // true they are never called by the manager.
+  @Override public void sendChallenge(byte[] id) { throw new UnsupportedOperationException(); }
+  @Override public boolean verifyResponse(byte[] id, String r) { throw new UnsupportedOperationException(); }
+}
+```
+
+Two ways to get this wrong, both worse than not opting in:
+
+- **Returning `true` without delivering the id** makes recovery unusable — the client
+  cannot present an id it never received.
+- **Returning `true` without binding the id to the challenge** is worse than useless. The
+  limiter would key on a value the attacker picks freely, so every guess gets its own
+  budget and the guessing bound disappears. `verifyResponse` must check the response
+  against *that* challenge, not merely that it is a valid response for the identifier.
+
+**What remains, and is inherent.** `recoveryStart` is still identifier-keyed, because at
+that point no challenge exists. An attacker can still exhaust a victim's *start* budget and
+stop them requesting a **new** challenge for a while. The two endpoints draw from separate
+buckets, so this no longer prevents completing a challenge already in flight. Letting an
+unauthenticated caller trigger an email at all is what costs this.
+
+**If you do not opt in**, `bindsChallengeId()` returns `false`, the manager keys on the
+credential identifier as before, and the targeted lockout is live for your deployment.
+
 ### Recovery Token Properties
 
 | Property | Default    | Rationale                                       |
