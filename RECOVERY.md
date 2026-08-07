@@ -420,11 +420,23 @@ an ordinary symptom, not a silent weakening of the limiter.
   normal case on a multi-node deployment with an unshared store. Without your check, a caller
   holding a genuine id for their own account could present it against someone else's identifier
   and have you check their guess against the victim's code.
-- **The store bounds a flood by evicting, not refusing.** At capacity the oldest outstanding
-  challenge is dropped, and one credential identifier cannot hold more than
-  `DEFAULT_MAX_PER_IDENTIFIER` (32) at once. An earlier version refused to record at capacity,
-  which meant a flood silently returned *every* subsequent recovery to identifier keying rather
-  than costing one.
+- **The store bounds a flood by evicting, not refusing.** At the per-identifier cap that
+  identifier's *own* oldest entry is dropped; at global capacity the entry evicted belongs to
+  whichever identifier holds the most, so flooding is self-defeating. An earlier version refused
+  to record at capacity, which silently returned *every* subsequent recovery to identifier keying
+  rather than costing one.
+
+  **`DEFAULT_MAX_PER_IDENTIFIER` is derived, not chosen**, and the derivation is load-bearing. It
+  is the number of starts the recovery limiter permits within one TTL — 6/min over 600 s = 60.
+  Under a sustained flood the victim's real challenge is the *newest* entry for that identifier,
+  so it survives until that many further starts have evicted forward past it; setting the cap to
+  exactly that means eviction never shortens a challenge below the lifetime it would have had
+  anyway. At an arbitrary value it does: the previous 32 gave a ~5.3 minute window, after which
+  the flood evicted the victim's real challenge and the lockout returned.
+
+  **If you retune the recovery refill rate or this cap, keep
+  `maxPerIdentifier >= refillPerMinute * ttlMinutes`.** Otherwise you reintroduce that window
+  without anything failing to tell you.
 
 ### Recovery Token Properties
 

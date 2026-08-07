@@ -52,10 +52,27 @@ public class InMemoryRecoveryChallengeStore implements RecoveryChallengeStore {
    *
    * <p>A concurrency bound, not a ceiling: reaching it evicts this identifier's oldest entry
    * rather than refusing the new one, so a user whose challenges have been churned by an attacker
-   * still gets their current challenge recorded. One identifier can never hold more than a
-   * thousandth of the store.
+   * still gets their current challenge recorded.
+   *
+   * <p><strong>Derived, not picked.</strong> It is the number of starts the recovery limiter
+   * permits within one TTL — 6 per minute over 600 seconds. That equality is what makes the value
+   * matter: under a sustained flood the victim's real challenge is the <em>newest</em> entry, so
+   * it survives until this many further starts have evicted forward past it, which at the
+   * permitted rate takes exactly one TTL. Eviction therefore never shortens a challenge below the
+   * lifetime it would have had anyway.
+   *
+   * <p>At an arbitrary value it does. The previous 32 gave {@code 32 / 6 per minute} ≈ 5.3
+   * minutes, after which a sustained flood evicted the victim's real challenge, verification fell
+   * back to identifier keying, and the lockout returned — a smaller version of the failure this
+   * store exists to prevent, decided by the ratio of two constants nobody had related to each
+   * other.
+   *
+   * <p><strong>Retuning either constant moves that window.</strong> Raising the recovery refill
+   * rate or lowering this cap shortens it; keep {@code maxPerIdentifier >= refillPerMinute *
+   * ttlMinutes} and eviction stays invisible to legitimate users. One identifier still holds at
+   * most 0.6% of the store at these defaults.
    */
-  public static final int DEFAULT_MAX_PER_IDENTIFIER = 32;
+  public static final int DEFAULT_MAX_PER_IDENTIFIER = 60;
 
   private final long ttlSeconds;
   private final int maxChallenges;

@@ -167,4 +167,36 @@ class InMemoryRecoveryChallengeStoreTest {
     store.store("id-1", "alice");
     assertThat(store.peek("id-1")).isEmpty();
   }
+
+  /**
+   * The per-identifier cap must be at least what the recovery limiter permits within one TTL.
+   *
+   * <p>Under a sustained flood the victim's real challenge is the newest entry for that
+   * identifier, so it survives until that many further starts have evicted forward past it. If the
+   * cap is below the permitted rate over a TTL, that happens *before* the challenge would have
+   * expired anyway — verification falls back to identifier keying and the lockout returns. At 32
+   * the window was ~5.3 minutes. Pinning the relationship here so retuning either constant cannot
+   * silently reopen it.
+   */
+  @Test
+  void thePerIdentifierCapCoversAFullTtlOfPermittedStarts() {
+    double recoveryRefillPerMinute = 6.0;   // RateLimitConfigSupplier.recoveryRateLimitConfig
+    double ttlMinutes = InMemoryRecoveryChallengeStore.DEFAULT_TTL_SECONDS / 60.0;
+
+    assertThat(InMemoryRecoveryChallengeStore.DEFAULT_MAX_PER_IDENTIFIER)
+        .as("eviction must not shorten a challenge below its natural lifetime")
+        .isGreaterThanOrEqualTo((int) Math.ceil(recoveryRefillPerMinute * ttlMinutes));
+  }
+
+  @Test
+  void underASustainedFloodTheNewestChallengeIsTheOneRetained() {
+    // The property the derivation buys: whatever the attacker does, the challenge the user is
+    // about to present is the one in the store.
+    store = new InMemoryRecoveryChallengeStore(600, 10_000, 8);
+    for (int i = 0; i < 200; i++) {
+      store.store("flood-" + i, "victim");
+      // The most recent start is always recorded, however long the flood runs.
+      assertThat(store.peek("flood-" + i)).hasValue("victim");
+    }
+  }
 }
