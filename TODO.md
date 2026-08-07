@@ -10,13 +10,13 @@ Findings from the security review of **August 2026** (six-reviewer fan-out acros
 | **P0 Critical** | 3 | 0 |
 | **P1 High** | 9 | 0 |
 | Follow-ups from verifying the 3.1.0 fixes | 7 | 1 |
-| RFC 9497 VOPRF/POPRF deferred items | 0 | 5 |
+| RFC 9497 VOPRF/POPRF deferred items | 1 | 4 |
 | New findings (August 2026) | 0 | 1 |
 | **P2 Medium** | 8 | 6 |
-| **P3 Low** | 6 | 5 |
+| **P3 Low** | 7 | 4 |
 | Documentation | 0 | 4 |
 | Test coverage gaps | 0 | 4 |
-| **Total** | **33** | **26** |
+| **Total** | **35** | **24** |
 
 **Every P0 and P1 is closed.** One verification follow-up remains open — the targeted
 account-recovery lockout — along with the RFC 9497 deferrals, P2 and below.
@@ -82,11 +82,15 @@ they do not live only in a conversation.
 
 ### Minor test gaps — known, judged acceptable
 
-- [ ] `GroupSpecArithmeticTest` exercises the identity-input path properly only on ristretto255.
-  On the Weierstrass curves the equivalent test passes `elementSize()` zero bytes, which
-  BouncyCastle rejects as a malformed encoding before the identity check is reached; the real SEC1
-  identity is the single byte `0x00`. A per-suite split now covers the encoding case, but the
-  identity-specific rejection is still only genuinely tested on ristretto255.
+- [x] `GroupSpecArithmeticTest` exercises the identity-input path properly only on ristretto255.
+  **Resolved by restating the property rather than by adding a test.** Now that
+  `deserializePoint` requires a canonical compressed encoding, the Weierstrass curves have no
+  identity input encoding left to reject: SEC1 spells the identity `0x00`, a single byte, which
+  the length check refuses, and no `elementSize()`-byte compressed string decodes to infinity. So
+  the identity-specific rejection is *correctly* only testable on ristretto255, and the
+  Weierstrass test asserts the rejection that does happen. The `isInfinity()` guard inside
+  `deserializePoint` is now defence-in-depth against a future reordering rather than a live path,
+  and says so.
 - [ ] `PoprfClientContext` does not defensively copy its `info` and `tweakedKey` arrays, though its
   lists get `List.copyOf`. Consistent with house style across the module, so noted rather than
   recommended.
@@ -398,8 +402,21 @@ completeness.
       contradicts the policy `InMemoryRecoveryTokenStore.java:75-78` spells out for the
       structurally equivalent recovery token. `:318` logs the credential identifier —
       usually an email — at INFO.
-- [ ] **`SecurityException` from point validation escapes as HTTP 500** —
-      `OpaqueResource.java:265-279` catches `RateLimitExceededException`,
+- [x] **`SecurityException` from point validation escapes as HTTP 500** — verified against the
+      current tree: every endpoint that can raise it already catches it, so the original finding
+      had been closed by earlier work and this entry was stale. Two things were genuinely fixed
+      here. The exception-type sprawl the entry's second half describes is narrower now, because
+      malformed group-element encodings raise `IllegalArgumentException` from the canonical-
+      encoding check rather than `SecurityException` from further in — one type, one status, for
+      the whole class of malformed element. And `authFinish` gained an `IllegalStateException`
+      → 503 catch in both adapters: bounding the session store means issuing a token can now be
+      refused *after* a client has completed a valid handshake, which without the catch would
+      have been a 500 introduced by this very batch of work.
+      **Still open:** `/recovery/start` catches no `SecurityException`, so a
+      `RecoveryChallenger` implementation that raises one returns 500. Consumer-supplied code,
+      so arguably theirs to handle, but the other endpoints normalise it. Original finding
+      follows.
+      — `OpaqueResource.java:265-279` catches `RateLimitExceededException`,
       `IllegalArgumentException`, and `IllegalStateException`, but `deserializePoint`
       throws `SecurityException`. Malformed KE1 → 500 instead of 400. Not an oracle (real
       and fake paths throw identically), just inconsistent. Relatedly, attacker-controlled

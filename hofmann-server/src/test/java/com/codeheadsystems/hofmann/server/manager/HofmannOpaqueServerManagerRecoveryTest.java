@@ -192,6 +192,94 @@ class HofmannOpaqueServerManagerRecoveryTest {
         .hasMessageContaining("does not match");
   }
 
+  /**
+   * A wrong-identifier attempt must leave the token usable.
+   *
+   * <p>Consuming the token before comparing the identifier meant anyone who observed a token
+   * could invalidate it by replaying it with the wrong identifier — the remove succeeded, the
+   * comparison then failed, and the legitimate user had to restart recovery from scratch.
+   */
+  @Test
+  void registrationFinish_wrongCredentialDoesNotConsumeTheToken() {
+    when(recoveryChallenger.verifyResponse(ALICE, "123456")).thenReturn(true);
+
+    RecoveryVerifyResponse response = manager.recoveryVerify(
+        new RecoveryVerifyRequest(ALICE, "123456"));
+    String recoveryToken = response.recoveryToken();
+
+    RegistrationRecord record = new RegistrationRecord(
+        new byte[33], new byte[32], new Envelope(new byte[32], new byte[32]));
+
+    // An attacker replays the observed token against the wrong identifier.
+    assertThatThrownBy(() -> manager.registrationFinish(
+        new RegistrationFinishRequest("bob".getBytes(), record), recoveryToken))
+        .isInstanceOf(SecurityException.class)
+        .hasMessageContaining("does not match");
+
+    // The legitimate holder can still complete recovery.
+    manager.registrationFinish(new RegistrationFinishRequest(ALICE, record), recoveryToken);
+    assertThat(credentialStore.load(ALICE)).isPresent();
+  }
+
+  /**
+   * Single-use must survive concurrency.
+   *
+   * <p>The check is now peek-compare-remove rather than remove-compare, so the comparison no
+   * longer gates on an atomic operation. Both racers pass the comparison; what keeps exactly one
+   * of them from mutating the account is that {@code remove()} returns a value only once. This
+   * asserts that directly, since it is the property the reordering could plausibly have broken.
+   */
+  @Test
+  void registrationFinish_recoveryTokenIsConsumedOnce_underConcurrency() throws Exception {
+    when(recoveryChallenger.verifyResponse(ALICE, "123456")).thenReturn(true);
+
+    for (int round = 0; round < 200; round++) {
+      recoveryTokenStore = new InMemoryRecoveryTokenStore();
+      manager = new HofmannOpaqueServerManager(
+          server, credentialStore, jwtManager,
+          k -> true, k -> true,
+          new com.codeheadsystems.hofmann.server.store.InMemoryPendingSessionStore(),
+          recoveryChallenger, recoveryTokenStore, k -> true);
+
+      String recoveryToken = manager.recoveryVerify(
+          new RecoveryVerifyRequest(ALICE, "123456")).recoveryToken();
+      RegistrationRecord record = new RegistrationRecord(
+          new byte[33], new byte[32], new Envelope(new byte[32], new byte[32]));
+      RegistrationFinishRequest finishReq = new RegistrationFinishRequest(ALICE, record);
+
+      int racers = 8;
+      java.util.concurrent.CyclicBarrier barrier =
+          new java.util.concurrent.CyclicBarrier(racers);
+      java.util.concurrent.atomic.AtomicInteger succeeded =
+          new java.util.concurrent.atomic.AtomicInteger();
+      Thread[] threads = new Thread[racers];
+      for (int i = 0; i < racers; i++) {
+        threads[i] = new Thread(() -> {
+          try {
+            barrier.await();
+          } catch (Exception e) {
+            throw new IllegalStateException(e);
+          }
+          try {
+            manager.registrationFinish(finishReq, recoveryToken);
+            succeeded.incrementAndGet();
+          } catch (SecurityException expected) {
+            // exactly the losers
+          }
+        });
+        threads[i].start();
+      }
+      for (Thread t : threads) {
+        t.join();
+      }
+
+      assertThat(succeeded.get())
+          .withFailMessage("round %d: %d callers consumed the same single-use recovery token",
+              round, succeeded.get())
+          .isEqualTo(1);
+    }
+  }
+
   @Test
   void registrationFinish_invalidRecoveryTokenThrowsSecurityException() {
     RegistrationRecord record = new RegistrationRecord(
