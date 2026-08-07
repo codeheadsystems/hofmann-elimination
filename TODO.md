@@ -11,12 +11,12 @@ below, plus the documentation and test-coverage backlog.
 
 | Section | Open |
 |---|---:|
-| New findings | 2 |
+| New findings | 3 |
 | **P2 Medium** | 6 |
 | **P3 Low** | 4 |
 | Documentation | 4 |
 | Test coverage gaps | 4 |
-| **Total** | **20** |
+| **Total** | **21** |
 
 Recount with `grep -c '^- \[ \]' TODO.md` after editing.
 
@@ -73,6 +73,21 @@ two are documented in code with no action planned.
 ---
 
 ## New findings
+
+- [ ] **Decide whether the origin rate limiter should default on when recovery is enabled.**
+      `originRateLimitConfig()` returns null by default, and the comment there explains why: as a
+      blanket default it does more harm than good behind NAT and CGNAT. The consequence surfaced
+      while closing the recovery lockout — it is the only global bound on `recoveryStart`, which is
+      unauthenticated and whose own limiter keys on the credential identifier, so an attacker
+      varying the identifier is unbounded by default. Every capacity policy in
+      `InMemoryRecoveryChallengeStore` is load-bearing because of that, and each of those policies
+      has already been got wrong once.
+
+      Defaulting it on *when recovery is configured* would make flooding expensive at the source
+      and stop the store's eviction rules carrying the weight. Deliberately not done as part of the
+      VOPRF/POPRF work: it changes behaviour for every deployment, including those not using
+      recovery at all, and belongs to whoever owns that trade-off rather than arriving inside a PR
+      about something else.
 
 - [ ] **`:test` intermittently aborts on Gradle's own result bookkeeping** — **[reproduced]**.
       Tasks fail with `java.io.EOFException` or
