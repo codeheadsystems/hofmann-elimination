@@ -83,10 +83,20 @@ public class BodySizeLimitFilter extends OncePerRequestFilter {
     // null-hostile, so an absent URI would make get(null) throw straight out of a filter that sits
     // in front of every request — turning an odd request into a 500 for the whole endpoint. The
     // generic limit is the safe answer when the path is unknown.
-    String path = request.getRequestURI();
-    if (path == null) {
+    String uri = request.getRequestURI();
+    if (uri == null) {
       return maxBytes;
     }
+    // Strip the context path before matching. getRequestURI() is contextPath + servletPath +
+    // pathInfo, so an application deployed under a context path — server.servlet.context-path,
+    // which is ordinary in Spring Boot — would present "/api/oprf/verifiable" against a key of
+    // "/oprf/verifiable" and silently fall back to the generic limit. A size bound that stops
+    // applying because someone set an unrelated config property is the worst kind: nothing fails,
+    // the protection is just gone.
+    String contextPath = request.getContextPath();
+    String path = contextPath != null && !contextPath.isEmpty() && uri.startsWith(contextPath)
+        ? uri.substring(contextPath.length())
+        : uri;
     Long override = perPathMaxBytes.get(path);
     return override == null ? maxBytes : Math.min(maxBytes, override);
   }

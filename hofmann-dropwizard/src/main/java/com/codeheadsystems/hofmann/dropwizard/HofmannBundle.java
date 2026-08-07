@@ -375,6 +375,22 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
   }
 
   /**
+   * Normalises a JAX-RS request path for per-path limit lookup: never null, no leading slash.
+   *
+   * <p>{@code UriInfo.getPath()} is specified as relative to the base URI and so should carry no
+   * leading slash, but the lookup does not need to depend on that being true in every container.
+   *
+   * @param path the raw request path
+   * @return the path without a leading slash, or the empty string if it was null
+   */
+  static String normalizePath(final String path) {
+    if (path == null) {
+      return "";
+    }
+    return path.startsWith("/") ? path.substring(1) : path;
+  }
+
+  /**
    * Builds the VOPRF manager, or null when no key is configured.
    *
    * <p>Null rather than an ephemerally-keyed manager. The value of a verifiable mode is that
@@ -426,12 +442,16 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     // batch. min() rather than the override outright, so lowering the generic limit still wins.
     long verifiableMaxBytes = Math.min(defaultMaxBytes,
         VerifiableOprfLimits.maxRequestBodyBytes(VoprfServerManager.DEFAULT_MAX_BATCH_SIZE));
+    // Keyed without a leading slash and matched after stripping one, so it does not matter
+    // whether the container reports "oprf/verifiable" or "/oprf/verifiable". Getting that wrong
+    // would not fail — the bound would just silently stop applying, which is the failure mode
+    // worth designing out rather than asserting against.
     Map<String, Long> perPath = Map.of(
         "oprf/verifiable", verifiableMaxBytes,
         "oprf/partially-oblivious", verifiableMaxBytes);
     ContainerRequestFilter filter = (ContainerRequestContext ctx) -> {
       long maxBytes = perPath.getOrDefault(
-          ctx.getUriInfo().getPath(), defaultMaxBytes);
+          normalizePath(ctx.getUriInfo().getPath()), defaultMaxBytes);
       long length = ctx.getLength();
       if (length > maxBytes) {
         ctx.abortWith(Response.status(Response.Status.REQUEST_ENTITY_TOO_LARGE)
