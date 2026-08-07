@@ -44,7 +44,16 @@ public class OprfServerManager {
    * @return the response containing the hex-encoded elliptic curve point resulting from the server's process, along with a process identifier for tracking and correlation purposes.
    */
   public EvaluatedResponse process(final BlindedRequest blindedRequest) {
-    byte[] q = Hex.decode(blindedRequest.blindedPoint());
+    // Wrapped because BouncyCastle's DecoderException extends IllegalStateException, not
+    // IllegalArgumentException. Unwrapped, malformed hex from a client reaches the HTTP adapters
+    // as a server error and becomes a 5xx — letting any caller manufacture 500s and blaming the
+    // server for a client mistake. The verifiable modes handle this the same way.
+    byte[] q;
+    try {
+      q = Hex.decode(blindedRequest.blindedPoint());
+    } catch (RuntimeException e) {
+      throw new IllegalArgumentException("Blinded element is not valid hex", e);
+    }
     // RFC 9497 §3.3.2: BlindEvaluate must reject the identity element. For ristretto255
     // the identity is the all-zero encoding, which decodes successfully, so without this
     // check a malicious client could submit it and receive the identity back, stripping a

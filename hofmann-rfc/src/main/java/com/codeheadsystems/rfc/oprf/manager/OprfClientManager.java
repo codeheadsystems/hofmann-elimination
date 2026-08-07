@@ -84,7 +84,15 @@ public class OprfClientManager {
 
   public HashResult hashResult(final EvaluatedResponse evaluatedResponse, final ClientHashingContext clientHashingContext) {
     log.trace("hashResult(requestId={})", clientHashingContext.requestId());
-    final byte[] evaluatedElement = Hex.decode(evaluatedResponse.evaluatedPoint());
+    // See OprfServerManager for why this is wrapped: BouncyCastle's DecoderException extends
+    // IllegalStateException, so a server sending malformed hex would otherwise choose which
+    // exception type the calling application sees.
+    final byte[] evaluatedElement;
+    try {
+      evaluatedElement = Hex.decode(evaluatedResponse.evaluatedPoint());
+    } catch (RuntimeException e) {
+      throw new SecurityException("Server returned malformed hex for the evaluated element", e);
+    }
     final byte[] finalHash = suite.finalize(clientHashingContext.input(), clientHashingContext.blindingFactor(), evaluatedElement);
     return new HashResult(finalHash, evaluatedResponse.processIdentifier());
   }
