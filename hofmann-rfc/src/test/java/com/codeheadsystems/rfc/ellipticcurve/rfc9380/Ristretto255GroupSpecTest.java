@@ -52,6 +52,31 @@ class Ristretto255GroupSpecTest {
     assertThat(encoded).isEqualTo(new byte[32]);
   }
 
+  /**
+   * Producing the identity is allowed; accepting it back as an input is not.
+   *
+   * <p>The two tests above assert only that the all-zero encoding is <em>producible</em>, which is
+   * true and uninteresting — {@code 0·G} and {@code L·G} are the identity by definition. The
+   * property that matters is the opposite direction, and it was asserted only in the OPRF layer:
+   * at the group-spec layer nothing here checked that decoding the identity is refused.
+   *
+   * <p>It matters on ristretto255 more than anywhere else. The all-zero string is a
+   * <em>legitimate</em> ristretto255 encoding, so every RFC 9496 §4.3.1 canonicity check passes
+   * for it; only the protocol-layer check catches it. That is exactly the shape of the P0 this
+   * suite regressed on once already.
+   */
+  @Test
+  void decodingTheIdentityIsRefusedEvenThoughProducingItIsNot() {
+    byte[] identity = new byte[32];
+
+    assertThatThrownBy(() -> SPEC.scalarMultiply(BigInteger.valueOf(7), identity))
+        .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
+    assertThatThrownBy(() -> SPEC.validateElement(identity))
+        .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
+    assertThatThrownBy(() -> SPEC.add(identity, SPEC.generator()))
+        .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
+  }
+
   @Test
   void decodeEncodeRoundTrip() {
     // Decode the base point encoding, then re-encode — should get the same bytes

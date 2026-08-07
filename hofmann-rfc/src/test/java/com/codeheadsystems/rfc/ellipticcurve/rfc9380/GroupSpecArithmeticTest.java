@@ -272,6 +272,56 @@ class GroupSpecArithmeticTest {
         Arguments.of("P-521", WeierstrassGroupSpecImpl.P521_SHA512));
   }
 
+
+  // ─── identity rejection, every suite, every entry point ─────────────────────
+
+  /**
+   * The identity must be refused by {@code scalarMultiply} on every suite.
+   *
+   * <p>This is the half that was missing. Identity rejection through {@code finalize} runs across
+   * all four suites in {@code OprfCipherSuiteTest}, but the rejection through scalar multiplication
+   * — the entry point the OPAQUE AKE and the base-mode OPRF actually reach — was asserted only
+   * per-suite and only incidentally, through {@code linearCombination} and {@code validateElement}.
+   * A suite could have regressed here while every other identity test stayed green.
+   *
+   * <p>The consequence if it did: {@code blindInv * O = O}, so the OPRF output collapses to a
+   * function of the input alone, independent of both the blind and the server key. A malicious
+   * server downgrades the OPRF to an unkeyed hash and nothing else notices.
+   */
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("specs")
+  void scalarMultiplyRejectsTheIdentity(String name, GroupSpec spec) {
+    byte[] identity = identityEncoding(spec);
+    assertThatThrownBy(() -> spec.scalarMultiply(BigInteger.valueOf(7), identity))
+        .as("%s must refuse the identity as a scalar multiplication input", name)
+        .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
+  }
+
+  /**
+   * The same for {@code validateElement}, which is the verifiable modes' gate.
+   */
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("specs")
+  void validateElementRejectsTheIdentityOnEverySuite(String name, GroupSpec spec) {
+    byte[] identity = identityEncoding(spec);
+    assertThatThrownBy(() -> spec.validateElement(identity))
+        .as("%s must refuse the identity as a batch element", name)
+        .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
+  }
+
+  /**
+   * Each suite's canonical identity encoding.
+   *
+   * <p>They differ, which is the reason a shared test that passed {@code new byte[elementSize()]}
+   * looked like it covered both and did not: 32 zero bytes is genuinely ristretto255's identity,
+   * while on the Weierstrass curves SEC1 spells the identity as the single byte {@code 0x00} and
+   * an {@code elementSize()}-byte zero string is merely a malformed encoding rejected earlier for
+   * an unrelated reason.
+   */
+  private static byte[] identityEncoding(GroupSpec spec) {
+    return spec == Ristretto255GroupSpec.INSTANCE ? new byte[32] : new byte[]{0x00};
+  }
+
   // ─── element validation ─────────────────────────────────────────────────────
 
   @ParameterizedTest(name = "{0}")

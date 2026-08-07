@@ -48,9 +48,43 @@ at their default in a real deployment.
 
 ### Security
 
-| Field                 | Default | Required for production | Description                                                                                                                                                                                                      |
-|-----------------------|---------|-------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `maxRequestBodyBytes` | `65536` | No                      | Requests with a `Content-Length` header exceeding this value are rejected with HTTP 413 before the body is read. The largest OPAQUE message is well under 64 KiB; raise this only if you have a specific reason. |
+| Field                   | Default | Required for production | Description |
+|-------------------------|---------|-------------------------|-------------|
+| `maxRequestBodyBytes`   | `65536` | No | Maximum request body size; larger bodies get HTTP 413. Enforced two ways, so a chunked body cannot evade it: a declared `Content-Length` over the limit is rejected before the body is read, and the request stream is bounded as it is read for bodies that declare no length. The batched VOPRF/POPRF endpoints carry their own tighter limit derived from the batch cap. The largest OPAQUE message is well under 64 KiB; raise this only for a specific reason. |
+| `allowIdentityKsf`      | `false` | **Leave false**         | Permits running with **no key stretching** (`argon2MemoryKib: 0`). The server refuses to start with Argon2 disabled unless this is set, because without a KSF a stolen registration record is offline-crackable at the speed of a hash. Development only. |
+| `allowEphemeralKeys`    | `false` | **Leave false**         | Permits starting with no configured key material, generating random keys instead. Every registration is invalidated on restart, and in a multi-node deployment credentials registered against one node cannot authenticate against another. Development only. |
+| `trustForwardedHeaders` | `false` | No | Derives the client IP for origin rate limiting from `X-Forwarded-For` instead of the socket peer address. **Only safe behind a trusted proxy that overwrites the header** rather than appending to a client-supplied one — otherwise a single source can mint unlimited distinct rate-limit keys and escape the limiter entirely. |
+
+### Key stretching
+
+Client-side Argon2id parameters. **The client takes these from the server** via
+`GET /opaque/config`, which is why the floor enforced by `OpaqueClientConfig` matters — see
+[SECURITY.md](SECURITY.md).
+
+| Field                | Default | Description |
+|----------------------|---------|-------------|
+| `argon2MemoryKib`    | `65536` | Memory cost in KiB. `0` disables key stretching entirely and requires `allowIdentityKsf`. |
+| `argon2Iterations`   | `3`     | Time cost. |
+| `argon2Parallelism`  | `1`     | Lanes. |
+
+### Verifiable OPRF modes (RFC 9497)
+
+Both are disabled unless a key is configured, in which case the endpoint answers 404. There is
+deliberately no ephemeral fallback: clients pin the server's public key and check proofs against
+it, so a key regenerated on restart would silently invalidate every pinned key.
+
+Each mode needs its **own** key. RFC 9497 puts the mode byte in every domain-separation tag, so
+one secret serving two modes computes two different functions under two different tag sets.
+
+| Field                | Default | Description |
+|----------------------|---------|-------------|
+| `voprfMasterKeyHex`  | `""`    | VOPRF (mode 0x01) key, hex. Empty or absent disables `POST /oprf/verifiable`. |
+| `poprfMasterKeyHex`  | `""`    | POPRF (mode 0x02) key, hex. Empty or absent disables `POST /oprf/partially-oblivious`. |
+
+> **Dropwizard only:** `corsAllowedOrigins` (default empty, i.e. CORS disabled) lists the origins
+> allowed to call the OPAQUE and OPRF endpoints from a browser. The Spring integration configures
+> CORS through the `hofmannCorsConfigurationSource` bean instead; override that bean to customise
+> it.
 
 ---
 

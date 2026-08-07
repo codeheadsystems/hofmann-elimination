@@ -50,6 +50,20 @@ public class HofmannProperties {
    */
   private boolean allowEphemeralKeys = false;
   private long maxRequestBodyBytes = 65536;
+  /**
+   * Whether to derive the client IP from {@code X-Forwarded-For} when keying origin rate limits.
+   *
+   * <p>Off by default, and that default is the safe one: the header is trivially spoofable, so
+   * trusting it without a proxy that overwrites it lets one source mint unlimited distinct
+   * rate-limit keys and escape the limiter entirely. Turn it on only behind a trusted proxy that
+   * sets the header itself rather than appending to a client-supplied one.
+   *
+   * <p>Declared here rather than read only through {@code @Value} so it appears in IDE completion
+   * and in the generated configuration metadata alongside every other {@code hofmann.*} property.
+   * It was previously invisible to both, which is how a security-relevant switch ends up
+   * undiscoverable.
+   */
+  private boolean trustForwardedHeaders = false;
 
   /**
    * Gets opaque cipher suite.
@@ -430,5 +444,23 @@ public class HofmannProperties {
    */
   public void setPoprfMasterKeyHex(String poprfMasterKeyHex) {
     this.poprfMasterKeyHex = poprfMasterKeyHex;
+  }
+
+  /**
+   * Whether to trust {@code X-Forwarded-For} when keying origin rate limits.
+   *
+   * @return true if forwarded headers are trusted
+   */
+  public boolean isTrustForwardedHeaders() {
+    return trustForwardedHeaders;
+  }
+
+  /**
+   * Sets whether to trust {@code X-Forwarded-For} when keying origin rate limits.
+   *
+   * @param trustForwardedHeaders true to trust forwarded headers
+   */
+  public void setTrustForwardedHeaders(boolean trustForwardedHeaders) {
+    this.trustForwardedHeaders = trustForwardedHeaders;
   }
 }

@@ -85,12 +85,58 @@ The Hofmann library does not configure TLS itself because TLS termination is an
 infrastructure concern that varies by deployment. Ensure that whatever layer terminates
 TLS is configured with strong cipher suites and valid certificates.
 
-### Argon2id KSF Runs on the Client
+### Argon2id KSF Runs on the Client — and the Client Gets Its Parameters From the Server
 
 The Argon2id key-stretching function runs entirely on the client, not the server. The server
 stores only the already-stretched output inside the OPAQUE envelope and masking key. This
 means the server never performs expensive password hashing — and also means the client and
 server must be configured with matching Argon2id parameters. See [USAGE.md](USAGE.md) for details.
+
+**The client obtains those parameters from the server**, via `GET /opaque/config` and
+`OpaqueClientConfig.fromServerConfig`. That is worth stating plainly, because it means a
+malicious or compromised server can propose *no key stretching at all* and the client would
+otherwise comply — turning a stolen registration record from something requiring an Argon2id
+grind per guess into something crackable at the speed of a bare hash. The attack is against the
+server's own users, and it is invisible to them.
+
+For that reason `fromServerConfig` **throws** rather than warning when the server offers the
+identity KSF or parameters below the floor. A warning is no defence when the attacker's own
+payload is what triggers it. To opt in for a development server deliberately configured with
+`allowIdentityKsf`, use `fromServerConfig(cfg, true)` in Java or
+`create(url, { allowWeakServerKsf: true })` in TypeScript; to avoid consulting the server at all,
+pin an `OpaqueClientConfig` through the client manager's overrides map.
+
+### Timing: What Is and Is Not Constant-Time
+
+The scalar multiplications that touch long-term key material use a Montgomery ladder on **every**
+suite: a fixed number of iterations, one addition and one doubling each, with no
+secret-dependent branching. That closes the wNAF leaks — digit-dependent add/double sequences, a
+precomputed table indexed by secret values, and a window size chosen from the scalar's bit length.
+
+Three residuals remain, and they are not equal across suites.
+
+**The ladder's swap differs by suite, and the ristretto255 one is better.** ristretto255 swaps its
+two accumulators with a branch-free masked XOR (`cswap`), so no memory *address* depends on the
+secret bit. The Weierstrass curves index a two-element accumulator array by the bit
+(`r[other] = r[other].add(r[bit])`), so which of two heap objects is touched follows the key. Both
+references share a cache line and the footprint is far smaller than wNAF's table, but the access
+pattern remains observable to an attacker able to probe cache on the same host. If you are
+threat-modelling co-located tenants, that is a reason to prefer ristretto255.
+
+**`BigInteger` arithmetic is magnitude-dependent.** Both ladders, and the Fermat inversion used
+for scalar inverses, are built on `java.math.BigInteger`, whose multiplication, reduction and
+comparison run in time that depends on their operands. They are improvements over what they
+replaced, not constant-time in the strict sense, and removing this needs field-level primitives
+the JDK does not offer.
+
+**Fixed-length output is not the same as fixed-time encoding.** `ByteUtils.scalarToFixedBytes`
+produces a fixed-width result, but it does so with a `System.arraycopy` whose *length* is
+`scalar.toByteArray().length` — which varies with the scalar's leading zero bytes. The output
+width is constant; the work to produce it is not.
+
+None of these is exploitable across a network in any way we are aware of; they are stated so a
+deployment with a co-located-attacker threat model can weigh them rather than assume they are
+absent. See `WeierstrassGroupSpecImpl` and `DleqProver` for the per-site notes.
 
 ### Constant-Time MAC Verification
 
