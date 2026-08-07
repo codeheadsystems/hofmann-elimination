@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import org.bouncycastle.util.encoders.Hex;
 import org.junit.jupiter.api.Test;
 
@@ -191,5 +193,96 @@ class Ristretto255GroupSpecTest {
     byte[] added = Ristretto255GroupSpec.encodeRistretto255(
         Ristretto255GroupSpec.addPoints(pt1, pt2));
     assertThat(added).isEqualTo(sum);
+  }
+
+  // ─── fixed-width scalar rescaling ──────────────────────────────────────────
+
+  /**
+   * The rescaled scalar must be exactly one bit wider than the group order, with the top bit set.
+   *
+   * <p>That width is what makes the ladder's first iteration move the accumulator off the neutral
+   * element regardless of the key. Without it the leading iterations ran on 0/1 operands and were
+   * measurably cheaper: a 64-bit scalar completed ~25% faster than a full-length one on this
+   * machine, against a flat profile on the Weierstrass curves, which have had the equivalent
+   * rescaling since the constant-time work. After the change the same measurement is within 1%.
+   *
+   * <p>Asserting the width rather than the timing, because a timing assertion in a unit test is a
+   * flake generator — but the width is the mechanism the timing depends on, so a regression that
+   * removed the rescaling fails here.
+   */
+  @Test
+  void fixedWidthScalar_alwaysProducesOneBitMoreThanTheGroupOrder() {
+    int want = SPEC.groupOrder().bitLength() + 1;
+    SecureRandom rnd = new SecureRandom();
+
+    for (int bits : new int[]{1, 8, 64, 128, 200, 252, 253}) {
+      BigInteger k = new BigInteger(bits, rnd);
+      BigInteger scaled = Ristretto255GroupSpec.fixedWidthScalar(k);
+      assertThat(scaled.bitLength())
+          .as("a %d-bit scalar must rescale to %d bits", bits, want)
+          .isEqualTo(want);
+      assertThat(scaled.testBit(want - 1))
+          .as("the top bit must be set so the first iteration is never a no-op")
+          .isTrue();
+    }
+    // Including the values most likely to be special-cased wrong.
+    for (BigInteger k : new BigInteger[]{BigInteger.ZERO, BigInteger.ONE,
+        SPEC.groupOrder().subtract(BigInteger.ONE), SPEC.groupOrder(),
+        SPEC.groupOrder().add(BigInteger.ONE), BigInteger.ONE.negate()}) {
+      assertThat(Ristretto255GroupSpec.fixedWidthScalar(k).bitLength()).isEqualTo(want);
+    }
+  }
+
+  /**
+   * Additive homomorphism over full-width scalars, across varied base points.
+   *
+   * <p>The stronger of the two correctness guards on the rescaling. {@code (k1+k2)·P} must equal
+   * {@code k1·P + k2·P}, and each of those three multiplications runs the rescaling independently
+   * with a different scalar — so a wrong {@code (k + L) ≡ k} equivalence would have to be
+   * additively consistent across all three to hide here, which it would not be. {@code k1 + k2} is
+   * deliberately left unreduced so it frequently exceeds {@code L} and exercises the widening path
+   * with an input the old code would have reduced away.
+   *
+   * <p>It also covers what the small-scalar test cannot: full 252-bit scalars, where checking
+   * against repeated addition is not tractable. Base points come from four different routes so the
+   * sample is not all generator multiples.
+   *
+   * <p>The structural argument is in {@code fixedWidthScalar}'s javadoc, and it is subtler than
+   * "adding the group order is free": ristretto encoding is invariant under the <em>4</em>-torsion,
+   * not the 8-torsion, so it turns on the rescaling adding {@code 2L} rather than {@code L} in all
+   * but about {@code 2^-127} of cases. This test is the empirical counterpart to that argument —
+   * it would fail if the equivalence did not hold for the representatives sampled here.
+   */
+  @Test
+  void multiplicationIsAdditiveOverFullWidthScalars() {
+    SecureRandom rnd = new SecureRandom();
+    BigInteger order = SPEC.groupOrder();
+    int checked = 0;
+
+    for (int i = 0; i < 40; i++) {
+      byte[] point = switch (i % 4) {
+        case 0 -> SPEC.generator();
+        case 1 -> SPEC.hashToGroup(("hg-" + i).getBytes(StandardCharsets.UTF_8),
+            "dst".getBytes(StandardCharsets.UTF_8));
+        case 2 -> SPEC.scalarMultiplyGenerator(
+            new BigInteger(252, rnd).mod(order).max(BigInteger.ONE));
+        default -> SPEC.add(SPEC.generator(),
+            SPEC.hashToGroup(("mix-" + i).getBytes(StandardCharsets.UTF_8),
+                "dst".getBytes(StandardCharsets.UTF_8)));
+      };
+
+      BigInteger k1 = new BigInteger(252, rnd).mod(order).max(BigInteger.ONE);
+      BigInteger k2 = new BigInteger(252, rnd).mod(order).max(BigInteger.ONE);
+
+      byte[] combined = SPEC.scalarMultiply(k1.add(k2), point);
+      byte[] first = SPEC.scalarMultiply(k1, point);
+      byte[] second = SPEC.scalarMultiply(k2, point);
+      if (k1.add(k2).mod(order).signum() == 0) {
+        continue;                       // add() rejects an identity sum, correctly
+      }
+      assertThat(SPEC.add(first, second)).isEqualTo(combined);
+      checked++;
+    }
+    assertThat(checked).as("the loop must actually have asserted something").isGreaterThan(30);
   }
 }

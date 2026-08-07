@@ -16,11 +16,15 @@ import com.codeheadsystems.rfc.opaque.model.ServerKE2Result;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * OPAQUE server public API. Holds the server long-term key pair and OPRF seed.
  */
 public class Server {
+
+  private static final Logger LOG = LoggerFactory.getLogger(Server.class);
 
   private final BigInteger serverPrivateKey;
   private final byte[] serverPublicKey;
@@ -80,11 +84,25 @@ public class Server {
       throw new IllegalArgumentException(
           "Server private key is congruent to zero mod the group order");
     }
-    // The OPRF seed's length is deliberately NOT checked. RFC 9807 §6.3 specifies Nh bytes, and
-    // deployments configured on the SHA-384/SHA-512 suites are running with 32-byte seeds today —
-    // the seed only ever feeds an expansion that accepts any length, so refusing here would take
-    // those deployments down at startup to enforce a conformance point with no security content.
-    // Recorded in TODO.md rather than fixed silently.
+    // A short OPRF seed warns rather than refusing. RFC 9807 §6.3 specifies Nh bytes, and
+    // deployments on the SHA-384/SHA-512 suites are running with 32-byte seeds today, so refusing
+    // would take them down at startup. But "the expansion accepts any length" is not why it is
+    // safe, and that reasoning would license a 16-byte seed.
+    //
+    // The seed is the PRK to HKDF-Expand in deriveOprfKey, and the credential identifier it is
+    // expanded with is public — so the entire family of per-credential OPRF keys carries at most
+    // H(seed) bits of entropy, whatever the group order. At 32 bytes that is 256 bits: no
+    // reduction on P-256 or ristretto255, but a cap below the group order on P-384 and P-521.
+    // Unreachable either way, which is why this is a warning; visible, because the reasoning
+    // stops holding somewhere below 32 bytes and an operator should be told where they stand.
+    if (oprfSeed.length < config.Nh()) {
+      LOG.warn("OPRF seed is {} bytes; RFC 9807 §6.3 specifies Nh = {} for this suite. Every "
+              + "per-credential OPRF key derives from this seed, so their combined entropy is "
+              + "bounded by its length rather than by the group order — {} bits here. That is "
+              + "still far beyond reach, so this is a conformance note rather than a break, but "
+              + "widen the seed to {} bytes when you can rotate.",
+          oprfSeed.length, config.Nh(), oprfSeed.length * 8, config.Nh());
+    }
     //
     // The public key must be the point the private key actually derives, not merely a well-formed
     // one. A mismatched pair authenticates nothing: the client verifies the envelope against the
