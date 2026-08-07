@@ -14,6 +14,12 @@ public interface RateLimitConfigSupplier {
    * Limit applied per request origin across the unauthenticated OPAQUE endpoints, or {@code null}
    * to disable it. <strong>Disabled by default.</strong>
    *
+   * <p><strong>Enable it if you enable account recovery.</strong> It is the only global bound on
+   * {@code recoveryStart}, which is unauthenticated and whose own limiter keys on the credential
+   * identifier — a value an attacker varies freely. Without it, the capacity policy in
+   * {@code InMemoryRecoveryChallengeStore} is the only thing bounding a flood, which is a last
+   * line rather than a first. See {@code RECOVERY.md}.
+   *
    * <p>The other limiters key on the credential identifier, which bounds attempts against one
    * account and nothing else — an attacker who varies the identifier is unthrottled, which is how
    * a flood exhausts the bucket map and the pending-session store. Bounding by origin is the

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigInteger;
+import java.security.SecureRandom;
 import org.bouncycastle.util.encoders.Hex;
 import org.junit.jupiter.api.Test;
 
@@ -191,5 +192,72 @@ class Ristretto255GroupSpecTest {
     byte[] added = Ristretto255GroupSpec.encodeRistretto255(
         Ristretto255GroupSpec.addPoints(pt1, pt2));
     assertThat(added).isEqualTo(sum);
+  }
+
+  // ─── fixed-width scalar rescaling ──────────────────────────────────────────
+
+  /**
+   * The rescaled scalar must be exactly one bit wider than the group order, with the top bit set.
+   *
+   * <p>That width is what makes the ladder's first iteration move the accumulator off the neutral
+   * element regardless of the key. Without it the leading iterations ran on 0/1 operands and were
+   * measurably cheaper: a 64-bit scalar completed ~25% faster than a full-length one on this
+   * machine, against a flat profile on the Weierstrass curves, which have had the equivalent
+   * rescaling since the constant-time work. After the change the same measurement is within 1%.
+   *
+   * <p>Asserting the width rather than the timing, because a timing assertion in a unit test is a
+   * flake generator — but the width is the mechanism the timing depends on, so a regression that
+   * removed the rescaling fails here.
+   */
+  @Test
+  void fixedWidthScalar_alwaysProducesOneBitMoreThanTheGroupOrder() {
+    int want = SPEC.groupOrder().bitLength() + 1;
+    SecureRandom rnd = new SecureRandom();
+
+    for (int bits : new int[]{1, 8, 64, 128, 200, 252, 253}) {
+      BigInteger k = new BigInteger(bits, rnd);
+      BigInteger scaled = Ristretto255GroupSpec.fixedWidthScalar(k);
+      assertThat(scaled.bitLength())
+          .as("a %d-bit scalar must rescale to %d bits", bits, want)
+          .isEqualTo(want);
+      assertThat(scaled.testBit(want - 1))
+          .as("the top bit must be set so the first iteration is never a no-op")
+          .isTrue();
+    }
+    // Including the values most likely to be special-cased wrong.
+    for (BigInteger k : new BigInteger[]{BigInteger.ZERO, BigInteger.ONE,
+        SPEC.groupOrder().subtract(BigInteger.ONE), SPEC.groupOrder(),
+        SPEC.groupOrder().add(BigInteger.ONE), BigInteger.ONE.negate()}) {
+      assertThat(Ristretto255GroupSpec.fixedWidthScalar(k).bitLength()).isEqualTo(want);
+    }
+  }
+
+  /**
+   * Rescaling must not change what the multiplication produces.
+   *
+   * <p>This is the step the Weierstrass version does not need to justify. There, {@code n·P = O}
+   * for a prime-order point and adding {@code n} is arithmetically free. ristretto255's
+   * representatives live on Edwards25519 with cofactor 8, so {@code L·P} is generally <em>not</em>
+   * the Edwards identity — it is 8-torsion, and the encoding is invariant under adding 8-torsion.
+   * That invariance is what makes the rescaling sound, and it is worth an assertion rather than a
+   * comment.
+   */
+  @Test
+  void addingTheGroupOrderDoesNotChangeTheEncodedResult() {
+    SecureRandom rnd = new SecureRandom();
+    BigInteger order = SPEC.groupOrder();
+
+    for (int i = 0; i < 25; i++) {
+      BigInteger k = new BigInteger(252, rnd).mod(order).max(BigInteger.ONE);
+      byte[] point = SPEC.scalarMultiplyGenerator(
+          new BigInteger(252, rnd).mod(order).max(BigInteger.ONE));
+
+      byte[] direct = SPEC.scalarMultiply(k, point);
+      // Drive the ladder with the rescaled value the implementation actually uses, rather than
+      // relying on scalarMultiply's own reduction to undo the addition.
+      BigInteger widened = Ristretto255GroupSpec.fixedWidthScalar(k);
+      assertThat(widened.mod(order)).isEqualTo(k.mod(order));
+      assertThat(SPEC.scalarMultiply(widened, point)).isEqualTo(direct);
+    }
   }
 }

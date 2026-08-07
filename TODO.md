@@ -11,10 +11,10 @@ is closed.** What remains is P2, P3 and the findings raised while closing the re
 
 | Section | Open |
 |---|---:|
-| New findings | 4 |
+| New findings | 1 |
 | **P2 Medium** | 6 |
 | **P3 Low** | 4 |
-| **Total** | **14** |
+| **Total** | **11** |
 
 Recount with `grep -c '^- \[ \]' TODO.md` after editing.
 
@@ -72,75 +72,23 @@ two are documented in code with no action planned.
 
 ## New findings
 
-- [ ] **ristretto255's ladder does not rescale the scalar to a fixed width** — **[measured]**.
-      `WeierstrassGroupSpecImpl.fixedWidthScalar` exists precisely to stop the loop running cheaply
-      through leading zero bits; `Ristretto255GroupSpec.scalarMul` has no equivalent and starts
-      from the exact neutral element, so the early iterations operate on 0/1 operands. Measured
-      during the August 2026 documentation review: a 64-bit scalar completes ~23% faster than a
-      full-length one on ristretto255, where the Weierstrass curves are flat. Interleaved at
-      realistic widths it resolves to ~0.13% per leading-zero bit, consistent at p10 and p50.
+- [ ] **`:test` intermittently aborts on Gradle's own result bookkeeping — DETECTION ADDED,
+      ROOT CAUSE STILL OPEN.** Tasks fail with `java.io.EOFException` or `NoSuchFileException` on
+      `build/test-results/test/binary/in-progress-results-generic.bin`, having produced results for
+      only some classes. The tests pass on a retry.
 
-      This is the residual with the most remote-looking profile in the tree: a static, repeatable
-      bias tied to a long-term key on an operation an attacker can trigger without limit. It
-      discloses only the leading-zero count of a reduced scalar — one or two bits of 252 — so it
-      does not lead to key recovery, which is why it is recorded rather than treated as urgent.
-      Closing it means the ristretto equivalent of `fixedWidthScalar`. Documented in `SECURITY.md`.
+      **What is fixed:** a `verifyTestsRan` task now runs on every `check` and fails, naming the
+      classes, if a module reported fewer results than it has concrete test classes. That closes
+      the part that actually cost time — a task that aborts before running left the same artifacts
+      as one with no tests, so the results could not distinguish "the suite passed" from "the suite
+      never ran", and that ambiguity produced two false diagnoses across two sessions. A partial
+      run is now loud.
 
-- [ ] **Decide whether the origin rate limiter should default on when recovery is enabled.**
-      `originRateLimitConfig()` returns null by default, and the comment there explains why: as a
-      blanket default it does more harm than good behind NAT and CGNAT. The consequence surfaced
-      while closing the recovery lockout — it is the only global bound on `recoveryStart`, which is
-      unauthenticated and whose own limiter keys on the credential identifier, so an attacker
-      varying the identifier is unbounded by default. Every capacity policy in
-      `InMemoryRecoveryChallengeStore` is load-bearing because of that, and each of those policies
-      has already been got wrong once.
-
-      Defaulting it on *when recovery is configured* would make flooding expensive at the source
-      and stop the store's eviction rules carrying the weight. Deliberately not done as part of the
-      VOPRF/POPRF work: it changes behaviour for every deployment, including those not using
-      recovery at all, and belongs to whoever owns that trade-off rather than arriving inside a PR
-      about something else.
-
-- [ ] **`:test` intermittently aborts on Gradle's own result bookkeeping** — **[reproduced]**.
-      Tasks fail with `java.io.EOFException` or
-      `NoSuchFileException: build/test-results/test/binary/in-progress-results-generic.bin`,
-      having produced results for only some test classes. The tests themselves pass: the same
-      commit passes on a retry, and three consecutive `clean build` runs gave 1467 tests, 0
-      failures. It is not module-specific — `hofmann-server`, `hofmann-integration-tests` and
-      `hofmann-springboot` have all hit it — and it gets more frequent as the suite grows, which
-      fits a race on Gradle's scratch files rather than anything in the code.
-
-      **This is worse than an annoyance because of how it fails.** A task that aborts before
-      running reports the same way as one that had no tests, so a green build is not by itself
-      evidence the suite ran; verifying means counting result files per module against test
-      sources. It has already produced two false diagnoses across two sessions — a reviewer
-      reported a breaking change that had already been reverted, and this session briefly
-      concluded from one sample per branch that a code change was at fault when it was not.
-
-      `clean build` is markedly more reliable than `--rerun-tasks`; prefer it. Closing this
-      probably means a Gradle or plugin upgrade, or finding what races on that directory.
-
-- [ ] **The OPRF seed is Nh bytes in the spec and 32 bytes in practice** — **[reproduced]**.
-      RFC 9807 §6.3 specifies an `Nh`-byte OPRF seed. `hofmann-integration-tests`'
-      `application.yml` configures a 32-byte `oprf-seed-hex`, which is `Nh` only on P-256; on
-      P-384 it is short by 16 bytes and on P-521/ristretto255 by 32. The demo and test-server
-      configs are the same shape. Found by adding a seed-length check to `Server`'s constructor,
-      which took down every suite except P-256; the check was removed rather than the configs
-      changed, because refusing would break running deployments at startup.
-
-      **There is a real consequence, and it is not the one first written here.** `oprfSeed` is
-      consumed in exactly one shape — as the PRK to HKDF-Expand in `OpaqueOprf.deriveOprfKey`
-      (and in `Server.createFakeRecord`), whose output seeds `deriveKeyPair`. The credential
-      identifier is public, so **the entire family of per-credential OPRF keys carries at most
-      H(oprfSeed) bits of entropy**, whatever the group order. At 32 bytes that is 256 bits:
-      no reduction on P-256 (n≈2^256) or ristretto255 (n≈2^252), but on **P-384 and P-521 the
-      effective key space is capped at 2^256 instead of the group order**.
-
-      Safe because 256 bits is unreachable — *not* because "the expansion accepts any length",
-      which is true and irrelevant. The distinction matters: the reasoning as first stated would
-      license a 16-byte seed, which is a different question. Closing this means widening the
-      configured seeds per suite, or stating the bound in `SECURITY.md` so the deployment choice
-      is an informed one.
+      **What is not:** the race itself. Gradle 9.6.1 with `org.gradle.parallel=true` and the
+      configuration cache; disabling parallelism passed three consecutive runs, but so did leaving
+      it on, so that is not evidence of anything and no root cause is claimed. Closing this
+      properly means a Gradle or plugin upgrade, or finding what races on that directory.
+      `clean build` remains markedly more reliable than `--rerun-tasks`.
 
 ---
 

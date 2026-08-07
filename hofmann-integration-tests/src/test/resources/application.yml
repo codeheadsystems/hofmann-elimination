@@ -7,7 +7,11 @@ hofmann:
   argon2-parallelism: 1
   oprf-master-key-hex: "137564f38fb14059492bbab74f03624de228817bd877b74e6df5ac378878720e"
   server-key-seed-hex: "71c35fd9647f464e7288c68fabe22a07a0a062a3423a9d402e55c55b07d1dae3"
-  oprf-seed-hex: "20aa81d9ea8bf9de0877e02bc9d6adf4ef9d6bd50bbb515c84d78d1f246f49a3"
+  # 64 bytes, not 32. This file is parameterized across all four suites, and RFC 9807 section 6.3
+  # specifies an Nh-byte OPRF seed — Nh is 32 on P-256 but 48 on P-384 and 64 on P-521 and
+  # ristretto255, so the previous 32-byte value was short on three of the four. 64 is Nh's maximum
+  # across the supported suites, so one value is conformant everywhere.
+  oprf-seed-hex: "20aa81d9ea8bf9de0877e02bc9d6adf4ef9d6bd50bbb515c84d78d1f246f49a3b7c1e4a9f30d2856ac47e91b5d8f0632e14ca7d95b8036fe2417ac0d9b53e8f6"
   jwt-secret-hex: "04fb50080c93c055a4195cb535c9311381975a94eaaac8aeef3df0776aca4f6d"
   oprf-processor-id: "integration-processor"
   jwt-ttl-seconds: 3600

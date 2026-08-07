@@ -313,6 +313,23 @@ with stricter defaults (3 tokens, 3 per 60 seconds refill). This prevents:
 - Email flooding / SMS cost abuse
 - Brute-force attempts on challenge codes
 
+**Enable the origin rate limiter if you enable recovery.** It is off by default
+(`RateLimitConfigSupplier.originRateLimitConfig()` returns null), and that default is deliberate —
+as a blanket setting it does more harm than good behind a corporate NAT or a mobile CGNAT, where
+many users share one key. But it is the **only global bound** on `recoveryStart`, which is
+unauthenticated and whose own limiter keys on the credential identifier: an attacker varying the
+identifier is otherwise unthrottled.
+
+What that leaves carrying the weight is `InMemoryRecoveryChallengeStore`'s capacity policy — its
+per-identifier cap and its oldest-first eviction. Those are written to degrade gracefully rather
+than fail closed, and they hold, but they are the last line rather than the first, and each of them
+has been got wrong once already during development. With the origin limiter on, a flood becomes
+expensive at the source and the store's policies stop being load-bearing.
+
+Supply a non-null `originRateLimitConfig()` from your `RateLimitConfigSupplier` to turn it on. The
+default sizing (600/min per IPv6 /64 — one subscriber line, not one address) is chosen to stay out
+of the way of shared egress while still bounding a single source.
+
 ### Targeted lockout, and the challenge id that closes it
 
 **Deliver the challenge id if you can.** This is the one place where the default
