@@ -55,18 +55,41 @@ public record RecoveryVerifyRequest(
   }
 
   /**
-   * Returns the challenge response, validated as non-null and non-blank.
+   * Returns the challenge response, validated as non-null, non-blank, and within the field cap.
+   *
+   * <p>This <em>overrides</em> the generated record accessor rather than sitting beside it as a
+   * separately-named "validated" variant. The variant left the generated {@code challengeResponse()}
+   * public and returning the raw string, so the validation was opt-in: correct only for as long as
+   * every caller remembered to reach for the longer name. Overriding the accessor means there is
+   * no uncapped spelling left to reach for — the same shape as
+   * {@link #credentialIdentifierBase64()} here and {@code AuthFinishRequest.sessionToken()}.
+   *
+   * <p>The value is not base64, so it never passed through the decode helper and carried no bound
+   * at all; it is still an unauthenticated client-supplied string handed straight to a
+   * {@code RecoveryChallenger} implementation.
    *
    * @return the challenge response string
-   * @throws IllegalArgumentException if the field is missing or blank
+   * @throws IllegalArgumentException if the field is missing, blank, or over the field cap
    */
-  public String validatedChallengeResponse() {
+  @Override
+  public String challengeResponse() {
     if (challengeResponse == null || challengeResponse.isBlank()) {
       throw new IllegalArgumentException("Missing required field: challengeResponse");
     }
-    // Not base64, so it never went through the decode helper — but it is still an unauthenticated
-    // client-supplied string handed to a RecoveryChallenger implementation.
     WireFields.checkLength(challengeResponse, "challengeResponse");
     return challengeResponse;
+  }
+
+  /**
+   * Returns the validated challenge response.
+   *
+   * @return the challenge response string
+   * @throws IllegalArgumentException if the field is missing, blank, or over the field cap
+   * @deprecated the validation now lives on {@link #challengeResponse()} itself, so this name no
+   *     longer distinguishes anything. Use {@code challengeResponse()}.
+   */
+  @Deprecated(since = "3.2.0", forRemoval = true)
+  public String validatedChallengeResponse() {
+    return challengeResponse();
   }
 }

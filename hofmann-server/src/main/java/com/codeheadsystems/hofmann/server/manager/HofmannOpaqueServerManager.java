@@ -637,7 +637,7 @@ public class HofmannOpaqueServerManager {
     final long deadlineNanos = System.nanoTime() + RECOVERY_VERIFY_MIN_NANOS;
     try {
       if (!recoveryChallenger.verifyResponse(
-          req.credentialIdentifier(), req.validatedChallengeResponse())) {
+          req.credentialIdentifier(), req.challengeResponse())) {
         throw new SecurityException("Recovery verification failed");
       }
       String token = UUID.randomUUID().toString();

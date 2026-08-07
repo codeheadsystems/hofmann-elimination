@@ -56,9 +56,10 @@ class WireFieldLengthCapTest {
             (Executable) () -> new RecoveryStartRequest(big).credentialIdentifier()),
         Arguments.of("RecoveryVerifyRequest.credentialIdentifier",
             (Executable) () -> new RecoveryVerifyRequest(big, "1234").credentialIdentifier()),
+        // The generated accessor itself, not a separately-named "validated" variant: the point of
+        // overriding it is that there is no uncapped spelling left to call.
         Arguments.of("RecoveryVerifyRequest.challengeResponse",
-            (Executable) () -> new RecoveryVerifyRequest("AAAA", big)
-                .validatedChallengeResponse()),
+            (Executable) () -> new RecoveryVerifyRequest("AAAA", big).challengeResponse()),
         Arguments.of("AuthStartRequest.credentialIdentifier",
             (Executable) () -> new AuthStartRequest(big, "AAAA", "AAAA", "AAAA")
                 .credentialIdentifier()),
