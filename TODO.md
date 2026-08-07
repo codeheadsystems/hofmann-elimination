@@ -11,12 +11,12 @@ below, plus the documentation and test-coverage backlog.
 
 | Section | Open |
 |---|---:|
-| New findings | 1 |
+| New findings | 2 |
 | **P2 Medium** | 6 |
 | **P3 Low** | 4 |
 | Documentation | 4 |
 | Test coverage gaps | 4 |
-| **Total** | **19** |
+| **Total** | **20** |
 
 Recount with `grep -c '^- \[ \]' TODO.md` after editing.
 
@@ -73,6 +73,25 @@ two are documented in code with no action planned.
 ---
 
 ## New findings
+
+- [ ] **`:test` intermittently aborts on Gradle's own result bookkeeping** — **[reproduced]**.
+      Tasks fail with `java.io.EOFException` or
+      `NoSuchFileException: build/test-results/test/binary/in-progress-results-generic.bin`,
+      having produced results for only some test classes. The tests themselves pass: the same
+      commit passes on a retry, and three consecutive `clean build` runs gave 1467 tests, 0
+      failures. It is not module-specific — `hofmann-server`, `hofmann-integration-tests` and
+      `hofmann-springboot` have all hit it — and it gets more frequent as the suite grows, which
+      fits a race on Gradle's scratch files rather than anything in the code.
+
+      **This is worse than an annoyance because of how it fails.** A task that aborts before
+      running reports the same way as one that had no tests, so a green build is not by itself
+      evidence the suite ran; verifying means counting result files per module against test
+      sources. It has already produced two false diagnoses across two sessions — a reviewer
+      reported a breaking change that had already been reverted, and this session briefly
+      concluded from one sample per branch that a code change was at fault when it was not.
+
+      `clean build` is markedly more reliable than `--rerun-tasks`; prefer it. Closing this
+      probably means a Gradle or plugin upgrade, or finding what races on that directory.
 
 - [ ] **The OPRF seed is Nh bytes in the spec and 32 bytes in practice** — **[reproduced]**.
       RFC 9807 §6.3 specifies an `Nh`-byte OPRF seed. `hofmann-integration-tests`'
