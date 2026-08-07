@@ -39,7 +39,43 @@ public class Server {
                 byte[] serverPublicKey,
                 byte[] oprfSeed,
                 OpaqueConfig config) {
-    this.serverPrivateKey = new BigInteger(1, serverPrivateKeyBytes);
+    if (config == null) {
+      throw new IllegalArgumentException("OPAQUE config is required");
+    }
+    if (serverPrivateKeyBytes == null || serverPublicKey == null || oprfSeed == null) {
+      throw new IllegalArgumentException("Server key material is required");
+    }
+    BigInteger sk = new BigInteger(1, serverPrivateKeyBytes);
+    BigInteger n = config.cipherSuite().oprfSuite().groupSpec().groupOrder();
+    // The constructor previously validated nothing at all, so a misconfigured deployment started
+    // cleanly and failed later as an authentication error with no indication of the cause.
+    //
+    // A key congruent to 0 mod n is the one that is actively unsafe rather than merely wrong:
+    // dh2 then produces the identity for every client, collapsing the AKE's contribution from the
+    // long-term key. Mirrors the check the OPRF key supplier already performs. Keys at or above n
+    // are normalised rather than refused, for the same reason as there — `openssl rand -hex 32`
+    // exceeds ristretto255's order about 94% of the time, and scalar multiplication reduces
+    // anyway, so refusing would break working deployments.
+    if (sk.mod(n).signum() == 0) {
+      throw new IllegalArgumentException(
+          "Server private key is congruent to zero mod the group order");
+    }
+    // The OPRF seed's length is deliberately NOT checked. RFC 9807 §6.3 specifies Nh bytes, and
+    // deployments configured on the SHA-384/SHA-512 suites are running with 32-byte seeds today —
+    // the seed only ever feeds an expansion that accepts any length, so refusing here would take
+    // those deployments down at startup to enforce a conformance point with no security content.
+    // Recorded in TODO.md rather than fixed silently.
+    //
+    // The public key must be the point the private key actually derives, not merely a well-formed
+    // one. A mismatched pair authenticates nothing: the client verifies the envelope against the
+    // public key it recovered, then runs dh2 against a private key that does not correspond to
+    // it, so every authentication fails after the password has already been proven correct.
+    byte[] derived = config.cipherSuite().oprfSuite().groupSpec().scalarMultiplyGenerator(sk);
+    if (!MessageDigest.isEqual(derived, serverPublicKey)) {
+      throw new IllegalArgumentException(
+          "Server public key does not match the private key");
+    }
+    this.serverPrivateKey = sk;
     this.serverPublicKey = serverPublicKey;
     this.oprfSeed = oprfSeed;
     this.config = config;

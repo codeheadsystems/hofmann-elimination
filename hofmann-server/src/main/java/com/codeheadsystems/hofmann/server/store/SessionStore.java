@@ -57,4 +57,12 @@ public interface SessionStore {
    *                                   should all be revoked
    */
   void revokeByCredentialIdentifier(String credentialIdentifierBase64);
+
+  /**
+   * Releases any resources held by this store (e.g. a background expiry reaper).
+   * The default implementation is a no-op, so stores that hold no resources —
+   * and every existing implementation — need not override it.
+   */
+  default void shutdown() {
+  }
 }

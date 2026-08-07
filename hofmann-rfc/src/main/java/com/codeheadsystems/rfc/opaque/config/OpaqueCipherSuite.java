@@ -174,6 +174,14 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
    */
   public byte[] hkdfExpand(byte[] prk, byte[] info, int len) {
     int hashLen = Nh();
+    // RFC 5869 §2.3 bounds L to 255*HashLen — the counter is a single octet, so beyond that it
+    // wraps and the expansion silently repeats blocks it has already emitted. Every in-tree
+    // caller asks for a suite constant far below the bound, but the method is public and the
+    // failure is silent key reuse rather than an error.
+    if (len <= 0 || len > 255 * hashLen) {
+      throw new IllegalArgumentException(
+          "HKDF-Expand length must be in [1, " + (255 * hashLen) + "], got " + len);
+    }
     byte[] result = new byte[len];
     byte[] t = new byte[0];
     int copied = 0;

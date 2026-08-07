@@ -371,6 +371,13 @@ public class OpaqueResource {
     } catch (IllegalArgumentException e) {
       log.debug("authFinish bad request: {}", e.getMessage());
       throw new WebApplicationException("Invalid request", Response.Status.BAD_REQUEST);
+    } catch (IllegalStateException e) {
+      // The session store is now capacity-bounded, so issuing a token can be refused — which
+      // happens here, after a handshake the client completed correctly. That is a 503 (the
+      // server is out of room, try again), not a 500, and matches how authStart already answers
+      // the pending-session store hitting its own cap.
+      log.debug("authFinish unavailable: {}", e.getMessage());
+      throw new WebApplicationException("Service unavailable", Response.Status.SERVICE_UNAVAILABLE);
     }
   }
 }

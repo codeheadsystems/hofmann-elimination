@@ -23,9 +23,15 @@ public record KE2(CredentialResponse credentialResponse, byte[] serverNonce,
     // from malformed messages, which could leak internal message structure via stack traces.
     int expectedLen = config.Noe() + OpaqueConfig.Nn + config.maskedResponseSize()
         + OpaqueConfig.Nn + config.Npk() + config.Nm();
-    if (bytes == null || bytes.length < expectedLen) {
-      throw new IllegalArgumentException("KE2 message too short: expected at least "
-          + expectedLen + " bytes");
+    // Exact length, not a lower bound. Every field here is a suite constant, so a conformant KE2
+    // is exactly expectedLen bytes; accepting longer inputs meant trailing bytes parsed and were
+    // silently dropped, giving one logical message many accepted encodings. Nothing in tree sends
+    // a long KE2, but "not the inverse of serialize" is the same defect closed on the group
+    // element encodings, and here it would let an attacker vary the bytes of a message whose
+    // handling is otherwise transcript-bound.
+    if (bytes == null || bytes.length != expectedLen) {
+      throw new IllegalArgumentException("KE2 message must be exactly "
+          + expectedLen + " bytes, got " + (bytes == null ? "null" : String.valueOf(bytes.length)));
     }
     int off = 0;
     byte[] evaluatedElement = slice(bytes, off, config.Noe());

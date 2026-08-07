@@ -9,14 +9,22 @@ Findings from the security review of **August 2026** (six-reviewer fan-out acros
 |---|---:|---:|
 | **P0 Critical** | 3 | 0 |
 | **P1 High** | 9 | 0 |
-| Follow-ups from verifying the 3.1.0 fixes | 7 | 0 |
-| **P2 Medium** | 1 | 13 |
-| **P3 Low** | 1 | 10 |
+| Follow-ups from verifying the 3.1.0 fixes | 7 | 1 |
+| RFC 9497 VOPRF/POPRF deferred items | 1 | 4 |
+| New findings (August 2026) | 0 | 1 |
+| **P2 Medium** | 8 | 6 |
+| **P3 Low** | 7 | 4 |
 | Documentation | 0 | 4 |
 | Test coverage gaps | 0 | 4 |
-| **Total** | **21** | **31** |
+| **Total** | **35** | **24** |
 
-**Every P0, P1 and verification follow-up is now closed.** What remains is P2 and below.
+**Every P0 and P1 is closed.** One verification follow-up remains open — the targeted
+account-recovery lockout — along with the RFC 9497 deferrals, P2 and below.
+
+> The table above previously read 31 open against 37 unchecked boxes. Two things were wrong:
+> the RFC 9497 section was appended without ever being added to the table, and the follow-ups
+> row claimed 0 open while the recovery-lockout item was unchecked. Both are corrected here.
+> Recount with `grep -c '^- \[ \]' TODO.md` when editing this file.
 
 Entries marked `[x]` carry the commit that closed them. P0/P1 shipped in **3.1.0**; the
 verification follow-ups and the last P1 land after it. Everything marked `[ ]`
@@ -33,6 +41,13 @@ raised during cryptographic review and consciously deferred rather than missed. 
 they do not live only in a conversation.
 
 ### Open — needs a decision
+
+> **Decisions taken 2026-08-06.** Endianness: investigate the Java/Rust/TypeScript ports first
+> and only then choose between documenting the convention and changing it — no code change until
+> we know whether they actually agree. Phase 6: Java HTTP endpoints, `docs/oprf-api.yaml` and the
+> transport-level request-size bound only; the `hofmann-client`, TypeScript and Rust ports stay
+> deferred. Recovery lockout (in the follow-ups section): close it with the email round trip,
+> which makes it a documented deployment requirement rather than shipped library code.
 
 - [ ] **OPAQUE ristretto255 scalar endianness.** `ByteUtils.scalarToFixedBytes` is big-endian, and
   OPAQUE uses it to serialize private keys on the ristretto255 suite, whose scalar convention is
@@ -67,11 +82,15 @@ they do not live only in a conversation.
 
 ### Minor test gaps — known, judged acceptable
 
-- [ ] `GroupSpecArithmeticTest` exercises the identity-input path properly only on ristretto255.
-  On the Weierstrass curves the equivalent test passes `elementSize()` zero bytes, which
-  BouncyCastle rejects as a malformed encoding before the identity check is reached; the real SEC1
-  identity is the single byte `0x00`. A per-suite split now covers the encoding case, but the
-  identity-specific rejection is still only genuinely tested on ristretto255.
+- [x] `GroupSpecArithmeticTest` exercises the identity-input path properly only on ristretto255.
+  **Resolved by restating the property rather than by adding a test.** Now that
+  `deserializePoint` requires a canonical compressed encoding, the Weierstrass curves have no
+  identity input encoding left to reject: SEC1 spells the identity `0x00`, a single byte, which
+  the length check refuses, and no `elementSize()`-byte compressed string decodes to infinity. So
+  the identity-specific rejection is *correctly* only testable on ristretto255, and the
+  Weierstrass test asserts the rejection that does happen. The `isInfinity()` guard inside
+  `deserializePoint` is now defence-in-depth against a future reordering rather than a live path,
+  and says so.
 - [ ] `PoprfClientContext` does not defensively copy its `info` and `tweakedKey` arrays, though its
   lists get `List.copyOf`. Consistent with house style across the module, so noted rather than
   recommended.
@@ -188,6 +207,40 @@ completeness.
       something an attacker cannot supply on the victim's behalf: proof-of-work on recoveryStart,
       or the email round trip that recovery ownership rests on anyway.
 
+      **Decided 2026-08-06: the email round trip**, not proof-of-work. The limiter key becomes
+      something only the account owner can produce, which actually closes it rather than pricing
+      it. The consequence is that the library cannot close this on its own — it has no way to
+      send mail — so the deliverable is a documented requirement on the `RecoveryChallenger`
+      integration plus whatever key material the round trip yields, and the residual stays real
+      for any deployment that does not implement it. Still open until that is written and the
+      keying change lands.
+
+---
+
+## New findings (August 2026, while closing the items below)
+
+- [ ] **The OPRF seed is Nh bytes in the spec and 32 bytes in practice** — **[reproduced]**.
+      RFC 9807 §6.3 specifies an `Nh`-byte OPRF seed. `hofmann-integration-tests`'
+      `application.yml` configures a 32-byte `oprf-seed-hex`, which is `Nh` only on P-256; on
+      P-384 it is short by 16 bytes and on P-521/ristretto255 by 32. The demo and test-server
+      configs are the same shape. Found by adding a seed-length check to `Server`'s constructor,
+      which took down every suite except P-256; the check was removed rather than the configs
+      changed, because refusing would break running deployments at startup.
+
+      **There is a real consequence, and it is not the one first written here.** `oprfSeed` is
+      consumed in exactly one shape — as the PRK to HKDF-Expand in `OpaqueOprf.deriveOprfKey`
+      (and in `Server.createFakeRecord`), whose output seeds `deriveKeyPair`. The credential
+      identifier is public, so **the entire family of per-credential OPRF keys carries at most
+      H(oprfSeed) bits of entropy**, whatever the group order. At 32 bytes that is 256 bits:
+      no reduction on P-256 (n≈2^256) or ristretto255 (n≈2^252), but on **P-384 and P-521 the
+      effective key space is capped at 2^256 instead of the group order**.
+
+      Safe because 256 bits is unreachable — *not* because "the expansion accepts any length",
+      which is true and irrelevant. The distinction matters: the reasoning as first stated would
+      license a 16-byte seed, which is a different question. Closing this means widening the
+      configured seeds per suite, or stating the bound in `SECURITY.md` so the deployment choice
+      is an informed one.
+
 ---
 
 ## P2: Medium
@@ -232,61 +285,90 @@ completeness.
       deliberately re-uses it afterwards for `changePassword` (`:176`), so zeroing at the
       obvious point needs care. Either wire it up or withdraw the claim from the docs.
 
-- [ ] **Stop retaining the OPAQUE session key server-side as a `String`**
+- [x] **Stop retaining the OPAQUE session key server-side as a `String`** — `SessionData` lost
+      the component entirely; nothing ever read it back, since `JwtManager.verify` needs only the
+      subject and jti. That removes the unzeroable `String`, the record `toString()` that
+      rendered it in full, and the reason to hold it at all. `JwtManager.issueToken(String,
+      String)` is deprecated and discards its second argument; `authFinish` now zeroes the raw
+      `byte[]` in a `finally`. The base64 form still reaches the client in `AuthFinishResponse`,
+      which the protocol requires — the server simply no longer keeps a copy. Original finding
+      follows.
+      —
       `HofmannOpaqueServerManager.java:591-593` → `JwtManager.java:87` →
       `SessionData.java:13-17`. `String` cannot be zeroed, the source `byte[]` in
       `ServerAuthState` is never wiped, and `SessionData` is a record so its auto-generated
       `toString()` renders the base64 session key in full. `JwtManager.verify` reads only
       subject and jti — the session key is not needed at all.
 
-- [ ] **`InMemorySessionStore` is unbounded with no reaper** — unlike the pending-session
-      and recovery-token stores, entries are evicted only lazily inside `load(jti)`
-      (`:38-44`), i.e. only if that exact token is presented again. A client that
-      authenticates and discards its token leaves a `SessionData` resident forever. Add the
-      capacity guard and background reaper the sibling stores already have.
+- [x] **`InMemorySessionStore` is unbounded with no reaper** — entries were evicted only
+      lazily inside `load(jti)`, i.e. only if that exact token was presented again, so a client
+      that authenticated and discarded its token left a `SessionData` resident forever. Now
+      mirrors the sibling stores: `DEFAULT_MAX_SESSIONS` (50,000) with reclaim-before-deny, and
+      a daemon `session-reaper` sweeping every 60s against each entry's own `expiresAt`. The
+      store needed a lifecycle hook to own a thread, so `SessionStore` gained a
+      `default shutdown()` and `HofmannOpaqueServerManager.shutdown()` now reaches it through
+      `JwtManager`. **Bounding memory does not bound volume**, same caveat as the rate limiter:
+      at capacity with nothing expired, a client that has completed a valid handshake is
+      refused its token.
 
-- [ ] **`CredentialStore` exposes no atomic primitive, so the takeover guard cannot be made
-      safe** — the guard at `HofmannOpaqueServerManager.java:321` is a check-then-act, and
-      both the recovery path (`:319-332`) and `changePasswordFinish` (`:414-417`)
-      `delete()` then `store()`, leaving a window where the credential does not exist. An
-      attacker flooding the unthrottled `registration/finish` can land inside it. The
-      interface offers only `store`/`load`/`delete` — **no implementer can close this**.
-      Add `storeIfAbsent`/compare-and-set, and a transactional boundary for the
-      delete-then-store pairs (a failure between them currently leaves the account
-      permanently unregistered).
+- [x] **`CredentialStore` exposes no atomic primitive, so the takeover guard cannot be made
+      safe** — added `storeIfAbsent(byte[], RegistrationRecord, int)`, overridden atomically in
+      `InMemoryCredentialStore` via `putIfAbsent`, and used it for the takeover guard in
+      `registrationFinish` so the check and the write are one operation. The no-oracle behaviour
+      is preserved: an already-registered identifier still returns normally without storing.
+      The delete-then-store pairs in the recovery branch and `changePasswordFinish` are gone
+      rather than wrapped in a transaction — `store()` is contractually an upsert, so replacing
+      in one operation removes the window *and* the failure mode where a crash between the two
+      steps left the account permanently unregistered.
+      **Scope limit:** the interface default for `storeIfAbsent` is deliberately the same
+      check-then-act it replaces, because a `default` that threw would break every existing
+      implementer at runtime. It is documented as non-atomic and as requiring an override
+      (`INSERT ... ON CONFLICT DO NOTHING` and equivalents). A third-party store that does not
+      override still has the race.
 
-- [ ] **`InMemorySessionStore` revoke/store race** — `store()` (`:26-30`) puts then indexes;
-      `revokeByCredentialIdentifier()` (`:69-75`) removes the index then drains it. A
-      concurrent `store()` that reads the set before the remove and adds after the drain
-      leaves a jti live in `store` but orphaned from the index — surviving that revocation
-      and **every future one**. Same end state as the P0 canonicalization bug, reachable
-      without the alias trick. Update both maps under one lock keyed on the credential.
+- [x] **`InMemorySessionStore` revoke/store race** — `store()` put then indexed;
+      `revokeByCredentialIdentifier()` removed the index then drained it. A concurrent `store()`
+      that read the set before the remove and added after the drain left a jti live in `store`
+      but orphaned from the index, surviving that revocation and **every future one**. Both maps
+      are now updated inside a `compute` on `credentialToJtis`, so all operations on one
+      credential are serialised by that map's bin lock. **[reproduced]** against the pre-fix
+      class, but only at ~50M `store()` calls across 32 threads for two orphans — the window is
+      two instructions wide and only a storer already holding the set can be caught. The
+      committed test (`InMemorySessionStoreConcurrencyTest`) therefore guards the invariant
+      rather than reproducing the race, and says so; it passes against the pre-fix code.
 
-- [ ] **Apply the field-length cap to all request models** —
-      `RegistrationStartRequest` and `AuthStartRequest` define and enforce
-      `MAX_ENCODED_FIELD_LENGTH = 4096`, naming the exact risk in a comment.
-      `RegistrationFinishRequest`, `RegistrationDeleteRequest`, `RecoveryStartRequest`,
-      `RecoveryVerifyRequest`, and `AuthFinishRequest` copy the decode helper *without* the
-      check. `registrationFinish` is the one whose output is written to durable storage,
-      and it is unauthenticated and unthrottled. 4096 is itself generous for a value
-      retained as a map key across four limiters × 50,000 entries.
+- [x] **Apply the field-length cap to all request models** — the cap and the decode helper both
+      moved to a new package-private `WireFields`, and all seven request models plus the two
+      response models now route through it, so it cannot be present on some paths and absent on
+      others. Also covers two fields that were never base64-decoded and so had no cap at all:
+      `AuthFinishRequest.sessionToken` (a pending-session store key) and
+      `RecoveryVerifyRequest.challengeResponse` (handed to a `RecoveryChallenger`).
+      `CredentialIdentifiers` reads the constant rather than restating it.
+      **Scope limit: 4096 was not tightened.** It is generous for a value retained as a map key
+      across four limiters, but identifiers are application-defined and a lower bound would
+      reject deployments working today. Documented in `WireFields` as a bound a deployment
+      should narrow at its own trust boundary.
 
-- [ ] **Enforce canonical point encodings** — `WeierstrassGroupSpecImpl:136-137` accepts
-      uncompressed (`0x04`) and hybrid (`0x06`/`0x07`) SEC1 forms while serialization only
-      ever emits compressed, so `DeserializeElement` is not the inverse of
-      `SerializeElement` (RFC 9497 §2.1). Confirmed: the same point sent three ways yields
-      byte-identical evaluated responses. Not an invalid-curve vector — off-curve points
-      *are* rejected — but one group element gains many wire representations, bypassing
-      anything that rate-limits, caches, dedups, or audits on the `blindedPoint` string.
-      Require `length == elementSize()` and a `0x02`/`0x03` prefix.
+- [x] **Enforce canonical point encodings** — `WeierstrassGroupSpecImpl.deserializePoint` now
+      requires exactly `elementSize()` bytes with a `0x02`/`0x03` prefix before BouncyCastle's
+      `decodePoint` sees them. The length check already existed in `validateElement`, but only
+      the verifiable modes call that; the base-mode OPRF and OPAQUE reach the group through
+      `scalarMultiply`, so they were unprotected. All RFC 9497/9807/9380 vectors and the
+      cross-implementation vectors still pass, so this is not an interop change.
+      Raises `IllegalArgumentException`, not `SecurityException`, so the adapters answer 400
+      rather than issuing an authentication challenge on an endpoint where the caller has no
+      credentials to correct.
+      **Consequence worth knowing:** the SEC1 identity is the single byte `0x00`, so it is now
+      refused as a malformed encoding and `deserializePoint`'s `isInfinity()` guard is
+      unreachable on the Weierstrass curves. Rejection is unchanged; the reason reported is.
 
 - [x] **Snapshot `supplier.get()` once in `OprfServerManager.process`** — `bfae3a2` (3.1.0). Fixed alongside the OPRF key validation, which needed the snapshot to avoid checking one key and using another.
 
-- [ ] **Range-check `Ristretto255GroupSpec.serializeScalar`** (`:147-150`) —
-      `serializeScalar(2^300)` silently truncates to the identity scalar and
-      `serializeScalar(-1)` returns garbage. This is the function OPAQUE uses to serialize
-      private keys. `WeierstrassGroupSpecImpl.serializeScalar:113-119` validates `[0, n-1]`;
-      mirror it.
+- [x] **Range-check `Ristretto255GroupSpec.serializeScalar`** — already closed by the RFC 9497
+      VOPRF/POPRF work; the check is at `Ristretto255GroupSpec:161-167` with the reasoning in
+      its javadoc. This entry was stale, not outstanding. Verified against the current tree
+      rather than taken on trust — which is the point of the "claim log, not evidence" note at
+      the top of this file, and it cuts both ways.
 
 - [ ] **Dropwizard `/api-docs` is unconditional and outside the filter chain** —
       `HofmannBundle.java:274-277` registers an `AssetServlet` at `/api-docs/*` on every
@@ -306,7 +388,12 @@ completeness.
 
 ## P3: Low
 
-- [ ] **Records with secret fields auto-generate leaking `toString()`** —
+- [x] **Records with secret fields auto-generate leaking `toString()`** — redacting overrides
+      added to `ServerProcessorDetail` (masterKey) and `ClientHashingContext` (blindingFactor and
+      input). **Not addressed:** `ServerProcessorDetail` is still `Serializable`, so the same
+      field is reachable through any serialization sink; removing the interface is a breaking
+      API change. Original finding follows.
+      —
       `ServerProcessorDetail.java:9` holds `BigInteger masterKey`, and `BigInteger` renders
       as its **full decimal value** (unlike `byte[]`, which renders as an identity hash —
       which is why `JwtKeyDetail` and `ByteKey` are safe). One
@@ -315,13 +402,31 @@ completeness.
       OPRF master key to the log. It is also `Serializable`. Same shape at
       `ClientHashingContext.java:12` (blinding factor). No call site triggers it today; add
       explicit `toString()` overrides before one does.
-- [ ] **Token and PII logging** — `HofmannOpaqueServerManager.java:582` and
+- [x] **Token and PII logging** — `InMemoryPendingSessionStore` logs the credential identifier
+      instead of the raw session token, matching the policy `InMemoryRecoveryTokenStore` already
+      spells out; `authFinish` no longer logs the token at all; and the recovery re-registration
+      line moved from INFO to DEBUG so an email address is not written to the default-level log.
+      Original finding follows.
+      — `HofmannOpaqueServerManager.java:582` and
       `InMemoryPendingSessionStore.java:85` log the pending session token at DEBUG, which
       contradicts the policy `InMemoryRecoveryTokenStore.java:75-78` spells out for the
       structurally equivalent recovery token. `:318` logs the credential identifier —
       usually an email — at INFO.
-- [ ] **`SecurityException` from point validation escapes as HTTP 500** —
-      `OpaqueResource.java:265-279` catches `RateLimitExceededException`,
+- [x] **`SecurityException` from point validation escapes as HTTP 500** — verified against the
+      current tree: every endpoint that can raise it already catches it, so the original finding
+      had been closed by earlier work and this entry was stale. Two things were genuinely fixed
+      here. The exception-type sprawl the entry's second half describes is narrower now, because
+      malformed group-element encodings raise `IllegalArgumentException` from the canonical-
+      encoding check rather than `SecurityException` from further in — one type, one status, for
+      the whole class of malformed element. And `authFinish` gained an `IllegalStateException`
+      → 503 catch in both adapters: bounding the session store means issuing a token can now be
+      refused *after* a client has completed a valid handshake, which without the catch would
+      have been a 500 introduced by this very batch of work.
+      **Still open:** `/recovery/start` catches no `SecurityException`, so a
+      `RecoveryChallenger` implementation that raises one returns 500. Consumer-supplied code,
+      so arguably theirs to handle, but the other endpoints normalise it. Original finding
+      follows.
+      — `OpaqueResource.java:265-279` catches `RateLimitExceededException`,
       `IllegalArgumentException`, and `IllegalStateException`, but `deserializePoint`
       throws `SecurityException`. Malformed KE1 → 500 instead of 400. Not an oracle (real
       and fake paths throw identically), just inconsistent. Relatedly, attacker-controlled
@@ -332,21 +437,48 @@ completeness.
       `OprfClientManager.java:109` and `HofmannOprfClientManager.java:107` offer no
       `byte[]` overload, so the caller's secret is interned in a non-zeroable `String`. The
       OPAQUE side uses `byte[]` throughout.
-- [ ] **JWT hardening** — no minimum secret length (`jwtSecretHex: "00"` yields a 1-byte
+- [ ] **JWT hardening — PARTIAL.** The minimum secret length is done:
+      `JwtManager.MIN_SIGNING_KEY_BYTES = 32` is enforced at construction for both the signing
+      key and the rotation previous key, per RFC 8725 §3.5. **Still open:** no `aud` claim is
+      issued or verified, and `revoke(jti)` is still called from no endpoint, so there is no
+      logout. Both need config plumbing and an endpoint across two framework integrations rather
+      than a library-local change. Note the key-length check runs once at construction, so a
+      rotation that introduces a short key is not caught. Original finding follows.
+      — no minimum secret length (`jwtSecretHex: "00"` yields a 1-byte
       HMAC key), no `aud` claim issued or verified (two deployments sharing the default
       `hofmann` issuer would cross-accept tokens), and `revoke(jti)` is never called from
       any endpoint, so there is no logout — a stolen JWT lives its full 3600 s TTL.
-- [ ] **Recovery token is consumed before the identifier is checked** —
+- [x] **Recovery token is consumed before the identifier is checked** — now peek, compare,
+      then remove. Single-use is still enforced by `remove()` being atomic rather than by the
+      peek: two concurrent finishes both pass the comparison but only one `remove()` returns a
+      value, and the loser is rejected. Original finding follows.
+      —
       `HofmannOpaqueServerManager.java:313-317` calls `remove(bearerToken)` and only then
       compares `credId`. Anyone who observes a token can invalidate it by replaying it with
       a wrong identifier, forcing the user to restart recovery. Peek, compare, then remove.
-- [ ] **Deserialization strictness** — `KE2.deserialize` (`:26`) tests `length <` rather
+- [x] **Deserialization strictness** — all four parts. `KE2.deserialize` now requires an exact
+      length rather than a lower bound (every field is a suite constant, so trailing bytes were
+      being silently dropped); `Server`'s constructor validates its key material — non-null, the
+      private key not congruent to 0 mod n, and the public key equal to the point the private key
+      derives; `hkdfExpand` enforces RFC 5869's `len <= 255*Nh`, beyond which the single-octet
+      counter wraps and silently repeats blocks; `ExpandMessageXmd` rejects an empty DST per
+      RFC 9380 §3.1.
+      **Not done, deliberately:** `Server` does not check the OPRF seed length against `Nh`. See
+      the new finding above — the configured seeds are 32 bytes and short on three of the four
+      suites, and enforcing it took every non-P-256 suite down at startup. Original finding
+      follows.
+      — `KE2.deserialize` (`:26`) tests `length <` rather
       than `!=`, so trailing bytes parse and are silently dropped. No production caller
       today. `Server`'s constructor (`:38-46`) validates no key material — no range check
       on the private key, no check that the public key is the matching point. `hkdfExpand`
       (`OpaqueCipherSuite.java:175-190`) has no `len <= 255*Nh` guard.
       `ExpandMessageXmd:139-157` accepts an empty DST, which RFC 9380 §3.1 forbids.
-- [ ] **API footguns in the hash-to-curve layer** — `HashToCurve.DEFAULT_DST` (`:28`) is a
+- [x] **API footguns in the hash-to-curve layer** — `HashToCurve.DEFAULT_DST` is renamed
+      `SECP256K1_XMD_SHA256_SSWU_RO_DST`, with the old name kept as a deprecated alias, so the
+      value no longer presents a secp256k1 tag as a default for a class that also serves
+      P-256/384/521. `OprfCipherSuite`'s four DST accessors return `.clone()` rather than the
+      live arrays from process-wide statics. Original finding follows.
+      — `HashToCurve.DEFAULT_DST` (`:28`) is a
       **secp256k1** tag on a class that also serves P-256/384/521;
       `forP521().hashToCurve(msg, DEFAULT_DST)` compiles and runs. `OprfCipherSuite`'s
       `contextString()` / `hashToGroupDst()` / `hashToScalarDst()` / `deriveKeyPairDst()`

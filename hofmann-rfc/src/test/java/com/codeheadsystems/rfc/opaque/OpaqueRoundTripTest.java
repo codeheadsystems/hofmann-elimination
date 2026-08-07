@@ -265,11 +265,16 @@ class OpaqueRoundTripTest {
     RegistrationRecord record = register(PASSWORD_CORRECT);
     byte[] realServerPublicKey = server.getServerPublicKey();
 
-    // Impersonator presents the real server's public key (so envelope recovery succeeds)
-    // but uses a different private key (so the 3DH outputs differ).
-    byte[] fakePrivateKey = new RandomProvider().randomBytes(32);
-    byte[] fakeOprfSeed = new RandomProvider().randomBytes(32);
-    Server impersonator = new Server(fakePrivateKey, realServerPublicKey, fakeOprfSeed, CONFIG);
+    // The impersonator holds its own consistent key pair, not the real server's private key.
+    // It used to be constructed with the real public key against a mismatched private key, but
+    // Server's constructor now rejects a pair that does not correspond — and an attacker would
+    // not be building one through this constructor anyway. What makes impersonation fail is the
+    // client's envelope, which is bound to the *real* server public key: the client recovers that
+    // key and runs dh2 against it while the impersonator uses its own private key, so the
+    // transcripts diverge. (With a fake OPRF seed the envelope's auth_tag fails even earlier,
+    // which is the same rejection one step sooner.)
+    Server impersonator = Server.generate(CONFIG);
+    assertThat(impersonator.getServerPublicKey()).isNotEqualTo(realServerPublicKey);
 
     assertThatThrownBy(() -> {
       ClientAuthState authState = client.generateKE1(PASSWORD_CORRECT);

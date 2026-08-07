@@ -40,7 +40,6 @@ public record RegistrationFinishRequest(
     @JsonProperty("authTag") String authTagBase64) {
 
   private static final Base64.Encoder B64 = Base64.getEncoder();
-  private static final Base64.Decoder B64D = Base64.getDecoder();
 
   /**
    * Instantiates a new Registration finish request.
@@ -57,14 +56,7 @@ public record RegistrationFinishRequest(
   }
 
   private static byte[] decode(String value, String fieldName) {
-    if (value == null || value.isBlank()) {
-      throw new IllegalArgumentException("Missing required field: " + fieldName);
-    }
-    try {
-      return B64D.decode(value);
-    } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException("Invalid base64 in field: " + fieldName, e);
-    }
+    return WireFields.decode(value, fieldName);
   }
 
   /**

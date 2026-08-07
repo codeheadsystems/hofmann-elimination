@@ -339,6 +339,8 @@ public record WeierstrassGroupSpecImpl(
    *
    * <p>Checks performed:
    * <ol>
+   *   <li><b>Canonical encoding</b> — requires exactly {@link #elementSize()} bytes with a
+   *       {@code 0x02}/{@code 0x03} prefix, i.e. the compressed SEC1 form. See below.</li>
    *   <li><b>Non-identity</b> — rejects the point at infinity.</li>
    *   <li><b>On-curve</b> — rejects points that do not satisfy the curve equation.</li>
    *   <li><b>Prime-order subgroup</b> — for curves with cofactor h&gt;1, verifies that
@@ -348,8 +350,48 @@ public record WeierstrassGroupSpecImpl(
    *       and this check is a no-op. The guard is retained for defense-in-depth should a
    *       cofactor&gt;1 curve be added in the future.</li>
    * </ol>
+   *
+   * <p><strong>On the canonical-encoding check.</strong> BouncyCastle's {@code decodePoint}
+   * accepts uncompressed ({@code 0x04}) and hybrid ({@code 0x06}/{@code 0x07}) SEC1 forms, while
+   * serialization here only ever emits compressed. That made {@code DeserializeElement} not the
+   * inverse of {@code SerializeElement}, which RFC 9497 §2.1 requires, and gave one group element
+   * three distinct wire representations. This was never an invalid-curve vector — off-curve points
+   * are rejected either way, and the OPRF output is identical for all three encodings — but
+   * anything keyed on the encoded element rather than on the group element it denotes could be
+   * bypassed by re-encoding: rate limiters, caches, replay dedup, and audit logs that record the
+   * {@code blindedPoint} string. Confirmed before the fix: the same point sent three ways yielded
+   * byte-identical evaluated responses under three different request keys.
+   *
+   * <p>The check was previously in {@link #validateElement} only, which the verifiable modes call
+   * but the base-mode OPRF and OPAQUE paths do not; those reach the group through
+   * {@link #scalarMultiply} and so were unprotected. Putting it here covers every path.
    */
   public ECPoint deserializePoint(byte[] bytes) {
+    // The SEC1 identity is the single byte 0x00, which the canonical checks below would refuse as
+    // a malformed encoding. Catch it first and by name so that submitting the identity is
+    // classified the same way on every suite: ristretto255 raises SecurityException for its
+    // all-zero encoding, and without this the identical protocol-level attack was a malformed
+    // request on the NIST curves and an identity rejection on ristretto255 — the same input
+    // producing different statuses, and anything alerting on the rejection seeing only one suite.
+    // This is also what keeps the isInfinity() check below from being unreachable in practice.
+    if (bytes != null && bytes.length == 1 && bytes[0] == 0x00) {
+      throw new SecurityException("Invalid EC point: identity element not allowed");
+    }
+    // IllegalArgumentException, not SecurityException: this is a malformed request, and the
+    // adapters map the two to 400 and 401 respectively. Answering a bad encoding with an
+    // authentication challenge would be wrong on endpoints where the caller has no credentials
+    // to correct. It also matches what validateElement and BouncyCastle's own length check
+    // already raise, so the status for a malformed element does not depend on which check fires.
+    if (bytes == null || bytes.length != elementSize()) {
+      throw new IllegalArgumentException(
+          "Element encoding must be exactly " + elementSize() + " bytes (compressed SEC1), got "
+              + (bytes == null ? "null" : String.valueOf(bytes.length)));
+    }
+    if (bytes[0] != 0x02 && bytes[0] != 0x03) {
+      throw new IllegalArgumentException(
+          "Element encoding must be compressed SEC1 (0x02/0x03), got prefix 0x"
+              + String.format("%02x", bytes[0]));
+    }
     ECPoint p = curve.params().getCurve().decodePoint(bytes);
     if (p.isInfinity()) {
       throw new SecurityException("Invalid EC point: identity element not allowed");

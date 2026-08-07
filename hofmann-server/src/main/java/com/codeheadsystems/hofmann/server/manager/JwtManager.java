@@ -47,6 +47,40 @@ public class JwtManager {
     this.sessionStore = sessionStore;
     this.issuer = issuer;
     this.ttlSeconds = ttlSeconds;
+    // Fail at construction rather than at first use, so a misconfigured deployment does not start.
+    // This is not sufficient on its own — see the re-check in issueToken, which is what actually
+    // covers rotation.
+    //
+    // Note this makes the supplier a construction-time dependency: a custom supplier backed by an
+    // external key service must be able to answer here, not merely at first token issue.
+    requireAdequateKey(keyDetailSupplier.get());
+  }
+
+  /**
+   * Minimum HMAC-SHA256 key length, in bytes.
+   *
+   * <p>RFC 8725 §3.5 and RFC 2104 both put the floor at the hash output size. Below it the key is
+   * brute-forceable offline from a single captured token — {@code jwtSecretHex: "00"} yielded a
+   * one-byte HMAC key that the configuration accepted without comment, and a forged token from a
+   * recovered key authenticates as any subject the attacker names.
+   */
+  public static final int MIN_SIGNING_KEY_BYTES = 32;
+
+  private static void requireAdequateKey(JwtKeyDetail detail) {
+    if (detail == null || detail.signingKey() == null
+        || detail.signingKey().length < MIN_SIGNING_KEY_BYTES) {
+      throw new IllegalArgumentException(
+          "JWT signing key must be at least " + MIN_SIGNING_KEY_BYTES
+              + " bytes for HMAC-SHA256; got "
+              + (detail == null || detail.signingKey() == null
+                  ? "none" : detail.signingKey().length + " bytes"));
+    }
+    // The previous key only verifies, never signs, but a short one is just as forgeable and
+    // tokens signed with it are still accepted for the rotation window.
+    if (detail.previousKey() != null && detail.previousKey().length < MIN_SIGNING_KEY_BYTES) {
+      throw new IllegalArgumentException(
+          "Previous JWT signing key must be at least " + MIN_SIGNING_KEY_BYTES + " bytes");
+    }
   }
 
   /**
@@ -65,15 +99,36 @@ public class JwtManager {
    * Issues a JWT for a successfully authenticated credential.
    *
    * @param credentialIdentifierBase64 base64-encoded credential identifier
-   * @param sessionKeyBase64           base64-encoded session key from the 3DH handshake
+   * @param sessionKeyBase64           ignored; retained only for source compatibility
    * @return signed JWT string
+   * @deprecated the session key is no longer stored server-side — see {@link SessionData}.
+   *     Use {@link #issueToken(String)}; this overload discards its second argument.
    */
+  @Deprecated(since = "3.2.0", forRemoval = true)
   public String issueToken(String credentialIdentifierBase64, String sessionKeyBase64) {
+    return issueToken(credentialIdentifierBase64);
+  }
+
+  /**
+   * Issues a JWT for a successfully authenticated credential.
+   *
+   * @param credentialIdentifierBase64 base64-encoded credential identifier
+   * @return signed JWT string
+   * @throws IllegalArgumentException if the supplier returns a key below
+   *                                  {@link #MIN_SIGNING_KEY_BYTES}
+   */
+  public String issueToken(String credentialIdentifierBase64) {
     String jti = UUID.randomUUID().toString();
     Instant now = Instant.now();
     Instant expiresAt = now.plusSeconds(ttlSeconds);
 
     JwtKeyDetail detail = keyDetailSupplier.get();
+    // Re-check on every issue, not only at construction. The whole point of the Supplier is that
+    // key material can be rotated at runtime, so a rotation is precisely how a weak key would
+    // arrive after startup — and Algorithm.HMAC256 accepts any length without complaint, so
+    // without this a rotation to a one-byte key would silently sign real tokens. Two length
+    // comparisons on a path that already computes an HMAC.
+    requireAdequateKey(detail);
     Algorithm algorithm = Algorithm.HMAC256(detail.signingKey());
 
     String token = JWT.create()
@@ -84,7 +139,7 @@ public class JwtManager {
         .withExpiresAt(expiresAt)
         .sign(algorithm);
 
-    sessionStore.store(jti, new SessionData(credentialIdentifierBase64, sessionKeyBase64, now, expiresAt));
+    sessionStore.store(jti, new SessionData(credentialIdentifierBase64, now, expiresAt));
     log.debug("Issued JWT jti={} for credential", jti);
     return token;
   }
@@ -105,9 +160,22 @@ public class JwtManager {
     // Try the current signing key first
     Optional<DecodedJWT> decoded = verifyWith(token, detail.signingKey());
 
-    // Fall back to the previous key during rotation
+    // Fall back to the previous key during rotation, unless it is too short to be trusted.
+    //
+    // Skipped rather than thrown, deliberately. Verification is on the request path for every
+    // authenticated call, so throwing here on a bad rotation would take down every live session
+    // at once — a self-inflicted outage in response to a configuration mistake. Skipping refuses
+    // tokens forged under the weak key while leaving tokens signed with the good current key
+    // working, which is the containing behaviour. ERROR level because it is silent otherwise:
+    // the only symptom would be users mid-rotation being logged out.
     if (decoded.isEmpty() && detail.previousKey() != null) {
-      decoded = verifyWith(token, detail.previousKey());
+      if (detail.previousKey().length < MIN_SIGNING_KEY_BYTES) {
+        log.error("Previous JWT signing key is {} bytes, below the {}-byte minimum; ignoring it "
+                + "for verification. Tokens signed with it will be rejected.",
+            detail.previousKey().length, MIN_SIGNING_KEY_BYTES);
+      } else {
+        decoded = verifyWith(token, detail.previousKey());
+      }
     }
 
     if (decoded.isEmpty()) {
@@ -155,6 +223,16 @@ public class JwtManager {
    */
   public void revokeByCredentialIdentifier(String credentialIdentifierBase64) {
     sessionStore.revokeByCredentialIdentifier(credentialIdentifierBase64);
+  }
+
+  /**
+   * Releases resources held by the backing {@link SessionStore}, such as its expiry reaper.
+   * <p>
+   * Called from {@code HofmannOpaqueServerManager.shutdown()}; the session store is reached
+   * only through this manager, so it has no other route to a lifecycle hook.
+   */
+  public void shutdown() {
+    sessionStore.shutdown();
   }
 
   /**

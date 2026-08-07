@@ -33,12 +33,6 @@ final class CredentialIdentifiers {
   private static final Base64.Encoder ENCODER = Base64.getEncoder();
   private static final Base64.Decoder DECODER = Base64.getDecoder();
 
-  /**
-   * Matches {@code MAX_ENCODED_FIELD_LENGTH} in the request models. Kept in sync deliberately:
-   * this is a pre-decode bound, not a replacement for the models' own per-field validation.
-   */
-  private static final int MAX_ENCODED_LENGTH = 4096;
-
   private CredentialIdentifiers() {
   }
 
@@ -58,12 +52,10 @@ final class CredentialIdentifiers {
     if (value == null || value.isBlank()) {
       return value;
     }
-    // Bound the work before decoding. The per-field cap lives in each model's decode(), which
-    // runs later, so without this an oversized identifier would be fully decoded and re-encoded
+    // Bound the work before decoding. The per-field cap lives in WireFields.decode, which runs
+    // later, so without this an oversized identifier would be fully decoded and re-encoded
     // (~2.3x its length in allocation) only to be rejected a moment afterwards.
-    if (value.length() > MAX_ENCODED_LENGTH) {
-      throw new IllegalArgumentException("Field too large: credentialIdentifier");
-    }
+    WireFields.checkLength(value, "credentialIdentifier");
     try {
       return ENCODER.encodeToString(DECODER.decode(value));
     } catch (IllegalArgumentException e) {

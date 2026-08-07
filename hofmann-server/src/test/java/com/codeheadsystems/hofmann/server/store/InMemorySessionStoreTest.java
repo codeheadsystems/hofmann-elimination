@@ -28,7 +28,7 @@ class InMemorySessionStoreTest {
    */
   @Test
   void storeAndLoad_roundTrip() {
-    SessionData data = new SessionData("cred", "key", Instant.now(), Instant.now().plusSeconds(3600));
+    SessionData data = new SessionData("cred", Instant.now(), Instant.now().plusSeconds(3600));
     store.store("jti-1", data);
 
     Optional<SessionData> loaded = store.load("jti-1");
@@ -48,7 +48,7 @@ class InMemorySessionStoreTest {
    */
   @Test
   void load_expired_returnsEmpty() {
-    SessionData data = new SessionData("cred", "key",
+    SessionData data = new SessionData("cred",
         Instant.now().minusSeconds(7200), Instant.now().minusSeconds(3600));
     store.store("jti-expired", data);
 
@@ -60,7 +60,7 @@ class InMemorySessionStoreTest {
    */
   @Test
   void revoke_removesSession() {
-    SessionData data = new SessionData("cred", "key", Instant.now(), Instant.now().plusSeconds(3600));
+    SessionData data = new SessionData("cred", Instant.now(), Instant.now().plusSeconds(3600));
     store.store("jti-revoke", data);
 
     store.revoke("jti-revoke");
@@ -73,9 +73,9 @@ class InMemorySessionStoreTest {
   @Test
   void revokeByCredentialIdentifier_removesAllSessionsForCredential_leavesOthersIntact() {
     Instant expiry = Instant.now().plusSeconds(3600);
-    store.store("jti-a1", new SessionData("cred-a", "key", Instant.now(), expiry));
-    store.store("jti-a2", new SessionData("cred-a", "key", Instant.now(), expiry));
-    store.store("jti-b1", new SessionData("cred-b", "key", Instant.now(), expiry));
+    store.store("jti-a1", new SessionData("cred-a", Instant.now(), expiry));
+    store.store("jti-a2", new SessionData("cred-a", Instant.now(), expiry));
+    store.store("jti-b1", new SessionData("cred-b", Instant.now(), expiry));
 
     store.revokeByCredentialIdentifier("cred-a");
 

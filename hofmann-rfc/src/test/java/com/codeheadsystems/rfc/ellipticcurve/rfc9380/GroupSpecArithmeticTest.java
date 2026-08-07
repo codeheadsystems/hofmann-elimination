@@ -8,6 +8,7 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.stream.Stream;
+import org.bouncycastle.math.ec.ECPoint;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -225,6 +226,12 @@ class GroupSpecArithmeticTest {
         .hasMessageContaining("identity");
   }
 
+  /**
+   * The SEC1 identity is the single byte {@code 0x00}, which the canonical-encoding checks in
+   * {@code deserializePoint} would otherwise refuse as merely malformed. It is matched by name
+   * first so that the identity is rejected as the identity on every suite — matching the
+   * ristretto255 case above, which is the point of running both.
+   */
   @ParameterizedTest(name = "{0}")
   @MethodSource("weierstrassSpecs")
   void weierstrassLinearCombinationRejectsTheIdentityInputEncoding(String name, GroupSpec spec) {
@@ -232,6 +239,30 @@ class GroupSpecArithmeticTest {
         new BigInteger[]{BigInteger.ONE}, new byte[][]{new byte[]{0x00}}))
         .isInstanceOf(SecurityException.class)
         .hasMessageContaining("identity");
+  }
+
+  /**
+   * The non-canonical encodings RFC 9497 §2.1 excludes must be refused on every path, not only
+   * the verifiable one. {@code validateElement} has covered this for the VOPRF/POPRF managers;
+   * this pins it for {@code scalarMultiply}, which is what the base-mode OPRF and OPAQUE reach.
+   */
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("weierstrassSpecs")
+  void weierstrassScalarMultiplyRejectsNonCompressedEncodings(String name, GroupSpec spec) {
+    WeierstrassGroupSpecImpl impl = (WeierstrassGroupSpecImpl) spec;
+    ECPoint generator = impl.deserializePoint(spec.generator());
+
+    for (boolean hybrid : new boolean[]{false, true}) {
+      byte[] encoded = generator.getEncoded(false);
+      if (hybrid) {
+        // SEC1 hybrid: uncompressed body, but the prefix also carries y's parity.
+        encoded[0] = (byte) (generator.normalize().getYCoord().testBitZero() ? 0x07 : 0x06);
+      }
+      byte[] element = encoded;
+      assertThatThrownBy(() -> spec.scalarMultiply(BigInteger.TWO, element))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("compressed SEC1");
+    }
   }
 
   static Stream<Arguments> weierstrassSpecs() {

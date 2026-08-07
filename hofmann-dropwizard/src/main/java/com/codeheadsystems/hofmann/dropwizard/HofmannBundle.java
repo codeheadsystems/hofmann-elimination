@@ -217,6 +217,13 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
    *       .withJwtKeyDetailSupplier(() -> keyRotationService.currentJwtKeyDetail()));
    * }**</pre>
    *
+   * <p><strong>The supplier must be callable at construction time.</strong> {@code JwtManager}
+   * calls {@code get()} in its constructor to enforce the minimum key length, so a supplier
+   * backed by an external key service (Vault, KMS) must be able to answer during
+   * {@code run(...)}, not only at first token issue. The same check runs on every
+   * {@code issueToken}, so a rotation that introduces a key below
+   * {@code JwtManager.MIN_SIGNING_KEY_BYTES} is refused rather than silently used for signing.
+   *
    * @param jwtKeyDetailSupplier the jwt key detail supplier
    * @return {@code this}, for fluent chaining
    */

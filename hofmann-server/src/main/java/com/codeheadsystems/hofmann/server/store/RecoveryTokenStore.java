@@ -45,6 +45,16 @@ public interface RecoveryTokenStore {
    * <p>
    * Returns empty if the token is not found or has expired.
    * The token is always removed on a successful retrieval (single-use).
+   * <p>
+   * <strong>This method MUST be atomic and single-winner.</strong> If two callers present the
+   * same token concurrently, exactly one may receive a non-empty result. This is not a
+   * performance note: {@code registrationFinish} validates the credential identifier against
+   * {@link #peek} and then calls this method, and it is <em>this</em> call — not the comparison —
+   * that decides which of two concurrent recovery attempts is allowed to re-register the account.
+   * A non-atomic implementation (a Redis {@code GET} followed by a separate {@code DEL}, for
+   * instance) lets both callers through, and the failure is silent: both re-registrations
+   * succeed and the last writer owns the account. The TTL must also be re-checked inside this
+   * call rather than relying on an earlier {@code peek}.
    *
    * @param token the recovery token
    * @return the base64-encoded credential identifier, or empty if not found or expired

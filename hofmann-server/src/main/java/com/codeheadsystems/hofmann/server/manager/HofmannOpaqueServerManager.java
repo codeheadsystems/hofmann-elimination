@@ -26,6 +26,7 @@ import com.codeheadsystems.rfc.opaque.Server;
 import com.codeheadsystems.rfc.opaque.model.KE1;
 import com.codeheadsystems.rfc.opaque.model.RegistrationRecord;
 import com.codeheadsystems.rfc.opaque.model.ServerKE2Result;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Optional;
 import java.util.UUID;
@@ -83,6 +84,15 @@ public class HofmannOpaqueServerManager {
    * again, which is the same caveat that applies to {@link #RECOVERY_VERIFY_MIN_NANOS}.
    */
   private static final long REGISTRATION_FINISH_MIN_NANOS = 25L * 1_000_000L; // 25 ms
+
+  /**
+   * The single message every recovery-token failure reports.
+   * <p>
+   * Shared so that "no such token", "token names a different credential" and "another request
+   * consumed it first" are indistinguishable to the caller. Distinguishing them confirms to
+   * whoever holds a token that it is live and only the identifier is wrong.
+   */
+  private static final String INVALID_RECOVERY_TOKEN = "Invalid or expired recovery token";
 
   /**
    * Ceiling on requests simultaneously parked inside {@link #recoveryVerify}'s constant-time
@@ -228,7 +238,7 @@ public class HofmannOpaqueServerManager {
   }
 
   /**
-   * Shuts down background resources (pending session reaper, rate limiters).
+   * Shuts down background resources (pending session reaper, session reaper, rate limiters).
    * <p>
    * Should be called on application shutdown to release background threads.
    * In Dropwizard, register this instance as a {@code Managed} component.
@@ -236,6 +246,7 @@ public class HofmannOpaqueServerManager {
    */
   public void shutdown() {
     pendingSessionStore.shutdown();
+    jwtManager.shutdown();
     authRateLimiter.shutdown();
     registrationRateLimiter.shutdown();
     if (recoveryTokenStore != null) {
@@ -355,19 +366,47 @@ public class HofmannOpaqueServerManager {
       // registration.
       validateRecord(req);
       // Recovery-token lifecycle: registrationStart only peeks the token (non-consuming) so the
-      // client can safely retry start after a network failure. This finish step is the single,
-      // atomic consume gate: remove() returns the bound credential id exactly once, so the
-      // account-mutating work below (delete old record, revoke sessions, store new record) runs
-      // at most once per token. A second finish with the same token gets Optional.empty() and is
-      // rejected. TTL/expiry is re-checked here by the store, so there is no TOCTOU against the
-      // earlier peek.
-      String credId = recoveryTokenStore.remove(bearerToken)
-          .orElseThrow(() -> new SecurityException("Invalid or expired recovery token"));
+      // client can safely retry start after a network failure. This finish step is the single
+      // consume gate — the account-mutating work below runs at most once per token.
+      //
+      // Peek, compare, then remove, rather than remove-then-compare. Consuming first meant
+      // anyone who observed a token could destroy it by replaying it with a *wrong* identifier:
+      // the remove succeeded, the comparison then failed, and the legitimate user had to restart
+      // recovery. The identifier check costs nothing and gates the consume.
+      //
+      // Single-use is still enforced by remove() being atomic, not by the peek: two concurrent
+      // finishes both pass the comparison, but only one remove() returns a value and the loser
+      // is rejected below. TTL/expiry is re-checked by the store at both steps, so there is no
+      // TOCTOU against the peek — a token that expires in between simply fails the remove.
+      // One message for every failure here, deliberately. A distinct "does not match credential"
+      // told a token holder that the token was live and only the identifier was wrong — an
+      // identifier-confirmation oracle. Under the old remove-then-compare they got exactly one
+      // such probe before destroying the token; now that a wrong guess is non-destructive they
+      // would get a rate-limited stream of them. The limiter above bounds it, but the signal
+      // costs nothing to remove. Matters most for deployments whose identifiers are
+      // high-entropy rather than email addresses — precisely the ones where the old fail-closed
+      // behaviour was doing real work. The distinction is kept at DEBUG for operators.
+      String credId = recoveryTokenStore.peek(bearerToken)
+          .orElseThrow(() -> new SecurityException(INVALID_RECOVERY_TOKEN));
       if (!credId.equals(req.credentialIdentifierBase64())) {
-        throw new SecurityException("Recovery token does not match credential");
+        log.debug("registrationFinish: recovery token is valid but names a different credential");
+        throw new SecurityException(INVALID_RECOVERY_TOKEN);
       }
-      log.info("Recovery re-registration for credential {}", req.credentialIdentifierBase64());
-      credentialStore.delete(req.credentialIdentifier());
+      if (recoveryTokenStore.remove(bearerToken).isEmpty()) {
+        throw new SecurityException(INVALID_RECOVERY_TOKEN);
+      }
+      // DEBUG, not INFO: the credential identifier is usually an email address, and a
+      // re-registration line names an account that just went through recovery. That belongs
+      // behind the same switch as the rest of the identifier logging rather than in the
+      // default-level record every deployment keeps.
+      log.debug("Recovery re-registration for credential {}", req.credentialIdentifierBase64());
+      // No delete before the store at the end of this method. delete-then-store left a window in
+      // which the credential did not exist, which the unauthenticated registrationFinish path
+      // could be flooded to land inside — and a failure between the two steps left the account
+      // permanently unregistered with no record to fall back to. store() is contractually an
+      // upsert, so replacing in one operation is both narrower and recoverable: on failure the
+      // old record survives. Sessions are revoked here, before the new record lands, so no token
+      // issued against the old password outlives it.
       jwtManager.revokeByCredentialIdentifier(req.credentialIdentifierBase64());
     } else {
       // Normal (non-recovery) registration. Both branches below must be indistinguishable to an
@@ -387,25 +426,30 @@ public class HofmannOpaqueServerManager {
         // Validate after the token is consumed, so the group-element decode — the only
         // expensive part, and up to ~1.2 ms on ristretto255 — cannot be driven unthrottled.
         validateRecord(req);
-        if (credentialStore.loadVersioned(req.credentialIdentifier()).isPresent()) {
-          // Must not overwrite an existing record: registrationStart/Finish are unauthenticated,
-          // so without this guard anyone who knows a victim's credential identifier could
-          // re-register it with their own password and take over the account. Existing
-          // credentials are updated through the authenticated change-password flow or the
-          // recovery flow (which deletes the old record above before storing the new one).
-          //
-          // Return normally rather than throwing. Throwing produced HTTP 400 for an existing
-          // credential and 204 for a new one, which is an unauthenticated existence oracle — it
-          // defeated the enumeration resistance authStart goes to real trouble to provide, where
-          // an unknown credential gets a manufactured KE2 precisely so this bit cannot be read.
-          // The security property that matters is "does not overwrite", and that is preserved;
-          // signalling *why* nothing was written is what leaked. A legitimate client re-running
-          // registration therefore sees success without its record being replaced.
-          log.debug("registrationFinish: credential already registered, record left unchanged");
-          return;
-        }
+        // Must not overwrite an existing record: registrationStart/Finish are unauthenticated,
+        // so without this guard anyone who knows a victim's credential identifier could
+        // re-register it with their own password and take over the account. Existing
+        // credentials are updated through the authenticated change-password flow or the
+        // recovery flow (which replaces the record above rather than passing through here).
+        //
+        // One storeIfAbsent rather than loadVersioned-then-store. The two-step form was a
+        // check-then-act: two concurrent finishes naming the same identifier could both observe
+        // "absent" and both write, so the guard did not actually hold under the very condition
+        // an attacker controls — how fast they can call this endpoint. The store is the only
+        // layer that can make the check and the write one operation.
+        //
+        // Return normally either way rather than throwing. Throwing produced HTTP 400 for an
+        // existing credential and 204 for a new one, which is an unauthenticated existence
+        // oracle — it defeated the enumeration resistance authStart goes to real trouble to
+        // provide, where an unknown credential gets a manufactured KE2 precisely so this bit
+        // cannot be read. The security property that matters is "does not overwrite", and that
+        // is preserved; signalling *why* nothing was written is what leaked. A legitimate client
+        // re-running registration therefore sees success without its record being replaced.
         int currentVersion = keyDetailSupplier.get().currentVersion();
-        credentialStore.store(req.credentialIdentifier(), req.registrationRecord(), currentVersion);
+        if (!credentialStore.storeIfAbsent(
+            req.credentialIdentifier(), req.registrationRecord(), currentVersion)) {
+          log.debug("registrationFinish: credential already registered, record left unchanged");
+        }
         return;
       } finally {
         sleepUntil(deadlineNanos);
@@ -500,7 +544,10 @@ public class HofmannOpaqueServerManager {
     // here) but before the delete, so a malformed record cannot destroy a working registration
     // and leave the account unregistered.
     validateRecord(req);
-    credentialStore.delete(req.credentialIdentifier());
+    // Revoke first, then replace in a single upsert. The previous delete-then-store pair left a
+    // window in which the credential did not exist — reachable by flooding the unauthenticated
+    // registrationFinish — and a failure between the two left the account permanently
+    // unregistered. See the matching note in the recovery branch of registrationFinish.
     jwtManager.revokeByCredentialIdentifier(req.credentialIdentifierBase64());
     int currentVersion = keyDetailSupplier.get().currentVersion();
     credentialStore.store(req.credentialIdentifier(), req.registrationRecord(), currentVersion);
@@ -590,7 +637,7 @@ public class HofmannOpaqueServerManager {
     final long deadlineNanos = System.nanoTime() + RECOVERY_VERIFY_MIN_NANOS;
     try {
       if (!recoveryChallenger.verifyResponse(
-          req.credentialIdentifier(), req.validatedChallengeResponse())) {
+          req.credentialIdentifier(), req.challengeResponse())) {
         throw new SecurityException("Recovery verification failed");
       }
       String token = UUID.randomUUID().toString();
@@ -621,7 +668,7 @@ public class HofmannOpaqueServerManager {
 
   private void validateRecoveryToken(String token, String expectedCredentialIdentifierBase64) {
     if (recoveryTokenStore == null) {
-      throw new SecurityException("Invalid or expired recovery token");
+      throw new SecurityException(INVALID_RECOVERY_TOKEN);
     }
     // Intentionally non-consuming (peek): registrationStart performs no persistent state change
     // (it only returns a registration response), so a token may validate multiple start calls
@@ -629,9 +676,16 @@ public class HofmannOpaqueServerManager {
     // Single use is enforced by the atomic remove() in registrationFinish, which is the only step
     // that mutates account state. See registrationFinish for the full lifecycle.
     String credId = recoveryTokenStore.peek(token)
-        .orElseThrow(() -> new SecurityException("Invalid or expired recovery token"));
+        .orElseThrow(() -> new SecurityException(INVALID_RECOVERY_TOKEN));
     if (!credId.equals(expectedCredentialIdentifierBase64)) {
-      throw new SecurityException("Recovery token does not match credential");
+      // Same single message as registrationFinish, and it matters more here. This path is
+      // non-consuming by design, so a distinct "does not match credential" was a *freely
+      // repeatable* identifier-confirmation oracle for anyone holding a token — no token is
+      // spent to ask, and unlike the finish path there is no token-keyed limiter in front of it
+      // (registrationStart's limiter keys on the credential identifier, which is the very thing
+      // being guessed, so each guess draws from a different bucket).
+      log.debug("registrationStart: recovery token is valid but names a different credential");
+      throw new SecurityException(INVALID_RECOVERY_TOKEN);
     }
   }
 
@@ -698,7 +752,10 @@ public class HofmannOpaqueServerManager {
    * @throws SecurityException        if the session token is unknown / expired, or if                                  the client MAC does not verify
    */
   public AuthFinishResponse authFinish(AuthFinishRequest req) {
-    log.debug("authFinish(sessionToken={})", req.sessionToken());
+    // The session token is a bearer credential for the pending handshake, so it is not logged —
+    // same policy InMemoryRecoveryTokenStore states for the structurally equivalent recovery
+    // token. Logging it at DEBUG put it in any deployment running debug logging.
+    log.debug("authFinish()");
     PendingSessionStore.PendingSession pending = pendingSessionStore.remove(req.sessionToken())
         .orElseThrow(() -> new SecurityException("Session not found or expired"));
 
@@ -708,10 +765,19 @@ public class HofmannOpaqueServerManager {
       server = keyDetail.currentServer();
     }
     byte[] sessionKey = server.serverFinish(pending.state(), req.ke3());
-    String sessionKeyBase64 = B64.encodeToString(sessionKey);
-    String token = jwtManager.issueToken(pending.credentialIdentifierBase64(), sessionKeyBase64);
+    try {
+      String sessionKeyBase64 = B64.encodeToString(sessionKey);
+      // The key is not passed to the JWT layer any more: nothing ever read it back out of the
+      // session store, and a String cannot be zeroed. See SessionData.
+      String token = jwtManager.issueToken(pending.credentialIdentifierBase64());
 
-    Boolean rotationRequired = pending.keyVersion() < keyDetail.currentVersion() ? Boolean.TRUE : null;
-    return new AuthFinishResponse(sessionKeyBase64, token, rotationRequired);
+      Boolean rotationRequired =
+          pending.keyVersion() < keyDetail.currentVersion() ? Boolean.TRUE : null;
+      return new AuthFinishResponse(sessionKeyBase64, token, rotationRequired);
+    } finally {
+      // The base64 String still has to reach the client, so this does not make the key
+      // unrecoverable from the heap — it just stops the raw copy outliving the request.
+      Arrays.fill(sessionKey, (byte) 0);
+    }
   }
 }

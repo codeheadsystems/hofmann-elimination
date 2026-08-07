@@ -22,10 +22,33 @@ import org.bouncycastle.math.ec.ECPoint;
 public class HashToCurve {
 
   /**
-   * Default domain separation tag for secp256k1 random oracle encoding.
-   * Applications should use their own application-specific DST.
+   * The RFC 9380 §8.7 suite ID for secp256k1 random-oracle encoding.
+   *
+   * <p><strong>This is a secp256k1 tag, and this class also serves P-256, P-384 and P-521.</strong>
+   * It is named for the suite it belongs to rather than "default" because
+   * {@code forP521().hashToCurve(msg, DEFAULT_DST)} compiles, runs, and produces output that is
+   * wrong in the way that matters least visibly: it is a perfectly good hash, it round-trips, and
+   * it silently disagrees with every conformant implementation of P-521 — including this
+   * library's own other entry points. RFC 9380 §3.1 requires the DST to identify the suite, which
+   * is exactly the mistake the old name invited.
+   *
+   * <p>Applications should pass their own application-specific DST. Callers that want the
+   * conformant per-suite tag should take it from the cipher suite rather than from here.
+   *
+   * @deprecated misleading as a "default"; use the suite-specific DST for the curve in use.
+   *     Retained under the old name below for source compatibility.
    */
-  public static final String DEFAULT_DST = "secp256k1_XMD:SHA-256_SSWU_RO_";
+  public static final String SECP256K1_XMD_SHA256_SSWU_RO_DST = "secp256k1_XMD:SHA-256_SSWU_RO_";
+
+  /**
+   * Old name for {@link #SECP256K1_XMD_SHA256_SSWU_RO_DST}.
+   *
+   * @deprecated the name says "default" but the value is specific to secp256k1. Use
+   *     {@link #SECP256K1_XMD_SHA256_SSWU_RO_DST} when that is the curve in use, and a
+   *     suite-appropriate tag otherwise.
+   */
+  @Deprecated(since = "3.2.0", forRemoval = true)
+  public static final String DEFAULT_DST = SECP256K1_XMD_SHA256_SSWU_RO_DST;
 
   private final HashToField hashToField;
   private final SimplifiedSWU simplifiedSWU;

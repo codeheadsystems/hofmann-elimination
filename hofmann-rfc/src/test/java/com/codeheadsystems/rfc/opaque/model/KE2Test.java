@@ -92,31 +92,48 @@ class KE2Test {
    * error rather than an ArrayIndexOutOfBoundsException that could leak message structure.
    */
   @Test
-  void deserialize_emptyBuffer_throwsTooShort() {
+  void deserialize_emptyBuffer_throwsLengthError() {
     assertThatThrownBy(() -> KE2.deserialize(CONFIG, new byte[0]))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("too short");
+        .hasMessageContaining("must be exactly");
   }
 
   /**
    * A buffer one byte short of the expected length must also be rejected.
    */
   @Test
-  void deserialize_oneByteShort_throwsTooShort() {
+  void deserialize_oneByteShort_throwsLengthError() {
     int expectedLen = CONFIG.Noe() + OpaqueConfig.Nn + CONFIG.maskedResponseSize()
         + OpaqueConfig.Nn + CONFIG.Npk() + CONFIG.Nm();
     assertThatThrownBy(() -> KE2.deserialize(CONFIG, new byte[expectedLen - 1]))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("too short");
+        .hasMessageContaining("must be exactly");
   }
 
   /**
    * A null buffer must be rejected with the same length error.
    */
   @Test
-  void deserialize_nullBuffer_throwsTooShort() {
+  void deserialize_nullBuffer_throwsLengthError() {
     assertThatThrownBy(() -> KE2.deserialize(CONFIG, null))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("too short");
+        .hasMessageContaining("must be exactly");
+  }
+
+  /**
+   * Trailing bytes must be rejected rather than silently dropped.
+   *
+   * <p>Every KE2 field is a suite constant, so a conformant message is exactly {@code expectedLen}
+   * bytes. The old lower-bound check parsed the prefix and discarded whatever followed, which made
+   * {@code deserialize} not the inverse of {@code serialize} and gave one logical message an
+   * unbounded family of accepted encodings.
+   */
+  @Test
+  void deserialize_trailingBytes_throwsLengthError() {
+    int expectedLen = CONFIG.Noe() + OpaqueConfig.Nn + CONFIG.maskedResponseSize()
+        + OpaqueConfig.Nn + CONFIG.Npk() + CONFIG.Nm();
+    assertThatThrownBy(() -> KE2.deserialize(CONFIG, new byte[expectedLen + 1]))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("must be exactly");
   }
 }

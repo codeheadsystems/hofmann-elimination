@@ -244,6 +244,12 @@ public class HofmannAutoConfiguration {
    *   }
    * }***</pre>
    *
+   * <p><strong>The supplier must be callable at construction time.</strong> {@code JwtManager}
+   * calls {@code get()} in its constructor to enforce the minimum key length, so a supplier
+   * backed by an external key service (Vault, KMS) must be able to answer at startup, not only
+   * at first token issue. It is also called on every {@code issueToken}, so a rotation that
+   * introduces a key below the minimum is refused there rather than silently signing with it.
+   *
    * @param props        the props
    * @param secureRandom the secure random
    * @return the supplier

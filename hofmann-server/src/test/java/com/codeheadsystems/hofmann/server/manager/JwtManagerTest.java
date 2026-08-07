@@ -1,6 +1,7 @@
 package com.codeheadsystems.hofmann.server.manager;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
@@ -182,5 +183,71 @@ class JwtManagerTest {
 
     // Old token no longer works
     assertThat(dynamic.verify(token1)).isEmpty();
+  }
+
+  /**
+   * A weak key must be refused at construction.
+   */
+  @Test
+  void construct_withShortSigningKey_throws() {
+    assertThatThrownBy(() ->
+        new JwtManager(new byte[]{0x00}, "test-issuer", 3600, new InMemorySessionStore()))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("at least 32 bytes");
+  }
+
+  /**
+   * A rotation to a weak key must be refused at issue time, not silently used for signing.
+   *
+   * <p>This is the case the construction-time check alone misses, and it is the one the
+   * {@code Supplier} exists to enable: the manager starts with a good key, so construction
+   * passes, and the weak key arrives later. {@code Algorithm.HMAC256} accepts any length without
+   * complaint, so without the re-check in {@code issueToken} a one-byte key would sign real
+   * tokens — the {@code jwtSecretHex: "00"} finding, reached by rotation instead of by config.
+   */
+  @Test
+  void issueToken_afterRotationToAShortKey_throwsRatherThanSigning() {
+    AtomicReference<JwtKeyDetail> detailRef = new AtomicReference<>(new JwtKeyDetail(SECRET));
+    JwtManager dynamic = new JwtManager(detailRef::get, "test-issuer", 3600, sessionStore);
+
+    // Healthy to begin with.
+    assertThat(dynamic.verify(dynamic.issueToken("Y3JlZA=="))).isPresent();
+
+    // Someone rotates in a one-byte key.
+    detailRef.set(new JwtKeyDetail(new byte[]{0x00}));
+
+    assertThatThrownBy(() -> dynamic.issueToken("Y3JlZA=="))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("at least 32 bytes");
+  }
+
+  /**
+   * A short previous key is skipped during verification, not thrown on.
+   *
+   * <p>Verification runs on every authenticated request, so throwing here would answer a
+   * configuration mistake with a total outage. Skipping refuses tokens forged under the weak key
+   * while leaving tokens signed with the good current key working.
+   */
+  @Test
+  void verify_withShortPreviousKey_skipsItWithoutBreakingCurrentTokens() {
+    AtomicReference<JwtKeyDetail> detailRef = new AtomicReference<>(new JwtKeyDetail(SECRET));
+    JwtManager dynamic = new JwtManager(detailRef::get, "test-issuer", 3600, sessionStore);
+    String goodToken = dynamic.issueToken("Y3JlZA==");
+
+    // A token forged under the weak key that is about to become the "previous" key.
+    String forged = JWT.create()
+        .withIssuer("test-issuer")
+        .withJWTId("forged-jti")
+        .withSubject("Y3JlZA==")
+        .withIssuedAt(Instant.now())
+        .withExpiresAt(Instant.now().plusSeconds(3600))
+        .sign(Algorithm.HMAC256(new byte[]{0x00}));
+
+    detailRef.set(new JwtKeyDetail(SECRET, new byte[]{0x00}));
+
+    // Live sessions survive...
+    assertThat(dynamic.verify(goodToken)).isPresent();
+    // ...and the forgery under the weak previous key is refused.
+    assertThat(dynamic.verify(forged)).isEmpty();
   }
 }
