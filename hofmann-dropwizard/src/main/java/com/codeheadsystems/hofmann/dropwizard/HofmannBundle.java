@@ -30,10 +30,15 @@ import com.codeheadsystems.rfc.common.RandomProvider;
 import com.codeheadsystems.rfc.opaque.Server;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
+import com.codeheadsystems.hofmann.model.oprf.VerifiableOprfLimits;
 import com.codeheadsystems.rfc.oprf.manager.OprfServerManager;
+import com.codeheadsystems.rfc.oprf.manager.PoprfServerManager;
+import com.codeheadsystems.rfc.oprf.manager.VoprfServerManager;
 import com.codeheadsystems.rfc.oprf.model.ServerProcessorDetail;
+import com.codeheadsystems.rfc.oprf.model.VerifiableProcessorDetail;
 import com.codeheadsystems.rfc.oprf.rfc9497.CurveHashSuite;
 import com.codeheadsystems.rfc.oprf.rfc9497.OprfCipherSuite;
+import com.codeheadsystems.rfc.oprf.rfc9497.OprfMode;
 import io.dropwizard.auth.AuthDynamicFeature;
 import io.dropwizard.auth.AuthValueFactoryProvider;
 import io.dropwizard.auth.oauth.OAuthCredentialAuthFilter;
@@ -55,6 +60,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.HashSet;
 import java.util.HexFormat;
+import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
@@ -351,7 +357,8 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     OprfServerManager oprfServerManager = new OprfServerManager(oprfSuite, oprfSupplier);
     RateLimiter oprfRateLimiter = rateLimiterFunction.apply(rateLimitConfigSupplier.oprfRateLimitConfig());
     environment.jersey().register(new OprfResource(oprfServerManager, oprfClientConfig, oprfRateLimiter,
-        configuration.isTrustForwardedHeaders()));
+        configuration.isTrustForwardedHeaders(),
+        buildVoprfManager(configuration), buildPoprfManager(configuration)));
 
     // Shutdown lifecycle for manager and rate limiters
     environment.lifecycle().manage(new io.dropwizard.lifecycle.Managed() {
@@ -367,9 +374,64 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     });
   }
 
+  /**
+   * Builds the VOPRF manager, or null when no key is configured.
+   *
+   * <p>Null rather than an ephemerally-keyed manager. The value of a verifiable mode is that
+   * clients pin the server's public key and grade proofs against it, so a key regenerated at every
+   * restart makes every previously pinned key wrong — silently, and only for clients that were
+   * actually checking. A deployment that has not chosen a key is better served by the endpoint
+   * answering 404.
+   */
+  private VoprfServerManager buildVoprfManager(C configuration) {
+    String keyHex = configuration.getVoprfMasterKeyHex();
+    if (keyHex == null || keyHex.isEmpty()) {
+      return null;
+    }
+    OprfCipherSuite suite = OprfCipherSuite.builder()
+        .withSuite(configuration.getOprfCipherSuite())
+        .withMode(OprfMode.VOPRF)
+        .withRandom(secureRandom)
+        .build();
+    VerifiableProcessorDetail detail = VerifiableProcessorDetail.derive(
+        suite, new BigInteger(keyHex, 16), configuration.getOprfProcessorId() + "-voprf");
+    log.info("VOPRF (mode 0x01) enabled");
+    return new VoprfServerManager(suite, () -> detail);
+  }
+
+  /**
+   * Builds the POPRF manager, or null when no key is configured. See {@link #buildVoprfManager}.
+   */
+  private PoprfServerManager buildPoprfManager(C configuration) {
+    String keyHex = configuration.getPoprfMasterKeyHex();
+    if (keyHex == null || keyHex.isEmpty()) {
+      return null;
+    }
+    OprfCipherSuite suite = OprfCipherSuite.builder()
+        .withSuite(configuration.getOprfCipherSuite())
+        .withMode(OprfMode.POPRF)
+        .withRandom(secureRandom)
+        .build();
+    VerifiableProcessorDetail detail = VerifiableProcessorDetail.derive(
+        suite, new BigInteger(keyHex, 16), configuration.getOprfProcessorId() + "-poprf");
+    log.info("POPRF (mode 0x02) enabled");
+    return new PoprfServerManager(suite, () -> detail);
+  }
+
   private void registerSizeLimitFilter(C configuration, Environment environment) {
-    long maxBytes = configuration.getMaxRequestBodyBytes();
+    long defaultMaxBytes = configuration.getMaxRequestBodyBytes();
+    // The batched verifiable endpoints get a tighter, cap-derived limit. The generic limit bounds
+    // memory but not element count: at 64 KiB it admits roughly 470 hex-encoded P-521 elements
+    // against a configured batch cap of 64, and every one is parsed before the manager rejects the
+    // batch. min() rather than the override outright, so lowering the generic limit still wins.
+    long verifiableMaxBytes = Math.min(defaultMaxBytes,
+        VerifiableOprfLimits.maxRequestBodyBytes(VoprfServerManager.DEFAULT_MAX_BATCH_SIZE));
+    Map<String, Long> perPath = Map.of(
+        "oprf/verifiable", verifiableMaxBytes,
+        "oprf/partially-oblivious", verifiableMaxBytes);
     ContainerRequestFilter filter = (ContainerRequestContext ctx) -> {
+      long maxBytes = perPath.getOrDefault(
+          ctx.getUriInfo().getPath(), defaultMaxBytes);
       long length = ctx.getLength();
       if (length > maxBytes) {
         ctx.abortWith(Response.status(Response.Status.REQUEST_ENTITY_TOO_LARGE)
