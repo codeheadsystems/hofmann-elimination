@@ -41,9 +41,37 @@ public record VoprfClientContext(String requestId,
           "Context lists must be the same length: inputs=" + inputs.size()
               + " blinds=" + blinds.size() + " blindedElements=" + blindedElements.size());
     }
-    inputs = List.copyOf(inputs);
+    // Copy the arrays, not just the lists — List.copyOf makes the list immutable but leaves every
+    // byte[] element aliased to the caller's. Matches PoprfClientContext, which has the sharper
+    // version of the same problem in its tweakedKey; keeping the two consistent means neither
+    // grows a divergent copying rule later. blinds needs no element copy: BigInteger is immutable.
+    inputs = copyEach(inputs);
     blinds = List.copyOf(blinds);
-    blindedElements = List.copyOf(blindedElements);
+    blindedElements = copyEach(blindedElements);
+  }
+
+  private static List<byte[]> copyEach(final List<byte[]> values) {
+    return values.stream().map(v -> v == null ? null : v.clone()).toList();
+  }
+
+  /**
+   * Returns the client inputs, each element copied.
+   *
+   * @return the inputs
+   */
+  @Override
+  public List<byte[]> inputs() {
+    return copyEach(inputs);
+  }
+
+  /**
+   * Returns the serialized blinded elements, each element copied.
+   *
+   * @return the blinded elements
+   */
+  @Override
+  public List<byte[]> blindedElements() {
+    return copyEach(blindedElements);
   }
 
   /**

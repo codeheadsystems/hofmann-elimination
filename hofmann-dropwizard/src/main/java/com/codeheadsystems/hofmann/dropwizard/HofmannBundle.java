@@ -497,7 +497,9 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     OpaqueCipherSuite.AkeKeyPair keyPair = suite.deriveAkeKeyPair(keySeed);
     BigInteger sk = keyPair.privateKey();
     byte[] pk = keyPair.publicKeyBytes();
-    byte[] skFixed = ByteUtils.scalarToFixedBytes(sk, opaqueConfig.Nsk());
+    // Canonical per-suite scalar encoding, matching what Server's constructor decodes:
+    // big-endian on the NIST curves, little-endian on ristretto255. See Server's javadoc.
+    byte[] skFixed = opaqueConfig.cipherSuite().oprfSuite().groupSpec().serializeScalar(sk);
     return new Server(skFixed, pk, oprfSeed, opaqueConfig);
   }
 
@@ -574,7 +576,9 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     BigInteger sk = keyPair.privateKey();
     byte[] pk = keyPair.publicKeyBytes();
 
-    byte[] skFixed = ByteUtils.scalarToFixedBytes(sk, opaqueConfig.Nsk());
+    // Canonical per-suite scalar encoding, matching what Server's constructor decodes:
+    // big-endian on the NIST curves, little-endian on ristretto255. See Server's javadoc.
+    byte[] skFixed = opaqueConfig.cipherSuite().oprfSuite().groupSpec().serializeScalar(sk);
 
     return new Server(skFixed, pk, oprfSeed, opaqueConfig);
   }

@@ -57,13 +57,21 @@ class OpaqueCrossImplVectorsTest {
   }
 
   /**
-   * The server's static private key. The Rust generator emits ristretto255 scalars little-endian;
-   * the Java Server constructor reads the scalar big-endian, so reverse those bytes to drive both
-   * implementations with the identical static key (the NIST suites are big-endian on both sides).
+   * The server's static private key, fed to Java exactly as the Rust generator emitted it.
+   *
+   * <p>This used to reverse the ristretto255 bytes, because Java's {@code Server} constructor read
+   * every suite's scalar big-endian while the Rust generator emits ristretto255 little-endian per
+   * RFC 9496. That reversal was the divergence, not a detail of the harness: it meant these
+   * vectors passed while the two implementations disagreed about what a given 32-byte ristretto255
+   * private key denotes, so the one test positioned to catch it was compensating for it instead.
+   *
+   * <p>{@code Server} now decodes through {@code GroupSpec.deserializeScalar}, which is
+   * per-suite canonical, so the bytes cross unmodified and this is a real cross-implementation
+   * check on all four suites. Removing the reversal is what makes the check meaningful; if this
+   * ever needs to come back, the encodings have diverged again.
    */
   private static byte[] serverPrivateKey(Vector v) {
-    byte[] bytes = hex(v.serverPrivateKey());
-    return v.suite() == OpaqueCipherSuite.RISTRETTO255_SHA512 ? reverse(bytes) : bytes;
+    return hex(v.serverPrivateKey());
   }
 
   // Shared fixed inputs (identical across suites where width-independent).

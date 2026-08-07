@@ -52,9 +52,67 @@ public record PoprfClientContext(String requestId,
           "Context lists must be the same length: inputs=" + inputs.size()
               + " blinds=" + blinds.size() + " blindedElements=" + blindedElements.size());
     }
-    inputs = List.copyOf(inputs);
+    // Copy the arrays, not just the lists. List.copyOf makes the *list* immutable but leaves every
+    // byte[] element aliased to the caller's, so a context could be mutated after construction
+    // through a reference the caller still holds.
+    //
+    // tweakedKey is the one that has to be right: it is what DLEQ verification grades the server's
+    // proof against, and it is the client's own m*G + pkS rather than anything the server sent.
+    // Mutating it between construction and verification swaps the statement being proved — a proof
+    // for a different public input would verify, which is exactly the binding this type exists to
+    // enforce. info is copied for the same reason one step earlier: it is what tweakedKey is
+    // derived from and what the output is bound to.
+    //
+    // blinds needs no element copy; BigInteger is immutable.
+    inputs = copyEach(inputs);
     blinds = List.copyOf(blinds);
-    blindedElements = List.copyOf(blindedElements);
+    blindedElements = copyEach(blindedElements);
+    info = info.clone();
+    tweakedKey = tweakedKey.clone();
+  }
+
+  private static List<byte[]> copyEach(final List<byte[]> values) {
+    return values.stream().map(v -> v == null ? null : v.clone()).toList();
+  }
+
+  /**
+   * Returns a copy of the public input.
+   *
+   * @return a copy of the public input
+   */
+  @Override
+  public byte[] info() {
+    return info.clone();
+  }
+
+  /**
+   * Returns a copy of the client-derived tweaked key.
+   *
+   * @return a copy of the tweaked key
+   */
+  @Override
+  public byte[] tweakedKey() {
+    return tweakedKey.clone();
+  }
+
+  /**
+   * Returns the client inputs, each element copied.
+   *
+   * @return the inputs
+   */
+  @Override
+  public List<byte[]> inputs() {
+    return copyEach(inputs);
+  }
+
+  /**
+   * Returns the serialized blinded elements, each element copied.
+   *
+   * @return the blinded elements
+   */
+  @Override
+  public List<byte[]> blindedElements() {
+    return copyEach(blindedElements);
   }
 
   /**
