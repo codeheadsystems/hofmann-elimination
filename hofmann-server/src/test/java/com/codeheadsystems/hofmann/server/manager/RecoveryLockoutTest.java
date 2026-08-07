@@ -76,6 +76,7 @@ class RecoveryLockoutTest {
   private static final class BindingChallenger implements RecoveryChallenger {
     private volatile String lastChallengeId;
     private final java.util.Set<String> issued = ConcurrentHashMap.newKeySet();
+    private final AtomicInteger verifyCalls = new AtomicInteger();
 
     @Override
     public void sendChallenge(byte[] credentialIdentifier) {
@@ -96,6 +97,7 @@ class RecoveryLockoutTest {
     @Override
     public boolean verifyResponse(byte[] credentialIdentifier, String challengeId,
                                   String challengeResponse) {
+      verifyCalls.incrementAndGet();
       return "correct".equals(challengeResponse) && challengeId != null
           && issued.contains(challengeId);
     }
@@ -264,5 +266,66 @@ class RecoveryLockoutTest {
 
     assertThatCode(() -> manager.recoveryVerify(new RecoveryVerifyRequest(VICTIM, "correct", id)))
         .doesNotThrowAnyException();
+  }
+
+  /**
+   * A genuine challenge id issued for the attacker's own account must not meter a guess against
+   * someone else.
+   *
+   * <p>This was a live regression. The key selection charged such a request to the id's bucket —
+   * "it belongs to whoever holds it" — while {@code verifyResponse} ran unconditionally with the
+   * *named* credential. For any challenger using the two-argument default, that is a guess against
+   * the victim's code charged to the attacker's meter, refreshable by starting another recovery on
+   * an account they control. It was worse than either behaviour it replaced.
+   */
+  @Test
+  void aChallengeIdIssuedForAnotherCredential_isRefusedAndChargedToTheNamedCredential() {
+    BindingChallenger challenger = new BindingChallenger();
+    CountingLimiter limiter = new CountingLimiter(10);
+    manager = build(challenger, limiter);
+
+    // The attacker legitimately recovers their own account and keeps the id.
+    byte[] attacker = "attacker@example.com".getBytes(StandardCharsets.UTF_8);
+    manager.recoveryStart(
+        new com.codeheadsystems.hofmann.model.opaque.RecoveryStartRequest(attacker));
+    String attackerId = challenger.lastChallengeId;
+
+    // They present it against the victim, with a guess at the victim's code.
+    assertThatThrownBy(() -> manager.recoveryVerify(
+        new RecoveryVerifyRequest(VICTIM, "correct", attackerId)))
+        .isInstanceOf(SecurityException.class);
+
+    // Charged to the victim's identifier bucket, not the attacker's challenge bucket — the meter
+    // has to attach to the credential under attack, not to a token the caller happens to hold.
+    assertThat(limiter.keys).contains("verify:" + base64(VICTIM));
+    assertThat(limiter.keys).doesNotContain("challenge:" + attackerId);
+  }
+
+  @Test
+  void aChallengeIdIssuedForAnotherCredential_neverReachesTheChallenger() {
+    // The refusal happens before verifyResponse. Letting it through is what turned the mis-keying
+    // into a guessing oracle: a two-argument challenger ignores the id and checks the guess
+    // against the named credential's code.
+    BindingChallenger challenger = new BindingChallenger();
+    manager = build(challenger, new CountingLimiter(10));
+
+    byte[] attacker = "attacker@example.com".getBytes(StandardCharsets.UTF_8);
+    manager.recoveryStart(
+        new com.codeheadsystems.hofmann.model.opaque.RecoveryStartRequest(attacker));
+    String attackerId = challenger.lastChallengeId;
+
+    int before = challenger.verifyCalls.get();
+    assertThatThrownBy(() -> manager.recoveryVerify(
+        new RecoveryVerifyRequest(VICTIM, "correct", attackerId)))
+        .isInstanceOf(SecurityException.class);
+
+    assertThat(challenger.verifyCalls.get())
+        .as("the challenger must not be asked to check a guess against a credential the id "
+            + "was not issued for")
+        .isEqualTo(before);
+  }
+
+  private static String base64(byte[] value) {
+    return java.util.Base64.getEncoder().encodeToString(value);
   }
 }

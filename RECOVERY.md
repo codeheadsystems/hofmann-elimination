@@ -394,10 +394,24 @@ an ordinary symptom, not a silent weakening of the limiter.
   this removes in the non-leaking case. Treat the recovery link like the code it carries.
 - **If you never deliver the id**, the client cannot present one, the manager keys on the
   credential identifier as before, and the targeted lockout is live for your deployment.
-- **In a cluster**, back `RecoveryChallengeStore` with the same distributed store as the recovery
-  tokens. If `recoveryStart` and `recoveryVerify` land on different nodes with an unshared store,
-  the id is unknown on the verifying node and keying falls back to the identifier — the lockout
-  returns, quietly.
+- **In a cluster you must supply a distributed `RecoveryChallengeStore`.** Pass it to the
+  `HofmannOpaqueServerManager` constructor; the default is in-memory and single-node. If
+  `recoveryStart` and `recoveryVerify` land on different nodes with an unshared store, the id is
+  unknown on the verifying node, keying falls back to the identifier, and the lockout is live
+  again — with nothing failing to say so. Most production deployments are multi-node, so for most
+  deployments this is the difference between the protection working and quietly not.
+- **Your `verifyResponse` must check both halves.** That the response belongs to the challenge
+  named by `challengeId`, *and* that the challenge belongs to the credential identifier. The
+  server refuses a request whose id it issued for a different credential, but treat that as
+  defence in depth: it cannot help when the id is one the server never recorded, which is the
+  normal case on a multi-node deployment with an unshared store. Without your check, a caller
+  holding a genuine id for their own account could present it against someone else's identifier
+  and have you check their guess against the victim's code.
+- **The store bounds a flood by evicting, not refusing.** At capacity the oldest outstanding
+  challenge is dropped, and one credential identifier cannot hold more than
+  `DEFAULT_MAX_PER_IDENTIFIER` (32) at once. An earlier version refused to record at capacity,
+  which meant a flood silently returned *every* subsequent recovery to identifier keying rather
+  than costing one.
 
 ### Recovery Token Properties
 

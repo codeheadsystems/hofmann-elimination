@@ -197,6 +197,45 @@ public class HofmannOpaqueServerManager {
                                     RecoveryChallenger recoveryChallenger,
                                     RecoveryTokenStore recoveryTokenStore,
                                     RateLimiter recoveryRateLimiter) {
+    this(keyDetailSupplier, credentialStore, jwtManager, authRateLimiter, registrationRateLimiter,
+        pendingSessionStore, recoveryChallenger, recoveryTokenStore, recoveryRateLimiter, null);
+  }
+
+  /**
+   * Full constructor, including the recovery challenge store.
+   *
+   * <p>{@code recoveryChallengeStore} records the challenge ids this server issues so that
+   * {@code recoveryVerify} can key its limiter on a value the server chose rather than one the
+   * caller sent. Null gets the in-memory default, which is single-node.
+   *
+   * <p><strong>Supply a distributed store in a cluster.</strong> If {@code recoveryStart} and
+   * {@code recoveryVerify} land on different nodes with an unshared store, the id is unknown on
+   * the verifying node, keying falls back to the credential identifier, and the targeted lockout
+   * is live again — with nothing failing to say so. Most production deployments are multi-node,
+   * so for most deployments this parameter is the difference between the protection working and
+   * quietly not.
+   *
+   * @param keyDetailSupplier       the OPAQUE server key supplier
+   * @param credentialStore         the credential store
+   * @param jwtManager              the jwt manager
+   * @param authRateLimiter         limiter for authentication
+   * @param registrationRateLimiter limiter for registration
+   * @param pendingSessionStore     the pending session store
+   * @param recoveryChallenger      out-of-band challenge sender/verifier, or null to disable
+   * @param recoveryTokenStore      the recovery token store, or null for the in-memory default
+   * @param recoveryRateLimiter     limiter for recovery, or null for the default
+   * @param recoveryChallengeStore  the recovery challenge store, or null for the in-memory default
+   */
+  public HofmannOpaqueServerManager(Supplier<OpaqueServerKeyDetail> keyDetailSupplier,
+                                    CredentialStore credentialStore,
+                                    JwtManager jwtManager,
+                                    RateLimiter authRateLimiter,
+                                    RateLimiter registrationRateLimiter,
+                                    PendingSessionStore pendingSessionStore,
+                                    RecoveryChallenger recoveryChallenger,
+                                    RecoveryTokenStore recoveryTokenStore,
+                                    RateLimiter recoveryRateLimiter,
+                                    RecoveryChallengeStore recoveryChallengeStore) {
     this.keyDetailSupplier = keyDetailSupplier;
     this.credentialStore = credentialStore;
     this.jwtManager = jwtManager;
@@ -210,9 +249,9 @@ public class HofmannOpaqueServerManager {
       // Always present when recovery is enabled. Recording the ids we issue is what lets the
       // verification limiter key on a server-chosen value; without it the key would be whatever
       // the caller sent, which is an unbounded dimension and a guessing budget that resets on
-      // demand. Not a constructor parameter yet — a distributed deployment needs one, and that is
-      // called out on the interface.
-      this.recoveryChallengeStore = new InMemoryRecoveryChallengeStore();
+      // demand. The in-memory default is single-node — see the constructor javadoc.
+      this.recoveryChallengeStore = recoveryChallengeStore != null
+          ? recoveryChallengeStore : new InMemoryRecoveryChallengeStore();
       this.recoveryRateLimiter = recoveryRateLimiter != null
           ? recoveryRateLimiter : new InMemoryRateLimiter(
           new RateLimitConfigSupplier.DefaultRateLimitConfigSupplier().recoveryRateLimitConfig());
@@ -649,7 +688,8 @@ public class HofmannOpaqueServerManager {
     // Falls back to identifier keying for a challenger that has not opted in, because there is
     // then no id to key on: the residual is real for those deployments and documented on
     // RecoveryChallenger.
-    if (!recoveryRateLimiter.tryConsume(recoveryVerifyRateLimitKey(req))) {
+    final ChallengeBinding binding = recoveryVerifyBinding(req);
+    if (!recoveryRateLimiter.tryConsume(binding.rateLimitKey())) {
       throw new RateLimitExceededException();
     }
     // Enforce a constant-time floor over the whole verification. A RecoveryChallenger may
@@ -671,6 +711,13 @@ public class HofmannOpaqueServerManager {
     }
     final long deadlineNanos = System.nanoTime() + RECOVERY_VERIFY_MIN_NANOS;
     try {
+      // Refused inside the floor and with the same failure as a wrong code, so a mismatched id is
+      // not distinguishable from an incorrect response. Metered first, above, so this is not a
+      // free unmetered path.
+      if (binding.mismatched()) {
+        log.debug("recoveryVerify: challenge id was issued for a different credential");
+        throw new SecurityException("Recovery verification failed");
+      }
       if (!recoveryChallenger.verifyResponse(
           req.credentialIdentifier(), req.challengeId(), req.challengeResponse())) {
         throw new SecurityException("Recovery verification failed");
@@ -702,35 +749,54 @@ public class HofmannOpaqueServerManager {
   }
 
   /**
-   * Chooses the rate-limit key for a verification attempt.
+   * Resolves a presented challenge id: which bucket to charge, and whether to refuse the request.
    *
-   * <p>The challenge id when the challenger binds one, the credential identifier otherwise. A
-   * blank or absent id falls back too rather than being treated as a key: an attacker who could
-   * send no id and have that count as a distinct bucket would get an unlimited guessing budget,
-   * which is worse than the lockout this is fixing.
+   * <p>The id keys the limiter only when this server issued it <em>for the credential the request
+   * names</em>. Anything else — absent, unknown, expired, or issued for someone else — charges the
+   * credential identifier, which is the pre-existing behaviour and costs a legitimate user
+   * nothing: they always present an id issued for their own credential, so they are on a
+   * different bucket from anyone attacking them.
    */
-  private String recoveryVerifyRateLimitKey(final RecoveryVerifyRequest req) {
+  private ChallengeBinding recoveryVerifyBinding(final RecoveryVerifyRequest req) {
     String challengeId = req.challengeId();
-    if (challengeId != null && !challengeId.isBlank()) {
-      // Only an id this server actually issued may key the limiter. A fabricated one is not
-      // merely useless to the attacker — keying on it would give every guess a fresh bucket, and
-      // let a caller mint unbounded distinct keys. Checking it here is why the store exists.
-      String issuedFor = recoveryChallengeStore.peek(challengeId).orElse(null);
-      if (issuedFor != null && issuedFor.equals(req.credentialIdentifierBase64())) {
-        return "challenge:" + challengeId;
-      }
-      // A known id presented against a different credential is charged to that id's own bucket:
-      // it belongs to whoever holds it, so let them spend their own budget rather than the
-      // named victim's. An unknown id falls through to identifier keying, which is the
-      // pre-existing behaviour and costs a legitimate user nothing — they always present an id
-      // this server issued, so they are on a different bucket entirely.
-      if (issuedFor != null) {
-        return "challenge:" + challengeId;
-      }
-      log.debug("recoveryVerify: presented challenge id is unknown or expired; "
-          + "falling back to identifier keying for this request");
+    String identifier = req.credentialIdentifierBase64();
+    if (challengeId == null || challengeId.isBlank()) {
+      return new ChallengeBinding("verify:" + identifier, false);
     }
-    return "verify:" + req.credentialIdentifierBase64();
+    // Only an id this server issued *for this credential* may key the limiter. A fabricated one
+    // would otherwise give every guess a fresh bucket, and let a caller mint unbounded distinct
+    // keys; checking it here is why the store exists.
+    String issuedFor = recoveryChallengeStore.peek(challengeId).orElse(null);
+    if (identifier.equals(issuedFor)) {
+      return new ChallengeBinding("challenge:" + challengeId, false);
+    }
+    if (issuedFor != null) {
+      // A genuine id, issued for a *different* credential. This previously keyed on the id — "it
+      // belongs to whoever holds it, let them spend their own budget" — which inverted what is
+      // being metered. The thing being metered is a guess against the *named* credential's
+      // challenge, so the budget has to attach to the credential under attack, not to a token the
+      // caller happens to hold. Otherwise anyone can recover their own account, obtain a real id,
+      // and then meter guesses against a victim on a bucket they own and can refresh at will —
+      // the attacker-chosen limiter key this store exists to prevent, laundered through a real id.
+      //
+      // It is also rejected outright below rather than merely metered differently: an id issued
+      // for another credential is an incoherent request, and letting it reach verifyResponse is
+      // what turned the mis-keying into a guessing oracle against the victim's code.
+      return new ChallengeBinding("verify:" + identifier, true);
+    }
+    log.debug("recoveryVerify: presented challenge id is unknown or expired; "
+        + "falling back to identifier keying for this request");
+    return new ChallengeBinding("verify:" + identifier, false);
+  }
+
+  /**
+   * How a presented challenge id resolved: which bucket to charge, and whether the request is
+   * incoherent and must be refused.
+   *
+   * <p>One computation rather than two so the key and the verdict cannot disagree — which is
+   * exactly how the earlier version went wrong, selecting a key without gating anything.
+   */
+  private record ChallengeBinding(String rateLimitKey, boolean mismatched) {
   }
 
   private void validateRecoveryToken(String token, String expectedCredentialIdentifierBase64) {

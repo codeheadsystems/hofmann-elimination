@@ -90,11 +90,19 @@ public interface RecoveryChallenger {
   /**
    * Verifies a challenge response against a specific challenge.
    *
-   * <p>Check that the response belongs to the challenge named by {@code challengeId}, not merely
-   * that it is a valid response for the identifier. Without that binding a caller could pair a
-   * stolen or replayed code with an id of their choosing. The server verifies that the id is one
-   * it issued for this credential before it gets here, so what is left to you is tying the
-   * response to that specific challenge.
+   * <p><strong>Check that the response belongs to the challenge named by {@code challengeId} and
+   * that the challenge belongs to {@code credentialIdentifier}.</strong> Both halves are yours.
+   * Without the first, a caller could pair a stolen or replayed code with an id of their choosing;
+   * without the second, a caller holding a genuine id for their own account could present it
+   * against someone else's identifier and have you check their guess against the victim's code.
+   *
+   * <p>The server refuses a request whose id it issued for a different credential, so that
+   * particular route is closed before you see it — but treat that as defence in depth rather than
+   * a guarantee to lean on. It cannot help at all if the id is one the server never recorded,
+   * which is the normal case on a multi-node deployment with an unshared
+   * {@code RecoveryChallengeStore}. An earlier version of this javadoc promised the server had
+   * already made this check; it had not, and an implementer who believed it would have skipped
+   * the check that stops the attack.
    *
    * <p>The default ignores the id and delegates.
    *
