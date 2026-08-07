@@ -113,15 +113,25 @@ suite: a fixed number of iterations, one addition and one doubling each, with no
 secret-dependent branching. That closes the wNAF leaks — digit-dependent add/double sequences, a
 precomputed table indexed by secret values, and a window size chosen from the scalar's bit length.
 
-Three residuals remain, and they are not equal across suites.
+Three residuals remain.
 
-**The ladder's swap differs by suite, and the ristretto255 one is better.** ristretto255 swaps its
-two accumulators with a branch-free masked XOR (`cswap`), so no memory *address* depends on the
-secret bit. The Weierstrass curves index a two-element accumulator array by the bit
-(`r[other] = r[other].add(r[bit])`), so which of two heap objects is touched follows the key. Both
-references share a cache line and the footprint is far smaller than wNAF's table, but the access
-pattern remains observable to an attacker able to probe cache on the same host. If you are
-threat-modelling co-located tenants, that is a reason to prefer ristretto255.
+**The ladder's swap differs by suite.** ristretto255 swaps its two accumulators with a masked XOR
+(`cswap`) that reads and writes *both* accumulators on every iteration regardless of the bit. The
+Weierstrass curves index a two-element accumulator array by the bit
+(`r[other] = r[other].add(r[bit])`), so which of two heap objects receives the addition and which
+the doubling follows the key. Both references share a cache line and the footprint is far smaller
+than wNAF's precomputed table, but the access pattern remains observable in principle to an
+attacker able to probe cache on the same host.
+
+What this does **not** establish is that ristretto255 is measurably safer. `cswap` is built on
+`BigInteger.xor` and `and`, which allocate and whose cost depends on their operands, so it removes
+a secret-dependent *access pattern* without removing secret-dependent *work*. A microbenchmark of
+`cswap` at both bit values found a 7% difference in the direction opposite to what a
+short-circuiting `and(0)` would predict — consistent with allocation noise rather than a signal,
+but a throughput measurement is not a leakage analysis and should not be read as one. If your
+threat model includes a co-located attacker probing cache, treat the difference between the two
+ladders as unquantified and get a side-channel evaluation rather than choosing a suite on the
+strength of this paragraph.
 
 **`BigInteger` arithmetic is magnitude-dependent.** Both ladders, and the Fermat inversion used
 for scalar inverses, are built on `java.math.BigInteger`, whose multiplication, reduction and
