@@ -228,7 +228,7 @@ public class HofmannOpaqueServerManager {
   }
 
   /**
-   * Shuts down background resources (pending session reaper, rate limiters).
+   * Shuts down background resources (pending session reaper, session reaper, rate limiters).
    * <p>
    * Should be called on application shutdown to release background threads.
    * In Dropwizard, register this instance as a {@code Managed} component.
@@ -236,6 +236,7 @@ public class HofmannOpaqueServerManager {
    */
   public void shutdown() {
     pendingSessionStore.shutdown();
+    jwtManager.shutdown();
     authRateLimiter.shutdown();
     registrationRateLimiter.shutdown();
     if (recoveryTokenStore != null) {
@@ -367,7 +368,13 @@ public class HofmannOpaqueServerManager {
         throw new SecurityException("Recovery token does not match credential");
       }
       log.info("Recovery re-registration for credential {}", req.credentialIdentifierBase64());
-      credentialStore.delete(req.credentialIdentifier());
+      // No delete before the store at the end of this method. delete-then-store left a window in
+      // which the credential did not exist, which the unauthenticated registrationFinish path
+      // could be flooded to land inside — and a failure between the two steps left the account
+      // permanently unregistered with no record to fall back to. store() is contractually an
+      // upsert, so replacing in one operation is both narrower and recoverable: on failure the
+      // old record survives. Sessions are revoked here, before the new record lands, so no token
+      // issued against the old password outlives it.
       jwtManager.revokeByCredentialIdentifier(req.credentialIdentifierBase64());
     } else {
       // Normal (non-recovery) registration. Both branches below must be indistinguishable to an
@@ -387,25 +394,30 @@ public class HofmannOpaqueServerManager {
         // Validate after the token is consumed, so the group-element decode — the only
         // expensive part, and up to ~1.2 ms on ristretto255 — cannot be driven unthrottled.
         validateRecord(req);
-        if (credentialStore.loadVersioned(req.credentialIdentifier()).isPresent()) {
-          // Must not overwrite an existing record: registrationStart/Finish are unauthenticated,
-          // so without this guard anyone who knows a victim's credential identifier could
-          // re-register it with their own password and take over the account. Existing
-          // credentials are updated through the authenticated change-password flow or the
-          // recovery flow (which deletes the old record above before storing the new one).
-          //
-          // Return normally rather than throwing. Throwing produced HTTP 400 for an existing
-          // credential and 204 for a new one, which is an unauthenticated existence oracle — it
-          // defeated the enumeration resistance authStart goes to real trouble to provide, where
-          // an unknown credential gets a manufactured KE2 precisely so this bit cannot be read.
-          // The security property that matters is "does not overwrite", and that is preserved;
-          // signalling *why* nothing was written is what leaked. A legitimate client re-running
-          // registration therefore sees success without its record being replaced.
-          log.debug("registrationFinish: credential already registered, record left unchanged");
-          return;
-        }
+        // Must not overwrite an existing record: registrationStart/Finish are unauthenticated,
+        // so without this guard anyone who knows a victim's credential identifier could
+        // re-register it with their own password and take over the account. Existing
+        // credentials are updated through the authenticated change-password flow or the
+        // recovery flow (which replaces the record above rather than passing through here).
+        //
+        // One storeIfAbsent rather than loadVersioned-then-store. The two-step form was a
+        // check-then-act: two concurrent finishes naming the same identifier could both observe
+        // "absent" and both write, so the guard did not actually hold under the very condition
+        // an attacker controls — how fast they can call this endpoint. The store is the only
+        // layer that can make the check and the write one operation.
+        //
+        // Return normally either way rather than throwing. Throwing produced HTTP 400 for an
+        // existing credential and 204 for a new one, which is an unauthenticated existence
+        // oracle — it defeated the enumeration resistance authStart goes to real trouble to
+        // provide, where an unknown credential gets a manufactured KE2 precisely so this bit
+        // cannot be read. The security property that matters is "does not overwrite", and that
+        // is preserved; signalling *why* nothing was written is what leaked. A legitimate client
+        // re-running registration therefore sees success without its record being replaced.
         int currentVersion = keyDetailSupplier.get().currentVersion();
-        credentialStore.store(req.credentialIdentifier(), req.registrationRecord(), currentVersion);
+        if (!credentialStore.storeIfAbsent(
+            req.credentialIdentifier(), req.registrationRecord(), currentVersion)) {
+          log.debug("registrationFinish: credential already registered, record left unchanged");
+        }
         return;
       } finally {
         sleepUntil(deadlineNanos);
@@ -500,7 +512,10 @@ public class HofmannOpaqueServerManager {
     // here) but before the delete, so a malformed record cannot destroy a working registration
     // and leave the account unregistered.
     validateRecord(req);
-    credentialStore.delete(req.credentialIdentifier());
+    // Revoke first, then replace in a single upsert. The previous delete-then-store pair left a
+    // window in which the credential did not exist — reachable by flooding the unauthenticated
+    // registrationFinish — and a failure between the two left the account permanently
+    // unregistered. See the matching note in the recovery branch of registrationFinish.
     jwtManager.revokeByCredentialIdentifier(req.credentialIdentifierBase64());
     int currentVersion = keyDetailSupplier.get().currentVersion();
     credentialStore.store(req.credentialIdentifier(), req.registrationRecord(), currentVersion);

@@ -9,6 +9,13 @@ import java.util.Optional;
  * Implementations must be thread-safe. Typical production implementations back
  * this with a relational or key-value database.
  * <p>
+ * <strong>Atomicity:</strong> {@link #store(byte[], RegistrationRecord, int)} must be an
+ * upsert — a single operation that leaves either the old record or the new one visible, never
+ * neither. The server relies on that to replace a record during recovery and password change
+ * without a window in which the account does not exist. Implementations must also override
+ * {@link #storeIfAbsent(byte[], RegistrationRecord, int)}, whose default is deliberately
+ * non-atomic; see its javadoc.
+ * <p>
  * <strong>Key rotation support:</strong> the versioned methods ({@link #store(byte[], RegistrationRecord, int)}
  * and {@link #loadVersioned(byte[])}) enable OPAQUE key rotation by tracking which server key
  * version each credential was registered with. The default implementations delegate to the
@@ -39,6 +46,38 @@ public interface CredentialStore {
    */
   default void store(byte[] credentialIdentifier, RegistrationRecord record, int keyVersion) {
     store(credentialIdentifier, record);
+  }
+
+  /**
+   * Stores the registration record <em>only if</em> the credential identifier is not already
+   * registered, and reports whether the write happened.
+   * <p>
+   * This exists because registration finish is unauthenticated: without a guard, anyone who
+   * knows a victim's credential identifier could re-register it with their own password and take
+   * over the account. Expressing that guard as {@code load(...).isPresent()} followed by
+   * {@code store(...)} is a check-then-act — two concurrent finishes for the same identifier can
+   * both observe "absent" and both write, and the second one wins. The store is the only place
+   * that can make the check and the write one operation, which is why the primitive lives here.
+   * <p>
+   * <strong>The default implementation is NOT atomic.</strong> It performs exactly the
+   * check-then-act described above, and exists only so that existing {@code CredentialStore}
+   * implementations keep compiling. Any implementation intended for production must override it
+   * with a genuinely atomic conditional write — {@code INSERT ... ON CONFLICT DO NOTHING} on
+   * PostgreSQL, {@code INSERT IGNORE} on MySQL, a conditional-put on a key-value store.
+   *
+   * @param credentialIdentifier opaque byte-string that uniquely identifies the credential
+   * @param record               the registration record
+   * @param keyVersion           the server key version this credential is registered with
+   * @return {@code true} if the record was stored, {@code false} if the credential identifier
+   *         was already registered and the existing record was left untouched
+   */
+  default boolean storeIfAbsent(byte[] credentialIdentifier, RegistrationRecord record,
+                                int keyVersion) {
+    if (load(credentialIdentifier).isPresent()) {
+      return false;
+    }
+    store(credentialIdentifier, record, keyVersion);
+    return true;
   }
 
   /**

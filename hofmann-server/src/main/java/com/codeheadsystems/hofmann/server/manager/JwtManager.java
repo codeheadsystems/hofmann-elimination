@@ -158,6 +158,16 @@ public class JwtManager {
   }
 
   /**
+   * Releases resources held by the backing {@link SessionStore}, such as its expiry reaper.
+   * <p>
+   * Called from {@code HofmannOpaqueServerManager.shutdown()}; the session store is reached
+   * only through this manager, so it has no other route to a lifecycle hook.
+   */
+  public void shutdown() {
+    sessionStore.shutdown();
+  }
+
+  /**
    * Result of a successful JWT verification.
    *
    * @param subject the JWT subject (credential identifier base64)

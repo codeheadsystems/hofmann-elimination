@@ -66,6 +66,73 @@ class InMemoryCredentialStoreTest {
   }
 
   @Test
+  void storeIfAbsent_onUnregisteredCredential_storesAndReportsTrue() {
+    byte[] key = "erin".getBytes(StandardCharsets.UTF_8);
+    RegistrationRecord record = record();
+
+    assertThat(store.storeIfAbsent(key, record, 3)).isTrue();
+    assertThat(store.loadVersioned("erin".getBytes(StandardCharsets.UTF_8)))
+        .hasValueSatisfying(vc -> {
+          assertThat(vc.keyVersion()).isEqualTo(3);
+          assertThat(vc.record()).isEqualTo(record);
+        });
+  }
+
+  @Test
+  void storeIfAbsent_onRegisteredCredential_reportsFalseAndLeavesRecordUntouched() {
+    byte[] key = "frank".getBytes(StandardCharsets.UTF_8);
+    RegistrationRecord original = record();
+    store.store(key, original, 1);
+
+    RegistrationRecord takeover = new RegistrationRecord(
+        new byte[33], new byte[32], new Envelope(new byte[32], new byte[32]));
+    assertThat(store.storeIfAbsent("frank".getBytes(StandardCharsets.UTF_8), takeover, 9))
+        .isFalse();
+
+    // The account-takeover property: the existing record and its key version both survive.
+    assertThat(store.loadVersioned(key)).hasValueSatisfying(vc -> {
+      assertThat(vc.keyVersion()).isEqualTo(1);
+      assertThat(vc.record()).isSameAs(original);
+    });
+  }
+
+  @Test
+  void storeIfAbsent_underConcurrency_letsExactlyOneWriterWin() throws Exception {
+    // The check-then-act this replaces let two concurrent registrations for the same identifier
+    // both observe "absent" and both write, so the second silently took the account over.
+    for (int round = 0; round < 200; round++) {
+      InMemoryCredentialStore fresh = new InMemoryCredentialStore();
+      byte[] key = ("grace-" + round).getBytes(StandardCharsets.UTF_8);
+      int writers = 8;
+      java.util.concurrent.CyclicBarrier barrier =
+          new java.util.concurrent.CyclicBarrier(writers);
+      java.util.concurrent.atomic.AtomicInteger wins =
+          new java.util.concurrent.atomic.AtomicInteger();
+      Thread[] threads = new Thread[writers];
+      for (int i = 0; i < writers; i++) {
+        threads[i] = new Thread(() -> {
+          try {
+            barrier.await();
+          } catch (Exception e) {
+            throw new IllegalStateException(e);
+          }
+          if (fresh.storeIfAbsent(key.clone(), record(), 0)) {
+            wins.incrementAndGet();
+          }
+        });
+        threads[i].start();
+      }
+      for (Thread t : threads) {
+        t.join();
+      }
+      assertThat(wins.get())
+          .withFailMessage("round %d: %d writers stored the same credential identifier; "
+              + "exactly one must win", round, wins.get())
+          .isEqualTo(1);
+    }
+  }
+
+  @Test
   void delete_removesRecord() {
     byte[] key = "dave".getBytes(StandardCharsets.UTF_8);
     store.store(key, record());

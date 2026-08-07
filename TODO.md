@@ -9,14 +9,21 @@ Findings from the security review of **August 2026** (six-reviewer fan-out acros
 |---|---:|---:|
 | **P0 Critical** | 3 | 0 |
 | **P1 High** | 9 | 0 |
-| Follow-ups from verifying the 3.1.0 fixes | 7 | 0 |
-| **P2 Medium** | 1 | 13 |
+| Follow-ups from verifying the 3.1.0 fixes | 7 | 1 |
+| RFC 9497 VOPRF/POPRF deferred items | 0 | 5 |
+| **P2 Medium** | 4 | 10 |
 | **P3 Low** | 1 | 10 |
 | Documentation | 0 | 4 |
 | Test coverage gaps | 0 | 4 |
-| **Total** | **21** | **31** |
+| **Total** | **24** | **34** |
 
-**Every P0, P1 and verification follow-up is now closed.** What remains is P2 and below.
+**Every P0 and P1 is closed.** One verification follow-up remains open — the targeted
+account-recovery lockout — along with the RFC 9497 deferrals, P2 and below.
+
+> The table above previously read 31 open against 37 unchecked boxes. Two things were wrong:
+> the RFC 9497 section was appended without ever being added to the table, and the follow-ups
+> row claimed 0 open while the recovery-lockout item was unchecked. Both are corrected here.
+> Recount with `grep -c '^- \[ \]' TODO.md` when editing this file.
 
 Entries marked `[x]` carry the commit that closed them. P0/P1 shipped in **3.1.0**; the
 verification follow-ups and the last P1 land after it. Everything marked `[ ]`
@@ -33,6 +40,13 @@ raised during cryptographic review and consciously deferred rather than missed. 
 they do not live only in a conversation.
 
 ### Open — needs a decision
+
+> **Decisions taken 2026-08-06.** Endianness: investigate the Java/Rust/TypeScript ports first
+> and only then choose between documenting the convention and changing it — no code change until
+> we know whether they actually agree. Phase 6: Java HTTP endpoints, `docs/oprf-api.yaml` and the
+> transport-level request-size bound only; the `hofmann-client`, TypeScript and Rust ports stay
+> deferred. Recovery lockout (in the follow-ups section): close it with the email round trip,
+> which makes it a documented deployment requirement rather than shipped library code.
 
 - [ ] **OPAQUE ristretto255 scalar endianness.** `ByteUtils.scalarToFixedBytes` is big-endian, and
   OPAQUE uses it to serialize private keys on the ristretto255 suite, whose scalar convention is
@@ -188,6 +202,14 @@ completeness.
       something an attacker cannot supply on the victim's behalf: proof-of-work on recoveryStart,
       or the email round trip that recovery ownership rests on anyway.
 
+      **Decided 2026-08-06: the email round trip**, not proof-of-work. The limiter key becomes
+      something only the account owner can produce, which actually closes it rather than pricing
+      it. The consequence is that the library cannot close this on its own — it has no way to
+      send mail — so the deliverable is a documented requirement on the `RecoveryChallenger`
+      integration plus whatever key material the round trip yields, and the residual stays real
+      for any deployment that does not implement it. Still open until that is written and the
+      keying change lands.
+
 ---
 
 ## P2: Medium
@@ -239,28 +261,42 @@ completeness.
       `toString()` renders the base64 session key in full. `JwtManager.verify` reads only
       subject and jti — the session key is not needed at all.
 
-- [ ] **`InMemorySessionStore` is unbounded with no reaper** — unlike the pending-session
-      and recovery-token stores, entries are evicted only lazily inside `load(jti)`
-      (`:38-44`), i.e. only if that exact token is presented again. A client that
-      authenticates and discards its token leaves a `SessionData` resident forever. Add the
-      capacity guard and background reaper the sibling stores already have.
+- [x] **`InMemorySessionStore` is unbounded with no reaper** — entries were evicted only
+      lazily inside `load(jti)`, i.e. only if that exact token was presented again, so a client
+      that authenticated and discarded its token left a `SessionData` resident forever. Now
+      mirrors the sibling stores: `DEFAULT_MAX_SESSIONS` (50,000) with reclaim-before-deny, and
+      a daemon `session-reaper` sweeping every 60s against each entry's own `expiresAt`. The
+      store needed a lifecycle hook to own a thread, so `SessionStore` gained a
+      `default shutdown()` and `HofmannOpaqueServerManager.shutdown()` now reaches it through
+      `JwtManager`. **Bounding memory does not bound volume**, same caveat as the rate limiter:
+      at capacity with nothing expired, a client that has completed a valid handshake is
+      refused its token.
 
-- [ ] **`CredentialStore` exposes no atomic primitive, so the takeover guard cannot be made
-      safe** — the guard at `HofmannOpaqueServerManager.java:321` is a check-then-act, and
-      both the recovery path (`:319-332`) and `changePasswordFinish` (`:414-417`)
-      `delete()` then `store()`, leaving a window where the credential does not exist. An
-      attacker flooding the unthrottled `registration/finish` can land inside it. The
-      interface offers only `store`/`load`/`delete` — **no implementer can close this**.
-      Add `storeIfAbsent`/compare-and-set, and a transactional boundary for the
-      delete-then-store pairs (a failure between them currently leaves the account
-      permanently unregistered).
+- [x] **`CredentialStore` exposes no atomic primitive, so the takeover guard cannot be made
+      safe** — added `storeIfAbsent(byte[], RegistrationRecord, int)`, overridden atomically in
+      `InMemoryCredentialStore` via `putIfAbsent`, and used it for the takeover guard in
+      `registrationFinish` so the check and the write are one operation. The no-oracle behaviour
+      is preserved: an already-registered identifier still returns normally without storing.
+      The delete-then-store pairs in the recovery branch and `changePasswordFinish` are gone
+      rather than wrapped in a transaction — `store()` is contractually an upsert, so replacing
+      in one operation removes the window *and* the failure mode where a crash between the two
+      steps left the account permanently unregistered.
+      **Scope limit:** the interface default for `storeIfAbsent` is deliberately the same
+      check-then-act it replaces, because a `default` that threw would break every existing
+      implementer at runtime. It is documented as non-atomic and as requiring an override
+      (`INSERT ... ON CONFLICT DO NOTHING` and equivalents). A third-party store that does not
+      override still has the race.
 
-- [ ] **`InMemorySessionStore` revoke/store race** — `store()` (`:26-30`) puts then indexes;
-      `revokeByCredentialIdentifier()` (`:69-75`) removes the index then drains it. A
-      concurrent `store()` that reads the set before the remove and adds after the drain
-      leaves a jti live in `store` but orphaned from the index — surviving that revocation
-      and **every future one**. Same end state as the P0 canonicalization bug, reachable
-      without the alias trick. Update both maps under one lock keyed on the credential.
+- [x] **`InMemorySessionStore` revoke/store race** — `store()` put then indexed;
+      `revokeByCredentialIdentifier()` removed the index then drained it. A concurrent `store()`
+      that read the set before the remove and added after the drain left a jti live in `store`
+      but orphaned from the index, surviving that revocation and **every future one**. Both maps
+      are now updated inside a `compute` on `credentialToJtis`, so all operations on one
+      credential are serialised by that map's bin lock. **[reproduced]** against the pre-fix
+      class, but only at ~50M `store()` calls across 32 threads for two orphans — the window is
+      two instructions wide and only a storer already holding the set can be caught. The
+      committed test (`InMemorySessionStoreConcurrencyTest`) therefore guards the invariant
+      rather than reproducing the race, and says so; it passes against the pre-fix code.
 
 - [ ] **Apply the field-length cap to all request models** —
       `RegistrationStartRequest` and `AuthStartRequest` define and enforce

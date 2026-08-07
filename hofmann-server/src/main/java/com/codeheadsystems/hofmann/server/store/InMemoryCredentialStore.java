@@ -39,6 +39,20 @@ public class InMemoryCredentialStore implements CredentialStore {
   }
 
   @Override
+  public boolean storeIfAbsent(byte[] credentialIdentifier, RegistrationRecord record,
+                               int keyVersion) {
+    // putIfAbsent is the atomic conditional write the interface's default cannot provide.
+    VersionedCredential existing = store.putIfAbsent(
+        new ByteKey(credentialIdentifier), new VersionedCredential(keyVersion, record));
+    if (existing != null) {
+      return false;
+    }
+    log.debug("Stored registration for credential identifier ({} bytes), keyVersion={}",
+        credentialIdentifier.length, keyVersion);
+    return true;
+  }
+
+  @Override
   public Optional<RegistrationRecord> load(byte[] credentialIdentifier) {
     VersionedCredential vc = store.get(new ByteKey(credentialIdentifier));
     return vc == null ? Optional.empty() : Optional.of(vc.record());
