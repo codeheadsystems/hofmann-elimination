@@ -72,23 +72,33 @@ two are documented in code with no action planned.
 
 ## New findings
 
-- [ ] **`:test` intermittently aborts on Gradle's own result bookkeeping — DETECTION ADDED,
-      ROOT CAUSE STILL OPEN.** Tasks fail with `java.io.EOFException` or `NoSuchFileException` on
+- [ ] **`:test` intermittently aborts on Gradle's own result bookkeeping** — **[reproduced]**.
+      Tasks fail with `java.io.EOFException` or `NoSuchFileException` on
       `build/test-results/test/binary/in-progress-results-generic.bin`, having produced results for
-      only some classes. The tests pass on a retry.
+      only some classes. The tests pass on a retry. Gradle 9.6.1, `org.gradle.parallel=true`, and
+      the configuration cache enabled.
 
-      **What is fixed:** a `verifyTestsRan` task now runs on every `check` and fails, naming the
-      classes, if a module reported fewer results than it has concrete test classes. That closes
-      the part that actually cost time — a task that aborts before running left the same artifacts
-      as one with no tests, so the results could not distinguish "the suite passed" from "the suite
-      never ran", and that ambiguity produced two false diagnoses across two sessions. A partial
-      run is now loud.
+      **Measured rate:** roughly one build in three on a `clean build` loop, varying by machine and
+      load. `clean build` is markedly more reliable than `--rerun-tasks`.
 
-      **What is not:** the race itself. Gradle 9.6.1 with `org.gradle.parallel=true` and the
-      configuration cache; disabling parallelism passed three consecutive runs, but so did leaving
-      it on, so that is not evidence of anything and no root cause is claimed. Closing this
-      properly means a Gradle or plugin upgrade, or finding what races on that directory.
-      `clean build` remains markedly more reliable than `--rerun-tasks`.
+      **An attempted fix was reverted, and the reason is worth keeping.** A `verifyTestsRan` task
+      was added to compare result files against concrete test classes, on the reasoning that an
+      aborted task leaves the same artifacts as one with no tests. Two things came out of trying
+      it. Wired with `mustRunAfter(test)` it made the flake dramatically *worse* — 0 of 3 builds
+      passed, against 2 of 3 without it — because `mustRunAfter` does not stop it being scheduled
+      alongside another module's test task under parallel execution, where it reads the very
+      directory Gradle is writing its bookkeeping into. Re-wired with `dependsOn(test)` it passed
+      8 of 8, but then could no longer do the job it was written for: depending on the test task
+      means it re-runs the tests rather than inspecting what a previous run left.
+
+      More importantly the premise was wrong. In every observed instance the abort makes the task
+      **fail**, so a green build is not in fact ambiguous — the ambiguity is only in reading result
+      artifacts after the fact, which is what caused two false diagnoses across two sessions. That
+      is a habit to fix, not a build task: when comparing runs, count result files per module
+      against concrete test classes rather than trusting a summary.
+
+      Closing this properly means a Gradle or plugin upgrade, or finding what races on that
+      directory. It should not mean adding load to every build to watch for it.
 
 ---
 

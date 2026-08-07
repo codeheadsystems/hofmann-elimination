@@ -6,7 +6,6 @@ plugins {
     // Apply the java Plugin to add support for Java.
     java
     idea
-    id("buildlogic.test-completeness-conventions")
 }
 
 repositories {
