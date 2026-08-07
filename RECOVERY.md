@@ -388,10 +388,23 @@ an ordinary symptom, not a silent weakening of the limiter.
   challenge already in flight. Letting an unauthenticated caller trigger an email at all is what
   costs this. Note also that splitting the buckets doubles the total unauthenticated request
   budget per identifier; the *guessing* budget that matters is unchanged.
-- **A leaked challenge id re-opens the lockout for that recovery.** The id travels in a link, so
-  it can reach a `Referer` header, a proxy log, or browser history. Whoever has it can drain
-  `challenge:<id>` and lock the victim out of the recovery *already in progress* — the exact harm
-  this removes in the non-leaking case. Treat the recovery link like the code it carries.
+- **A leaked challenge id re-opens the lockout for that recovery, and can be attributed to an
+  account.** The id travels in a link, so it can reach a `Referer` header, a proxy log, or browser
+  history. Whoever has it can drain `challenge:<id>` and lock the victim out of the recovery
+  *already in progress* — the exact harm this removes in the non-leaking case.
+
+  They can also learn *whose* it is. Only an id matching the named credential charges the
+  `challenge:` bucket; absent, unknown and mismatched ids all charge `verify:<named>`. So a holder
+  can drain `verify:<candidate>` and then present the id against that candidate: a `429` means the
+  id is not bound to it, a `401` means it is. Credential identifiers are usually email addresses,
+  so candidates are guessable, and this turns a leaked id into a confirmed id-to-account pair.
+
+  This is **not fixed, deliberately.** That distinguisher *is* the protection — a user holding a
+  matching id sits on a bucket immune to a drained identifier bucket, and charging both buckets on
+  the matched path would close the oracle by reintroducing the lockout. It costs the attacker a
+  drained candidate bucket per probe, which is noisy and locks that candidate out meanwhile, and
+  it yields identity disclosure only: it does not speed up guessing the code. Treat the recovery
+  link like the code it carries.
 - **If you never deliver the id**, the client cannot present one, the manager keys on the
   credential identifier as before, and the targeted lockout is live for your deployment.
 - **In a cluster you must supply a distributed `RecoveryChallengeStore`.** Pass it to the
