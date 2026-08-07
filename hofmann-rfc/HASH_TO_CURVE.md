@@ -33,20 +33,30 @@ Low-level curve wrappers and encoding utilities.
 
 - **`Curve`** — Immutable record wrapping BouncyCastle `ECDomainParameters`. Exposes the curve field, generator `G`, group order `n`, and cofactor `h`. Static constants: `P256_CURVE`, `P384_CURVE`, `P521_CURVE`, `SECP256K1_CURVE`.
 
-- **`ByteUtils`** (in `common/`) — Encoding primitives shared across the codebase:
+### `common/`
+
+- **`ByteUtils`** — Encoding primitives shared across the codebase:
   - `I2OSP(int, int)` — Integer to octet string (RFC 8017). **Throws** above `2^(8*length) - 1`
     rather than truncating, which is what keeps a length prefix from colliding in a transcript.
   - `concat(byte[]...)` — Byte array concatenation
   - `scalarToFixedBytes(BigInteger, int)` — Fixed-width big-endian scalar encoding. Note this is
     *not* the canonical per-suite encoding; for that use `GroupSpec.serializeScalar`, which is
     big-endian on the NIST curves and little-endian on ristretto255 per RFC 9496.
-  - `xor`, `isAllZero`, `dhECDH`
+  - `xor(byte[], byte[])` — Fixed-length XOR, used for the credential masking pad
+  - `isAllZero(byte[])` — Pre-check for the ristretto255 identity encoding, so callers can reject
+    it with their own exception type before decoding
+  - `dhECDH(BigInteger, ECPoint)` — Raw ECDH. **Not used by any production path, and not
+    constant-time**: it calls `ECPoint.multiply`, which is window-NAF on the NIST curves and GLV
+    on secp256k1 — the multipliers the ladder exists to avoid. Everything that touches a real
+    private key goes through `GroupSpec.scalarMultiply` instead. Retained for tests; do not reach
+    for it because the parameter is named `privateKey`.
 
-  Hex encoding is BouncyCastle's `Hex`; point *decoding with validation* is not a shared utility
-  but lives on each group: `WeierstrassGroupSpecImpl.deserializePoint` and
-  `Ristretto255GroupSpec.decodeRistretto255`. That split is deliberate — the two groups reject
-  different things (SEC1 canonical form and on-curve for one, RFC 9496 §4.3.1 canonicity for the
-  other), so a single helper would have to be a lowest common denominator.
+- **Point decoding with validation** is not a shared utility. It lives on each group —
+  `WeierstrassGroupSpecImpl.deserializePoint` (public) and `Ristretto255GroupSpec.decodeRistretto255`
+  (package-private, reached through `scalarMultiply` and `validateElement`). The split is
+  deliberate: the two groups reject different things — canonical compressed SEC1 and on-curve for
+  one, RFC 9496 §4.3.1 canonicity for the other — so a single helper would have to be a lowest
+  common denominator.
 
 ### `rfc9380/`
 

@@ -85,7 +85,7 @@ The Hofmann library does not configure TLS itself because TLS termination is an
 infrastructure concern that varies by deployment. Ensure that whatever layer terminates
 TLS is configured with strong cipher suites and valid certificates.
 
-### Argon2id KSF Runs on the Client — and the Client Gets Its Parameters From the Server
+### Argon2id Runs on the Client, With Server-Supplied Parameters
 
 The Argon2id key-stretching function runs entirely on the client, not the server. The server
 stores only the already-stretched output inside the OPAQUE envelope and masking key. This
@@ -99,54 +99,77 @@ otherwise comply — turning a stolen registration record from something requiri
 grind per guess into something crackable at the speed of a bare hash. The attack is against the
 server's own users, and it is invisible to them.
 
-For that reason `fromServerConfig` **throws** rather than warning when the server offers the
-identity KSF or parameters below the floor. A warning is no defence when the attacker's own
-payload is what triggers it. To opt in for a development server deliberately configured with
-`allowIdentityKsf`, use `fromServerConfig(cfg, true)` in Java or
-`create(url, { allowWeakServerKsf: true })` in TypeScript; to avoid consulting the server at all,
-pin an `OpaqueClientConfig` through the client manager's overrides map.
+For that reason the client **throws** rather than warning when the server offers the identity KSF
+or parameters outside the accepted window. A warning is no defence when the attacker's own payload
+is what triggers it.
 
-### Timing: What Is and Is Not Constant-Time
+The window is enforced at **at least 19456 KiB and 2 iterations** — the OWASP Argon2id minimum at
+`t=2, p=1` — and **at most 4 GiB, 10 iterations and 16 lanes**, the upper bounds being
+denial-of-service hardening rather than a security floor. Configure the server outside it and every
+client throws `IllegalStateException` on first use. `argon2Parallelism` must be `1` for browser
+clients, because hash-wasm is single-threaded.
 
-The scalar multiplications that touch long-term key material use a Montgomery ladder on **every**
-suite: a fixed number of iterations, one addition and one doubling each, with no
-secret-dependent branching. That closes the wNAF leaks — digit-dependent add/double sequences, a
+To opt in against a development server deliberately configured with `allowIdentityKsf`, pass
+`allowWeakServerKsf` when constructing the client — `new HofmannOpaqueClientManager(accessor,
+overrides, true)` in Java, `create(url, { allowWeakServerKsf: true })` in TypeScript. To avoid
+negotiating configuration at all, pin an `OpaqueClientConfig` through the manager's overrides map,
+which short-circuits before the server is consulted.
+
+**The same endpoint also supplies `context`**, and the manager passes null for both identities — so
+`context` is the only deployment-distinguishing value in the AKE preamble, and it is what stops a
+transcript from one deployment being replayed against another. If you have it out-of-band, pin it
+with the `expectedContext` constructor argument.
+
+### Timing and Side Channels
+
+**Short version:** every scalar multiplication that touches long-term key material runs a
+Montgomery ladder — fixed iteration count, no secret-dependent branching. Four known gaps remain,
+and all of them need an attacker running code on the same host. **If your deployment does not
+share hardware with untrusted tenants, there is nothing here to act on.** If it does, read on —
+and do not choose a cipher suite on the strength of this section: the two ladders leak
+differently, neither is clearly ahead, and the honest answer is that the difference is
+unquantified.
+
+The ladder closes the wNAF leaks that preceded it: digit-dependent add/double sequences, a
 precomputed table indexed by secret values, and a window size chosen from the scalar's bit length.
 
-Three residuals remain.
+**The ladder's swap differs by suite, and so does what it leaks.** ristretto255 swaps its two
+accumulators with a masked XOR (`cswap`) that reads and writes both on every iteration; the
+Weierstrass curves index a two-element array by the bit, so which object receives the addition
+follows the key. That looks like a point in ristretto255's favour and measurement says otherwise:
+`cswap` is built on `BigInteger`, and when the mask is zero the intermediate is `BigInteger.ZERO`
+with a zero-length magnitude array while a set bit produces a full-width one — so allocation sizes
+track the secret bit. Measured, the masked swap is ~9% slower at a set bit, and end-to-end shows a
+slightly *larger* Hamming-weight signal than the indexed accumulator it appears to improve on.
 
-**The ladder's swap differs by suite.** ristretto255 swaps its two accumulators with a masked XOR
-(`cswap`) that reads and writes *both* accumulators on every iteration regardless of the bit. The
-Weierstrass curves index a two-element accumulator array by the bit
-(`r[other] = r[other].add(r[bit])`), so which of two heap objects receives the addition and which
-the doubling follows the key. Both references share a cache line and the footprint is far smaller
-than wNAF's precomputed table, but the access pattern remains observable in principle to an
-attacker able to probe cache on the same host.
+**ristretto255 does not rescale the scalar to a fixed width.** `WeierstrassGroupSpecImpl` rescales
+so the loop always runs full-width with the top bit set; ristretto255's ladder starts from the
+exact neutral element and runs cheaply while the leading bits are zero. Measured, a 64-bit scalar
+completes ~23% faster than a full-length one on ristretto255, where the Weierstrass curves are
+flat. This is the residual closest to being remotely observable — it is a static, repeatable bias
+against a long-term key on an operation an attacker can trigger without limit — but it discloses
+only the leading-zero count of a reduced scalar, one or two bits of 252, so it does not lead to key
+recovery.
 
-What this does **not** establish is that ristretto255 is measurably safer. `cswap` is built on
-`BigInteger.xor` and `and`, which allocate and whose cost depends on their operands, so it removes
-a secret-dependent *access pattern* without removing secret-dependent *work*. A microbenchmark of
-`cswap` at both bit values found a 7% difference in the direction opposite to what a
-short-circuiting `and(0)` would predict — consistent with allocation noise rather than a signal,
-but a throughput measurement is not a leakage analysis and should not be read as one. If your
-threat model includes a co-located attacker probing cache, treat the difference between the two
-ladders as unquantified and get a side-channel evaluation rather than choosing a suite on the
-strength of this paragraph.
+**Field arithmetic differs too, and here ristretto255 is the weaker one.** The NIST curves resolve
+through BouncyCastle's `CustomNamedCurves` to `SecP256R1Curve`/`SecP384R1Curve`/`SecP521R1Curve`,
+which use fixed-width `int[]` arithmetic with dedicated reduction — no `BigInteger` in the point
+operations at all. ristretto255 implements its field directly as `a.multiply(b).mod(P)`, whose cost
+depends on its operands. The Fermat inversion used for scalar inverses is `modPow(n-2, n)`, not
+`modInverse`; its exponent is public and fixed-length, so the exponent leaks nothing, but the
+secret base flows through unhardened multiplies.
 
-**`BigInteger` arithmetic is magnitude-dependent.** Both ladders, and the Fermat inversion used
-for scalar inverses, are built on `java.math.BigInteger`, whose multiplication, reduction and
-comparison run in time that depends on their operands. They are improvements over what they
-replaced, not constant-time in the strict sense, and removing this needs field-level primitives
-the JDK does not offer.
+**Fixed-length output is not fixed-time encoding.** `ByteUtils.scalarToFixedBytes` produces a
+constant-width result through a `System.arraycopy` whose length is `scalar.toByteArray().length`,
+varying with leading zero bytes; `Ristretto255GroupSpec.encodeLittleEndian` has the same shape.
+With a *secret* scalar this is reachable only from key generation, once per process — every
+per-request caller serializes the proof scalars `c` and `s`, which are published anyway — so it is
+not on a path an attacker can measure repeatedly.
 
-**Fixed-length output is not the same as fixed-time encoding.** `ByteUtils.scalarToFixedBytes`
-produces a fixed-width result, but it does so with a `System.arraycopy` whose *length* is
-`scalar.toByteArray().length` — which varies with the scalar's leading zero bytes. The output
-width is constant; the work to produce it is not.
-
-None of these is exploitable across a network in any way we are aware of; they are stated so a
-deployment with a co-located-attacker threat model can weigh them rather than assume they are
-absent. See `WeierstrassGroupSpecImpl` and `DleqProver` for the per-site notes.
+None of the four is reachable from the network: all require local code execution on the same host,
+and the one with a remote profile discloses at most a couple of bits. There is nothing to
+configure for any of them, and no pure-Java fix — constant-time field arithmetic is not something
+the JDK offers. See `WeierstrassGroupSpecImpl` and `DleqProver` for the per-site notes.
 
 ### Constant-Time MAC Verification
 

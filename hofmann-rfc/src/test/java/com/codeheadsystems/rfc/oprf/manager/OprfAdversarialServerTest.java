@@ -1,6 +1,7 @@
 package com.codeheadsystems.rfc.oprf.manager;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.codeheadsystems.rfc.oprf.model.BlindedRequest;
@@ -107,10 +108,12 @@ class OprfAdversarialServerTest {
     OprfClientManager client = new OprfClientManager(suite);
     ClientHashingContext context = client.hashingContext(INPUT);
 
+    // Not DecoderException: OprfClientManager.hashResult wraps BouncyCastle's decode failure, so
+    // allowing it would be an alternative the code cannot produce — the kind of union that lets a
+    // test pass for a reason nobody intended.
     assertThatThrownBy(() -> client.hashResult(
         new EvaluatedResponse("not-hex-at-all", "test-processor"), context))
-        .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class,
-            org.bouncycastle.util.encoders.DecoderException.class);
+        .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
   }
 
   // ─── not detected, and that is base mode working as specified ───────────────
@@ -137,12 +140,17 @@ class OprfAdversarialServerTest {
 
     HashResult honest = client.hashResult(
         evaluateHonestly(suite, request, SERVER_KEY), context);
-    HashResult underWrongKey = client.hashResult(
-        evaluateHonestly(suite, request, SERVER_KEY.add(BigInteger.ONE)), context);
 
-    // Both succeed. The client cannot tell them apart — only that they differ, which it has no
-    // way to observe with a single response.
-    assertThat(honest.hash()).isNotEqualTo(underWrongKey.hash());
+    // "Accepted silently" is the claim, so acceptance is what is asserted — not merely that the
+    // two outputs differ, which would hold even if the client had thrown.
+    EvaluatedResponse underWrongKey =
+        evaluateHonestly(suite, request, SERVER_KEY.add(BigInteger.ONE));
+    assertThatNoException()
+        .as("base mode has no way to reject an evaluation under the wrong key")
+        .isThrownBy(() -> client.hashResult(underWrongKey, context));
+
+    // And the output really is different, so the client has silently taken a wrong answer.
+    assertThat(client.hashResult(underWrongKey, context).hash()).isNotEqualTo(honest.hash());
   }
 
   /**
@@ -160,8 +168,13 @@ class OprfAdversarialServerTest {
     EvaluatedResponse forTheirs =
         evaluateHonestly(suite, client.eliminationRequest(theirs), SERVER_KEY);
 
-    // Unblinding someone else's evaluation with my blind yields a well-formed, wrong hash.
-    assertThat(client.hashResult(forTheirs, mine).hash()).isNotEmpty();
+    // Unblinding someone else's evaluation with my blind is accepted and yields a hash that is
+    // not the one my own input should produce — asserted against the honest value rather than
+    // merely being non-empty, which any byte array would satisfy.
+    byte[] honestForMine = client.hashResult(
+        evaluateHonestly(suite, client.eliminationRequest(mine), SERVER_KEY), mine).hash();
+    assertThatNoException().isThrownBy(() -> client.hashResult(forTheirs, mine));
+    assertThat(client.hashResult(forTheirs, mine).hash()).isNotEqualTo(honestForMine);
   }
 
   // ─── the honest path still works, per suite ─────────────────────────────────

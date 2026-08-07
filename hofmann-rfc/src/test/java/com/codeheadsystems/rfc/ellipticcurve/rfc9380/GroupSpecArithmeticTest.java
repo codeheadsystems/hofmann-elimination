@@ -292,21 +292,51 @@ class GroupSpecArithmeticTest {
   @MethodSource("specs")
   void scalarMultiplyRejectsTheIdentity(String name, GroupSpec spec) {
     byte[] identity = identityEncoding(spec);
+    // The message is asserted, not just the type: this path reaches the identity check on all
+    // four suites, so a regression that swapped it for an earlier structural rejection would
+    // otherwise pass. Its sibling below shows why that is not a hypothetical worry.
     assertThatThrownBy(() -> spec.scalarMultiply(BigInteger.valueOf(7), identity))
         .as("%s must refuse the identity as a scalar multiplication input", name)
-        .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
+        .isInstanceOf(SecurityException.class)
+        .hasMessageContaining("identity");
   }
 
   /**
-   * The same for {@code validateElement}, which is the verifiable modes' gate.
+   * The same for {@code validateElement}, which is the verifiable modes' gate — but asserting
+   * <em>which</em> defence fired, because the two suites do not agree and the difference is the
+   * whole point.
+   *
+   * <p>An earlier version of this test asserted only
+   * {@code isInstanceOfAny(SecurityException, IllegalArgumentException)} and was <strong>vacuous
+   * on three of the four suites</strong>: on the Weierstrass curves {@code validateElement}
+   * checks the length first, and the SEC1 identity is one byte, so it threw
+   * {@code IllegalArgumentException} from the length check and never reached the identity check
+   * at all. Deleting that identity check would not have failed the test. That is precisely the
+   * flaw this file already documents for {@code new byte[elementSize()]} — reproduced by a test
+   * written to fix it, and hidden by the exception-type union.
+   *
+   * <p>So the assertion is on the message. On ristretto255 the identity has a legitimate
+   * {@code elementSize()}-byte encoding and only the identity check can refuse it; on the
+   * Weierstrass curves the canonical-length requirement <em>is</em> the defence, and saying so is
+   * more honest than pretending both suites take the same path to the same word.
    */
   @ParameterizedTest(name = "{0}")
   @MethodSource("specs")
   void validateElementRejectsTheIdentityOnEverySuite(String name, GroupSpec spec) {
     byte[] identity = identityEncoding(spec);
-    assertThatThrownBy(() -> spec.validateElement(identity))
-        .as("%s must refuse the identity as a batch element", name)
-        .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
+    if (spec == Ristretto255GroupSpec.INSTANCE) {
+      assertThatThrownBy(() -> spec.validateElement(identity))
+          .as("ristretto255's identity is a well-formed encoding, so only the identity check "
+              + "can refuse it")
+          .isInstanceOf(SecurityException.class)
+          .hasMessageContaining("identity");
+    } else {
+      assertThatThrownBy(() -> spec.validateElement(identity))
+          .as("%s spells the identity in one byte, so the canonical-length check is what "
+              + "refuses it", name)
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("compressed SEC1");
+    }
   }
 
   /**

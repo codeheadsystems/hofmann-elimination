@@ -155,7 +155,7 @@ The fake masking key and client public key are derived deterministically from th
 | `Client` | Public client API (stateless; state carried in `ClientRegistrationState` / `ClientAuthState`) |
 | `Server` | Public server API (holds long-term key pair and OPRF seed) |
 | `OpaqueConfig` | Protocol configuration (cipher suite, KSF, context) |
-| `OpaqueCipherSuite` | Wrapper around `OprfCipherSuite` with OPAQUE-specific size constants |
+| `OpaqueCipherSuite` | Wrapper around `OprfCipherSuite`: size constants (`Npk`, `Nsk`, `Nh`, `Nm`, `Nn`) and the low-level primitives `hkdfExtract`, `hkdfExpand`, `hkdfExpandLabel`, `hmac`, `hash`, `deriveAkeKeyPair` |
 
 ### Internal Classes (not part of public API)
 
@@ -165,7 +165,6 @@ The fake masking key and client public key are derived deterministically from th
 | `OpaqueCredentials` | Credential request/response lifecycle; credential masking/unmasking |
 | `OpaqueEnvelope` | Envelope store (registration) and recover (authentication) |
 | `OpaqueAke` | OPAQUE-3DH key exchange: preamble, 3DH (via `GroupSpec.scalarMultiply`), key derivation, MAC computation |
-| `OpaqueCipherSuite` | Suite constants (`Nh`, `Npk`, `Nsk`, …) and the low-level primitives: `hkdfExtract`, `hkdfExpand`, `hkdfExpandLabel`, `hmac`, `hash`, `deriveAkeKeyPair` |
 
 ## Wire Format
 

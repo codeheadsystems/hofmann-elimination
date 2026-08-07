@@ -11,10 +11,10 @@ is closed.** What remains is P2, P3 and the findings raised while closing the re
 
 | Section | Open |
 |---|---:|
-| New findings | 3 |
+| New findings | 4 |
 | **P2 Medium** | 6 |
 | **P3 Low** | 4 |
-| **Total** | **13** |
+| **Total** | **14** |
 
 Recount with `grep -c '^- \[ \]' TODO.md` after editing.
 
@@ -71,6 +71,20 @@ two are documented in code with no action planned.
 ---
 
 ## New findings
+
+- [ ] **ristretto255's ladder does not rescale the scalar to a fixed width** — **[measured]**.
+      `WeierstrassGroupSpecImpl.fixedWidthScalar` exists precisely to stop the loop running cheaply
+      through leading zero bits; `Ristretto255GroupSpec.scalarMul` has no equivalent and starts
+      from the exact neutral element, so the early iterations operate on 0/1 operands. Measured
+      during the August 2026 documentation review: a 64-bit scalar completes ~23% faster than a
+      full-length one on ristretto255, where the Weierstrass curves are flat. Interleaved at
+      realistic widths it resolves to ~0.13% per leading-zero bit, consistent at p10 and p50.
+
+      This is the residual with the most remote-looking profile in the tree: a static, repeatable
+      bias tied to a long-term key on an operation an attacker can trigger without limit. It
+      discloses only the leading-zero count of a reduced scalar — one or two bits of 252 — so it
+      does not lead to key recovery, which is why it is recorded rather than treated as urgent.
+      Closing it means the ristretto equivalent of `fixedWidthScalar`. Documented in `SECURITY.md`.
 
 - [ ] **Decide whether the origin rate limiter should default on when recovery is enabled.**
       `originRateLimitConfig()` returns null by default, and the comment there explains why: as a
