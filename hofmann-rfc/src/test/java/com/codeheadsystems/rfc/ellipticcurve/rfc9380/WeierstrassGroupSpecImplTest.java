@@ -229,12 +229,45 @@ class WeierstrassGroupSpecImplTest {
     }
 
     @Test
-    void identityPoint_throwsSecurityException() {
-      // The identity (point at infinity) in SEC1 compressed encoding is a single 0x00 byte
+    void identityPoint_isRejectedAsANonCanonicalEncoding() {
+      // The identity (point at infinity) in SEC1 compressed encoding is a single 0x00 byte, so
+      // the canonical-length check refuses it before the infinity check is reached. It is still
+      // rejected — which is the property that matters — but as a malformed encoding rather than
+      // as the identity, and with IllegalArgumentException so the adapters answer 400 rather
+      // than issuing an authentication challenge.
       byte[] infinity = new byte[]{0x00};
       assertThatThrownBy(() -> spec.deserializePoint(infinity))
-          .isInstanceOf(SecurityException.class)
-          .hasMessageContaining("identity");
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("compressed SEC1");
+    }
+
+    @Test
+    void uncompressedAndHybridEncodings_areRejected() {
+      // RFC 9497 §2.1 requires DeserializeElement to be the inverse of SerializeElement, which
+      // only ever emits compressed. BouncyCastle's decodePoint would otherwise accept these, so
+      // one group element would have three wire spellings — enough to slip past anything keyed
+      // on the encoded element rather than the point it denotes.
+      ECPoint generator = spec.deserializePoint(spec.generator());
+      byte[] uncompressed = generator.getEncoded(false);
+      assertThatThrownBy(() -> spec.deserializePoint(uncompressed))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("compressed SEC1");
+
+      byte[] hybrid = generator.getEncoded(false);
+      hybrid[0] = (byte) (generator.normalize().getYCoord().testBitZero() ? 0x07 : 0x06);
+      assertThatThrownBy(() -> spec.deserializePoint(hybrid))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("compressed SEC1");
+    }
+
+    @Test
+    void compressedEncodingWithAWrongPrefix_isRejected() {
+      // Right length, wrong type byte: caught by the prefix check rather than by curve math.
+      byte[] element = spec.generator().clone();
+      element[0] = 0x04;
+      assertThatThrownBy(() -> spec.deserializePoint(element))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("prefix");
     }
 
     @Test
@@ -254,11 +287,13 @@ class WeierstrassGroupSpecImplTest {
 
     @Test
     void truncatedCompressedPoint_throws() {
-      // A compressed-point prefix with too few coordinate bytes is rejected by BouncyCastle's
-      // decodePoint with an "Incorrect length" IllegalArgumentException, before any curve math.
+      // A compressed-point prefix with too few coordinate bytes is now rejected by the
+      // canonical-length check rather than by BouncyCastle's own "Incorrect length" guard.
+      // Same exception type, so the adapters' 400 mapping is unchanged.
       byte[] truncated = new byte[]{0x02, 0x01, 0x02, 0x03};
       assertThatThrownBy(() -> spec.deserializePoint(truncated))
-          .isInstanceOf(IllegalArgumentException.class);
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("compressed SEC1");
     }
 
     @Test

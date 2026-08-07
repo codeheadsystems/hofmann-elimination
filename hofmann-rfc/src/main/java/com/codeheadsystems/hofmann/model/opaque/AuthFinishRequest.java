@@ -30,7 +30,6 @@ public record AuthFinishRequest(
     @JsonProperty("clientMac") String clientMacBase64) {
 
   private static final Base64.Encoder B64 = Base64.getEncoder();
-  private static final Base64.Decoder B64D = Base64.getDecoder();
 
   /**
    * Instantiates a new Auth finish request.
@@ -43,18 +42,25 @@ public record AuthFinishRequest(
   }
 
   /**
+   * Returns the session token, bounded like every other client-supplied field.
+   *
+   * <p>The token is not base64-decoded, so it never passed through the decode helper and so
+   * carried no length cap at all — but it is looked up in the pending-session store, which makes
+   * it as much of an attacker-supplied map key as the credential identifier.
+   *
+   * @return the session token
+   */
+  public String sessionToken() {
+    WireFields.checkLength(sessionToken, "sessionToken");
+    return sessionToken;
+  }
+
+  /**
    * Ke 3 ke 3.
    *
    * @return the ke 3
    */
   public KE3 ke3() {
-    if (clientMacBase64 == null || clientMacBase64.isBlank()) {
-      throw new IllegalArgumentException("Missing required field: clientMac");
-    }
-    try {
-      return new KE3(B64D.decode(clientMacBase64));
-    } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException("Invalid base64 in field: clientMac", e);
-    }
+    return new KE3(WireFields.decode(clientMacBase64, "clientMac"));
   }
 }

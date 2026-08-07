@@ -26,6 +26,7 @@ import com.codeheadsystems.rfc.opaque.Server;
 import com.codeheadsystems.rfc.opaque.model.KE1;
 import com.codeheadsystems.rfc.opaque.model.RegistrationRecord;
 import com.codeheadsystems.rfc.opaque.model.ServerKE2Result;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Optional;
 import java.util.UUID;
@@ -356,18 +357,31 @@ public class HofmannOpaqueServerManager {
       // registration.
       validateRecord(req);
       // Recovery-token lifecycle: registrationStart only peeks the token (non-consuming) so the
-      // client can safely retry start after a network failure. This finish step is the single,
-      // atomic consume gate: remove() returns the bound credential id exactly once, so the
-      // account-mutating work below (delete old record, revoke sessions, store new record) runs
-      // at most once per token. A second finish with the same token gets Optional.empty() and is
-      // rejected. TTL/expiry is re-checked here by the store, so there is no TOCTOU against the
-      // earlier peek.
-      String credId = recoveryTokenStore.remove(bearerToken)
+      // client can safely retry start after a network failure. This finish step is the single
+      // consume gate — the account-mutating work below runs at most once per token.
+      //
+      // Peek, compare, then remove, rather than remove-then-compare. Consuming first meant
+      // anyone who observed a token could destroy it by replaying it with a *wrong* identifier:
+      // the remove succeeded, the comparison then failed, and the legitimate user had to restart
+      // recovery. The identifier check costs nothing and gates the consume.
+      //
+      // Single-use is still enforced by remove() being atomic, not by the peek: two concurrent
+      // finishes both pass the comparison, but only one remove() returns a value and the loser
+      // is rejected below. TTL/expiry is re-checked by the store at both steps, so there is no
+      // TOCTOU against the peek — a token that expires in between simply fails the remove.
+      String credId = recoveryTokenStore.peek(bearerToken)
           .orElseThrow(() -> new SecurityException("Invalid or expired recovery token"));
       if (!credId.equals(req.credentialIdentifierBase64())) {
         throw new SecurityException("Recovery token does not match credential");
       }
-      log.info("Recovery re-registration for credential {}", req.credentialIdentifierBase64());
+      if (recoveryTokenStore.remove(bearerToken).isEmpty()) {
+        throw new SecurityException("Invalid or expired recovery token");
+      }
+      // DEBUG, not INFO: the credential identifier is usually an email address, and a
+      // re-registration line names an account that just went through recovery. That belongs
+      // behind the same switch as the rest of the identifier logging rather than in the
+      // default-level record every deployment keeps.
+      log.debug("Recovery re-registration for credential {}", req.credentialIdentifierBase64());
       // No delete before the store at the end of this method. delete-then-store left a window in
       // which the credential did not exist, which the unauthenticated registrationFinish path
       // could be flooded to land inside — and a failure between the two steps left the account
@@ -713,7 +727,10 @@ public class HofmannOpaqueServerManager {
    * @throws SecurityException        if the session token is unknown / expired, or if                                  the client MAC does not verify
    */
   public AuthFinishResponse authFinish(AuthFinishRequest req) {
-    log.debug("authFinish(sessionToken={})", req.sessionToken());
+    // The session token is a bearer credential for the pending handshake, so it is not logged —
+    // same policy InMemoryRecoveryTokenStore states for the structurally equivalent recovery
+    // token. Logging it at DEBUG put it in any deployment running debug logging.
+    log.debug("authFinish()");
     PendingSessionStore.PendingSession pending = pendingSessionStore.remove(req.sessionToken())
         .orElseThrow(() -> new SecurityException("Session not found or expired"));
 
@@ -723,10 +740,19 @@ public class HofmannOpaqueServerManager {
       server = keyDetail.currentServer();
     }
     byte[] sessionKey = server.serverFinish(pending.state(), req.ke3());
-    String sessionKeyBase64 = B64.encodeToString(sessionKey);
-    String token = jwtManager.issueToken(pending.credentialIdentifierBase64(), sessionKeyBase64);
+    try {
+      String sessionKeyBase64 = B64.encodeToString(sessionKey);
+      // The key is not passed to the JWT layer any more: nothing ever read it back out of the
+      // session store, and a String cannot be zeroed. See SessionData.
+      String token = jwtManager.issueToken(pending.credentialIdentifierBase64());
 
-    Boolean rotationRequired = pending.keyVersion() < keyDetail.currentVersion() ? Boolean.TRUE : null;
-    return new AuthFinishResponse(sessionKeyBase64, token, rotationRequired);
+      Boolean rotationRequired =
+          pending.keyVersion() < keyDetail.currentVersion() ? Boolean.TRUE : null;
+      return new AuthFinishResponse(sessionKeyBase64, token, rotationRequired);
+    } finally {
+      // The base64 String still has to reach the client, so this does not make the key
+      // unrecoverable from the heap — it just stops the raw copy outliving the request.
+      Arrays.fill(sessionKey, (byte) 0);
+    }
   }
 }

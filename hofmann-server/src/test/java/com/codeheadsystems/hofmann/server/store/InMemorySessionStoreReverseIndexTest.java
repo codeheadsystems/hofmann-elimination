@@ -38,11 +38,11 @@ class InMemorySessionStoreReverseIndexTest {
   }
 
   private static SessionData live(String cred) {
-    return new SessionData(cred, "key", Instant.now(), Instant.now().plusSeconds(3600));
+    return new SessionData(cred, Instant.now(), Instant.now().plusSeconds(3600));
   }
 
   private static SessionData expired(String cred) {
-    return new SessionData(cred, "key",
+    return new SessionData(cred,
         Instant.now().minusSeconds(7200), Instant.now().minusSeconds(3600));
   }
 

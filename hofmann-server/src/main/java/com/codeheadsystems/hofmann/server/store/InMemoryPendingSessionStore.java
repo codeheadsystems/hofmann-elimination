@@ -91,7 +91,11 @@ public class InMemoryPendingSessionStore implements PendingSessionStore {
     }
     sessions.put(sessionToken,
         new TimestampedEntry(state, credentialIdentifierBase64, keyVersion, Instant.now()));
-    log.debug("Stored pending session {}", sessionToken);
+    // Do not log the raw session token. It is a bearer credential for the pending handshake —
+    // whoever holds it can present KE3 against this state — so it gets the same treatment
+    // InMemoryRecoveryTokenStore already spells out for the recovery token. The credential
+    // identifier is the non-secret half and is enough to correlate.
+    log.debug("Stored pending session for credential {}", credentialIdentifierBase64);
   }
 
   @Override

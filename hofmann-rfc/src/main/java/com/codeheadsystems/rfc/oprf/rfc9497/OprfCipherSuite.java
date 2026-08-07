@@ -166,39 +166,46 @@ public class OprfCipherSuite {
   }
 
   /**
-   * Context string byte [ ].
+   * Returns a copy of the context string.
    *
-   * @return the byte [ ]
+   * <p>These four accessors clone. The suites are process-wide statics shared across every
+   * request thread, so handing out the live array let any caller — or any caller's bug — mutate
+   * the domain separation tag that every other thread is about to hash with. The result would be
+   * a silent, global change in derived outputs rather than an exception, and on the DeriveKeyPair
+   * tag it would change derived keys. Nothing in tree mutates them; the cost of the copy is a
+   * few dozen bytes on paths that already do curve arithmetic.
+   *
+   * @return a copy of the context string
    */
   public byte[] contextString() {
-    return contextString;
+    return contextString.clone();
   }
 
   /**
-   * Hash to group dst byte [ ].
+   * Returns a copy of the HashToGroup domain separation tag.
    *
-   * @return the byte [ ]
+   * @return a copy of the HashToGroup DST
    */
   public byte[] hashToGroupDst() {
-    return hashToGroupDst;
+    return hashToGroupDst.clone();
   }
 
   /**
-   * Hash to scalar dst byte [ ].
+   * Returns a copy of the HashToScalar domain separation tag.
    *
-   * @return the byte [ ]
+   * @return a copy of the HashToScalar DST
    */
   public byte[] hashToScalarDst() {
-    return hashToScalarDst;
+    return hashToScalarDst.clone();
   }
 
   /**
-   * Derive key pair dst byte [ ].
+   * Returns a copy of the DeriveKeyPair domain separation tag.
    *
-   * @return the byte [ ]
+   * @return a copy of the DeriveKeyPair DST
    */
   public byte[] deriveKeyPairDst() {
-    return deriveKeyPairDst;
+    return deriveKeyPairDst.clone();
   }
 
   /**

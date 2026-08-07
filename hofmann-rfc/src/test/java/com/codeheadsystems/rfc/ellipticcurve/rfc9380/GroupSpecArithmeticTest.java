@@ -8,6 +8,7 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.stream.Stream;
+import org.bouncycastle.math.ec.ECPoint;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -225,13 +226,46 @@ class GroupSpecArithmeticTest {
         .hasMessageContaining("identity");
   }
 
+  /**
+   * On the Weierstrass curves the identity has no canonical input encoding to reject any more.
+   * SEC1 spells it {@code 0x00}, a single byte, and {@code deserializePoint} now requires exactly
+   * {@code elementSize()} bytes with a {@code 0x02}/{@code 0x03} prefix — so the identity is
+   * refused as a malformed encoding before the infinity check, and no {@code elementSize()}-byte
+   * compressed string decodes to infinity. The rejection is what matters and it is asserted here;
+   * the {@code isInfinity()} guard inside {@code deserializePoint} is now defence-in-depth against
+   * a future reordering rather than a reachable path.
+   */
   @ParameterizedTest(name = "{0}")
   @MethodSource("weierstrassSpecs")
   void weierstrassLinearCombinationRejectsTheIdentityInputEncoding(String name, GroupSpec spec) {
     assertThatThrownBy(() -> spec.linearCombinationPublic(
         new BigInteger[]{BigInteger.ONE}, new byte[][]{new byte[]{0x00}}))
-        .isInstanceOf(SecurityException.class)
-        .hasMessageContaining("identity");
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("compressed SEC1");
+  }
+
+  /**
+   * The non-canonical encodings RFC 9497 §2.1 excludes must be refused on every path, not only
+   * the verifiable one. {@code validateElement} has covered this for the VOPRF/POPRF managers;
+   * this pins it for {@code scalarMultiply}, which is what the base-mode OPRF and OPAQUE reach.
+   */
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("weierstrassSpecs")
+  void weierstrassScalarMultiplyRejectsNonCompressedEncodings(String name, GroupSpec spec) {
+    WeierstrassGroupSpecImpl impl = (WeierstrassGroupSpecImpl) spec;
+    ECPoint generator = impl.deserializePoint(spec.generator());
+
+    for (boolean hybrid : new boolean[]{false, true}) {
+      byte[] encoded = generator.getEncoded(false);
+      if (hybrid) {
+        // SEC1 hybrid: uncompressed body, but the prefix also carries y's parity.
+        encoded[0] = (byte) (generator.normalize().getYCoord().testBitZero() ? 0x07 : 0x06);
+      }
+      byte[] element = encoded;
+      assertThatThrownBy(() -> spec.scalarMultiply(BigInteger.TWO, element))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("compressed SEC1");
+    }
   }
 
   static Stream<Arguments> weierstrassSpecs() {

@@ -47,6 +47,36 @@ public class JwtManager {
     this.sessionStore = sessionStore;
     this.issuer = issuer;
     this.ttlSeconds = ttlSeconds;
+    // Fail at construction rather than at first use, and check through the supplier so a rotation
+    // cannot introduce a weak key later without the same complaint at issue time.
+    requireAdequateKey(keyDetailSupplier.get());
+  }
+
+  /**
+   * Minimum HMAC-SHA256 key length, in bytes.
+   *
+   * <p>RFC 8725 §3.5 and RFC 2104 both put the floor at the hash output size. Below it the key is
+   * brute-forceable offline from a single captured token — {@code jwtSecretHex: "00"} yielded a
+   * one-byte HMAC key that the configuration accepted without comment, and a forged token from a
+   * recovered key authenticates as any subject the attacker names.
+   */
+  public static final int MIN_SIGNING_KEY_BYTES = 32;
+
+  private static void requireAdequateKey(JwtKeyDetail detail) {
+    if (detail == null || detail.signingKey() == null
+        || detail.signingKey().length < MIN_SIGNING_KEY_BYTES) {
+      throw new IllegalArgumentException(
+          "JWT signing key must be at least " + MIN_SIGNING_KEY_BYTES
+              + " bytes for HMAC-SHA256; got "
+              + (detail == null || detail.signingKey() == null
+                  ? "none" : detail.signingKey().length + " bytes"));
+    }
+    // The previous key only verifies, never signs, but a short one is just as forgeable and
+    // tokens signed with it are still accepted for the rotation window.
+    if (detail.previousKey() != null && detail.previousKey().length < MIN_SIGNING_KEY_BYTES) {
+      throw new IllegalArgumentException(
+          "Previous JWT signing key must be at least " + MIN_SIGNING_KEY_BYTES + " bytes");
+    }
   }
 
   /**
@@ -65,10 +95,23 @@ public class JwtManager {
    * Issues a JWT for a successfully authenticated credential.
    *
    * @param credentialIdentifierBase64 base64-encoded credential identifier
-   * @param sessionKeyBase64           base64-encoded session key from the 3DH handshake
+   * @param sessionKeyBase64           ignored; retained only for source compatibility
+   * @return signed JWT string
+   * @deprecated the session key is no longer stored server-side — see {@link SessionData}.
+   *     Use {@link #issueToken(String)}; this overload discards its second argument.
+   */
+  @Deprecated(since = "3.2.0", forRemoval = true)
+  public String issueToken(String credentialIdentifierBase64, String sessionKeyBase64) {
+    return issueToken(credentialIdentifierBase64);
+  }
+
+  /**
+   * Issues a JWT for a successfully authenticated credential.
+   *
+   * @param credentialIdentifierBase64 base64-encoded credential identifier
    * @return signed JWT string
    */
-  public String issueToken(String credentialIdentifierBase64, String sessionKeyBase64) {
+  public String issueToken(String credentialIdentifierBase64) {
     String jti = UUID.randomUUID().toString();
     Instant now = Instant.now();
     Instant expiresAt = now.plusSeconds(ttlSeconds);
@@ -84,7 +127,7 @@ public class JwtManager {
         .withExpiresAt(expiresAt)
         .sign(algorithm);
 
-    sessionStore.store(jti, new SessionData(credentialIdentifierBase64, sessionKeyBase64, now, expiresAt));
+    sessionStore.store(jti, new SessionData(credentialIdentifierBase64, now, expiresAt));
     log.debug("Issued JWT jti={} for credential", jti);
     return token;
   }

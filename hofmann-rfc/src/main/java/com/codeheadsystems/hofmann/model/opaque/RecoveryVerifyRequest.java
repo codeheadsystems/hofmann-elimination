@@ -20,7 +20,6 @@ public record RecoveryVerifyRequest(
     @JsonProperty("challengeResponse") String challengeResponse) {
 
   private static final Base64.Encoder B64 = Base64.getEncoder();
-  private static final Base64.Decoder B64D = Base64.getDecoder();
 
   /**
    * Instantiates a new Recovery verify request from raw credential identifier bytes.
@@ -39,14 +38,7 @@ public record RecoveryVerifyRequest(
    * @throws IllegalArgumentException if the field is missing, blank, or invalid base64
    */
   public byte[] credentialIdentifier() {
-    if (credentialIdentifierBase64 == null || credentialIdentifierBase64.isBlank()) {
-      throw new IllegalArgumentException("Missing required field: credentialIdentifier");
-    }
-    try {
-      return B64D.decode(credentialIdentifierBase64);
-    } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException("Invalid base64 in field: credentialIdentifier", e);
-    }
+    return WireFields.decode(credentialIdentifierBase64, "credentialIdentifier");
   }
 
   /**
@@ -72,6 +64,9 @@ public record RecoveryVerifyRequest(
     if (challengeResponse == null || challengeResponse.isBlank()) {
       throw new IllegalArgumentException("Missing required field: challengeResponse");
     }
+    // Not base64, so it never went through the decode helper — but it is still an unauthenticated
+    // client-supplied string handed to a RecoveryChallenger implementation.
+    WireFields.checkLength(challengeResponse, "challengeResponse");
     return challengeResponse;
   }
 }

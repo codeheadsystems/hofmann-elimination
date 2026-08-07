@@ -68,6 +68,14 @@ public class ExpandMessageXmd {
     if (lenInBytes <= 0 || lenInBytes > 65535) {
       throw new IllegalArgumentException("lenInBytes must be between 1 and 65535");
     }
+    // RFC 9380 §3.1: "domain separation tags MUST have nonzero length". An empty DST is what a
+    // caller gets from an unset config field or a missing constant, and it silently produces a
+    // valid-looking expansion that shares its output space with every other empty-DST caller —
+    // which is exactly the cross-protocol collision the tag exists to prevent. Rejecting it turns
+    // a silent misuse into a startup-time failure.
+    if (dst == null || dst.length == 0) {
+      throw new IllegalArgumentException("DST must be non-empty (RFC 9380 §3.1)");
+    }
 
     // Calculate ell = ceil(len_in_bytes / b_in_bytes)
     int ell = (lenInBytes + bInBytes - 1) / bInBytes;
