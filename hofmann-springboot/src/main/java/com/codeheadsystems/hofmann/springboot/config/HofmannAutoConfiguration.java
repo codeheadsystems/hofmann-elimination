@@ -65,6 +65,7 @@ import org.springframework.context.annotation.Bean;
     OprfController.class,
     HofmannSecurityConfig.class,
     OpaqueServerHealthIndicator.class,
+    RequestBodyTooLargeAdvice.class,
 })
 public class HofmannAutoConfiguration {
 

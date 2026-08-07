@@ -19,15 +19,15 @@ at their default in a real deployment.
 
 | Field               | Default             | Required for production | Description                                                                                                                                                                                                                          |
 |---------------------|---------------------|-------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `opaqueCipherSuite` | `P256_SHA256`       | No                      | Cipher suite for OPAQUE. Accepted values: `P256_SHA256`, `P384_SHA384`, `P521_SHA512`. Must match the client exactly.                                                                                                                |
+| `opaqueCipherSuite` | `P256_SHA256`       | No                      | Cipher suite for OPAQUE. Accepted values: `P256_SHA256`, `P384_SHA384`, `P521_SHA512`, `RISTRETTO255_SHA512`. Must match the client exactly. **A deployment-time choice, not a knob** — the registration record is suite-specific, so changing it invalidates every existing registration exactly as [changing Argon2id parameters](#changing-argon2id-parameters) does. See [Timing and Side Channels](SECURITY.md) before choosing. |
 | `context`           | `hofmann-opaque-v1` | **Yes**                 | Application context string bound into the OPAQUE preamble. Must be unique per deployment. Shared between server and client out-of-band.                                                                                              |
 | `serverKeySeedHex`  | `""` (random)       | **Yes**                 | Hex-encoded 32-byte seed that deterministically derives the server's long-term AKE key pair. Generate with `openssl rand -hex 32`.                                                                                                   |
 | `oprfSeedHex`       | `""` (random)       | **Yes**                 | Hex-encoded 32-byte seed that deterministically derives per-credential OPRF keys. Generate with `openssl rand -hex 32`. Must be set together with `serverKeySeedHex` — providing only one throws `IllegalStateException` on startup. |
 | `previousServerKeySeedHex` | `""`         | No                      | Previous server key seed for key rotation. Credentials registered under these keys remain authenticatable. See [OPAQUE key rotation](#opaque-key-rotation). |
 | `previousOprfSeedHex`      | `""`         | No                      | Previous OPRF seed for key rotation. Must be set together with `previousServerKeySeedHex` or both omitted. |
-| `argon2MemoryKib`   | `65536`             | **Yes**                 | Argon2id memory cost in kibibytes. Set to `0` to disable Argon2 (identity KSF — for testing only). See [Argon2id consistency](#argon2id-consistency-between-server-and-client) below.                                                |
-| `argon2Iterations`  | `3`                 | **Yes**                 | Argon2id iteration count. Ignored when `argon2MemoryKib` is `0`.                                                                                                                                                                     |
-| `argon2Parallelism` | `1`                 | **Yes**                 | Argon2id parallelism. Ignored when `argon2MemoryKib` is `0`.                                                                                                                                                                         |
+| `argon2MemoryKib`   | `65536`             | **Yes**                 | Argon2id memory cost in kibibytes. Clients refuse anything below 19456 KiB or above 4 GiB — see [Key stretching](#key-stretching). `0` selects the identity KSF (no stretching) and additionally requires `allowIdentityKsf`, without which the server refuses to start; development only. See [Argon2id consistency](#argon2id-consistency-between-server-and-client). |
+| `argon2Iterations`  | `3`                 | **Yes**                 | Argon2id iteration count. Clients refuse below 2 or above 10. Ignored when `argon2MemoryKib` is `0`.                                                                                                                                 |
+| `argon2Parallelism` | `1`                 | **Yes**                 | Argon2id parallelism. Clients refuse above 16, and **browser clients require `1`** (hash-wasm is single-threaded). Ignored when `argon2MemoryKib` is `0`.                                                                             |
 
 ### OPRF (standalone endpoint)
 
@@ -48,9 +48,56 @@ at their default in a real deployment.
 
 ### Security
 
-| Field                 | Default | Required for production | Description                                                                                                                                                                                                      |
-|-----------------------|---------|-------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `maxRequestBodyBytes` | `65536` | No                      | Requests with a `Content-Length` header exceeding this value are rejected with HTTP 413 before the body is read. The largest OPAQUE message is well under 64 KiB; raise this only if you have a specific reason. |
+| Field                   | Default | Required for production | Description |
+|-------------------------|---------|-------------------------|-------------|
+| `maxRequestBodyBytes`   | `65536` | No | Maximum request body size; requests with a larger body are rejected with HTTP 413. Enforced two ways, so a chunked body cannot evade it: a declared `Content-Length` over the limit is rejected before the body is read, and the request stream is bounded as it is read for bodies that declare no length. The batched VOPRF/POPRF endpoints carry their own tighter limit of 17,024 bytes, derived from the batch cap of 64. The largest OPAQUE message is well under 64 KiB; raise this only if you have a specific reason. |
+| `trustForwardedHeaders` | `false` | No | Derives the client IP for origin rate limiting from `X-Forwarded-For` instead of the socket peer address. **Only safe behind a trusted proxy that overwrites the header** rather than appending to a client-supplied one — otherwise a single source can mint unlimited distinct rate-limit keys and escape the limiter entirely. |
+
+### Development-only escape hatches
+
+Two flags exist to let a local server start in a state a production server must never be in. Both
+default to `false`, and in both cases the default is what makes the server refuse to start rather
+than proceed in that state — the refusal is the feature.
+
+| Field                | Default | Required for production | Description |
+|----------------------|---------|-------------------------|-------------|
+| `allowIdentityKsf`   | `false` | No — **never enable in production** | Permits running with **no key stretching** (`argon2MemoryKib: 0`). Without a KSF a stolen registration record is offline-crackable at the speed of a bare hash. |
+| `allowEphemeralKeys` | `false` | No — **never enable in production** | Permits starting with no configured key material, generating random keys instead. Every registration is invalidated on restart, and in a multi-node deployment credentials registered against one node cannot authenticate against another. |
+
+### Key stretching
+
+The Argon2id parameters live in the [OPAQUE table](#opaque) above. They are listed there rather
+than here because that is where you are when you set them — this section exists to explain the one
+thing the table cannot: **the client takes these parameters from the server** via
+`GET /opaque/config`, and polices them.
+
+The client accepts at least 19456 KiB and 2 iterations (the OWASP Argon2id minimum at `t=2, p=1`),
+and at most 4 GiB, 10 iterations and 16 lanes — the upper bounds are denial-of-service hardening
+rather than a security floor. Configure the server outside that window and every client throws
+`IllegalStateException` on first use. Why the client polices the server at all, and how to opt out
+for a development server, is in [SECURITY.md](SECURITY.md).
+
+### Verifiable OPRF modes (RFC 9497)
+
+Both modes are off until you configure a key. Until then the endpoint answers 404 — not 501,
+because the resource is mounted and this deployment simply does not offer the mode. There is
+deliberately no ephemeral fallback: clients pin the server's public key and check proofs against
+it, so a key regenerated on restart would silently invalidate every pinned key.
+
+**Generate a separate key for each mode with `openssl rand -hex 32`, and do not reuse
+`oprfMasterKeyHex`.** RFC 9497 puts the mode byte in every domain-separation tag, so one secret
+serving two modes computes two different functions under two different tag sets — which is not a
+compromise between them, just two unrelated outputs from one secret.
+
+| Field                | Default | Required for production | Description |
+|----------------------|---------|-------------------------|-------------|
+| `voprfMasterKeyHex`  | `""`    | No | VOPRF (mode 0x01) key, hex. `openssl rand -hex 32`. Empty or absent disables `POST /oprf/verifiable`. |
+| `poprfMasterKeyHex`  | `""`    | No | POPRF (mode 0x02) key, hex. `openssl rand -hex 32`. Empty or absent disables `POST /oprf/partially-oblivious`. |
+
+> **Dropwizard only:** `corsAllowedOrigins` (default empty, i.e. CORS disabled) lists the origins
+> allowed to call the OPAQUE and OPRF endpoints from a browser. The Spring integration configures
+> CORS through the `hofmannCorsConfigurationSource` bean instead; override that bean to customise
+> it.
 
 ---
 
@@ -59,9 +106,12 @@ at their default in a real deployment.
 `serverKeySeedHex` and `oprfSeedHex` control whether the server's OPAQUE keys are stable
 across restarts.
 
-- **Both empty** — keys are randomly generated at startup.  Any registered user's credentials
-  become cryptographically invalid when the process restarts.  Suitable for integration tests and
-  the `hofmann-testserver` Docker image, where data loss on restart is acceptable.
+- **Both empty** — the server **refuses to start** unless `allowEphemeralKeys` is also set. With
+  that flag, keys are randomly generated at startup and any registered user's credentials become
+  cryptographically invalid when the process restarts. Suitable for integration tests and the
+  `hofmann-testserver` Docker image, where data loss on restart is acceptable; never for
+  production, where it also means credentials registered against one node cannot authenticate
+  against another.
 
 - **Both set** — keys are derived deterministically from the seeds.  The server's long-term AKE
   public key stays the same across restarts, so registered credentials remain valid.  Required for
@@ -170,8 +220,10 @@ causes silent authentication failures:
 
 ### Test-only shortcut (identity KSF)
 
-`OpaqueClientConfig.forTesting(context)` uses identity KSF (no Argon2).  It only works
-correctly against a server with `argon2MemoryKib: 0`.  Do not use it against the
+`OpaqueClientConfig.forTesting(context)` uses identity KSF (no Argon2). It only works against a
+server with `argon2MemoryKib: 0`, which additionally requires `allowIdentityKsf` or the server
+refuses to start. A client negotiating configuration from such a server also needs
+`allowWeakServerKsf` — see [SECURITY.md](SECURITY.md). Do not use it against the
 `hofmann-testserver` (which has Argon2 enabled) or any production server.
 
 ### Changing Argon2id parameters
@@ -187,7 +239,8 @@ upgrades (e.g., increasing memory cost) as a full re-registration migration.
 Add the bundle in your `Application.initialize()`:
 
 ```java
-// Dev / test — in-memory stores, ephemeral keys, logs prominent warnings
+// Dev / test — in-memory stores. Ephemeral keys additionally require allowEphemeralKeys
+// in configuration; without it the server refuses to start rather than warning.
 bootstrap.addBundle(new HofmannBundle<>());
 
 // Production — persistent stores, key from config
@@ -769,13 +822,16 @@ When a custom supplier is provided, the seed configuration fields are ignored.
 | `POST`   | `/opaque/auth/start`          | No            | Begin OPAQUE authentication (KE1 → KE2)                     |
 | `POST`   | `/opaque/auth/finish`         | No            | Complete authentication (KE3 → JWT)                         |
 | `GET`    | `/oprf/config`                | No            | Returns OPRF cipher suite name                              |
-| `POST`   | `/oprf`                       | No            | Standalone OPRF evaluation                                  |
+| `POST`   | `/oprf`                       | No            | Standalone OPRF evaluation (base mode, 0x00)                |
+| `POST`   | `/oprf/verifiable`            | No            | VOPRF batch evaluation with a DLEQ proof (mode 0x01). **404 unless `voprfMasterKeyHex` is set** |
+| `POST`   | `/oprf/partially-oblivious`   | No            | POPRF batch evaluation under a public input (mode 0x02). **404 unless `poprfMasterKeyHex` is set** |
 
 The bundle also registers:
 - A health check at `/admin/healthcheck` named `opaque-server` that verifies the server
   public key is a valid compressed EC point.
 - A Bearer token authentication filter.  Protect your own routes with `@Auth HofmannPrincipal`.
-- A request body size filter (HTTP 413 for oversized payloads).
+- A request body size filter (HTTP 413 for oversized payloads, including chunked bodies
+  that declare no `Content-Length`). The two batched OPRF endpoints get a tighter limit.
 
 ---
 

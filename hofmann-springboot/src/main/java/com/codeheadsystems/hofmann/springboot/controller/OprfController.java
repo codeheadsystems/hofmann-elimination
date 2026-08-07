@@ -9,6 +9,7 @@ import com.codeheadsystems.hofmann.model.oprf.VoprfRequest;
 import com.codeheadsystems.hofmann.model.oprf.VoprfResponse;
 import com.codeheadsystems.hofmann.server.ratelimit.ClientIpResolver;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
+import com.codeheadsystems.hofmann.springboot.config.HofmannProperties;
 import com.codeheadsystems.rfc.oprf.manager.OprfServerManager;
 import com.codeheadsystems.rfc.oprf.manager.PoprfServerManager;
 import com.codeheadsystems.rfc.oprf.manager.VoprfServerManager;
@@ -51,21 +52,26 @@ public class OprfController {
    * @param oprfServerManager     the oprf server manager
    * @param clientConfig          the client config response to expose via GET /oprf/config
    * @param rateLimiter           rate limiter for the OPRF evaluate endpoint (keyed by client IP)
-   * @param trustForwardedHeaders when true ({@code hofmann.trust-forwarded-headers}), derive the
-   *                              client IP from {@code X-Forwarded-For} (only safe behind a trusted
-   *                              proxy that overwrites it); when false (default), use the real
-   *                              socket peer address and ignore the spoofable header
+   * @param props                 the Hofmann properties; supplies
+   *                              {@code hofmann.trust-forwarded-headers}, which when true derives
+   *                              the client IP from {@code X-Forwarded-For} — only safe behind a
+   *                              trusted proxy that overwrites it. False by default, using the
+   *                              real socket peer address and ignoring the spoofable header
    */
   public OprfController(OprfServerManager oprfServerManager,
                         OprfClientConfigResponse clientConfig,
                         @Qualifier("oprfRateLimiter") RateLimiter rateLimiter,
-                        @Value("${hofmann.trust-forwarded-headers:false}") boolean trustForwardedHeaders,
+                        HofmannProperties props,
                         @Autowired(required = false) VoprfServerManager voprfServerManager,
                         @Autowired(required = false) PoprfServerManager poprfServerManager) {
     this.oprfServerManager = oprfServerManager;
     this.clientConfig = clientConfig;
     this.rateLimiter = rateLimiter;
-    this.trustForwardedHeaders = trustForwardedHeaders;
+    // One source. This used to be an @Value reading the same key, which agreed with
+    // HofmannProperties only as long as the value arrived as a property — a consumer
+    // overriding the properties bean programmatically would have set a field the
+    // controller never read, and silently kept the spoofable-header default.
+    this.trustForwardedHeaders = props.isTrustForwardedHeaders();
     // required = false so a base-mode deployment, which has no VOPRF or POPRF key configured,
     // starts normally and answers those endpoints with 404 rather than failing to wire up.
     this.voprfServerManager = voprfServerManager;

@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
+import com.codeheadsystems.hofmann.springboot.config.HofmannProperties;
 import com.codeheadsystems.hofmann.model.oprf.OprfRequest;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
 import com.codeheadsystems.rfc.oprf.manager.OprfServerManager;
@@ -30,8 +31,10 @@ class OprfControllerTest {
 
   private OprfController controller(boolean trustForwardedHeaders) {
     // null verifiable managers: base-mode deployment, which is the default shape.
+    HofmannProperties props = new HofmannProperties();
+    props.setTrustForwardedHeaders(trustForwardedHeaders);
     return new OprfController(oprfServerManager, new OprfClientConfigResponse("P256_SHA256"),
-        rateLimiter, trustForwardedHeaders, null, null);
+        rateLimiter, props, null, null);
   }
 
   private OprfRequest validRequest() {

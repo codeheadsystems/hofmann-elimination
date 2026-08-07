@@ -16,6 +16,7 @@ import com.codeheadsystems.hofmann.server.manager.HofmannOpaqueServerManager;
 import com.codeheadsystems.hofmann.server.ratelimit.ClientIpResolver;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitExceededException;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
+import com.codeheadsystems.hofmann.springboot.config.HofmannProperties;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,12 +64,15 @@ public class OpaqueController {
   public OpaqueController(HofmannOpaqueServerManager manager,
                           OpaqueClientConfigResponse clientConfig,
                           @Qualifier("opaqueOriginRateLimiter") RateLimiter originRateLimiter,
-                          @Value("${hofmann.trust-forwarded-headers:false}")
-                          boolean trustForwardedHeaders) {
+                          HofmannProperties props) {
     this.manager = manager;
     this.clientConfig = clientConfig;
     this.originRateLimiter = originRateLimiter;
-    this.trustForwardedHeaders = trustForwardedHeaders;
+    // One source. This used to be an @Value reading the same key, which agreed with
+    // HofmannProperties only as long as the value arrived as a property — a consumer
+    // overriding the properties bean programmatically would have set a field the
+    // controller never read, and silently kept the spoofable-header default.
+    this.trustForwardedHeaders = props.isTrustForwardedHeaders();
   }
 
   /**

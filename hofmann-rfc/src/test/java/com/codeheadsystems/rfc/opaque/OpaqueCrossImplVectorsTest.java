@@ -1,6 +1,7 @@
 package com.codeheadsystems.rfc.opaque;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
@@ -9,6 +10,8 @@ import com.codeheadsystems.rfc.opaque.model.AuthResult;
 import com.codeheadsystems.rfc.opaque.model.ClientAuthState;
 import com.codeheadsystems.rfc.opaque.model.ClientRegistrationState;
 import com.codeheadsystems.rfc.opaque.model.KE2;
+import com.codeheadsystems.rfc.opaque.model.RegistrationRequest;
+import com.codeheadsystems.rfc.opaque.model.Envelope;
 import com.codeheadsystems.rfc.opaque.model.RegistrationRecord;
 import com.codeheadsystems.rfc.opaque.model.RegistrationResponse;
 import com.codeheadsystems.rfc.opaque.model.ServerAuthState;
@@ -212,5 +215,124 @@ class OpaqueCrossImplVectorsTest {
     ServerAuthState serverAuthState = ke2Result.serverAuthState();
     byte[] serverSessionKey = server.serverFinish(serverAuthState, authResult.ke3());
     assertThat(serverSessionKey).isEqualTo(hex(v.sessionKey()));
+  }
+
+  // ─── error paths, per curve ────────────────────────────────────────────────
+  //
+  // The vectors above are happy-path by construction: the Rust generator emits what a correct
+  // exchange produces, so every assertion here says "Java agrees with Rust when both behave".
+  // That leaves the more interesting half untested — whether the two implementations agree on
+  // what to *reject*. A divergence there is exactly the kind that ships: Java accepts something
+  // Rust refuses, both pass their own suites, and the disagreement only surfaces when a real
+  // client meets a real server.
+  //
+  // These take each suite's own vector and corrupt it in the specific ways the RFCs require to be
+  // refused, asserting rejection at the same entry points the happy path uses. They live beside
+  // the positive vectors deliberately: if a suite regresses, the failure lands next to the
+  // evidence of what it used to do.
+
+  @Test
+  void p384_rejectsCorruptedVectors() {
+    assertRejections(P384);
+  }
+
+  @Test
+  void p521_rejectsCorruptedVectors() {
+    assertRejections(P521);
+  }
+
+  @Test
+  void ristretto255_rejectsCorruptedVectors() {
+    assertRejections(RISTRETTO255);
+  }
+
+  private void assertRejections(Vector v) {
+    OpaqueConfig config = OpaqueConfig.forTesting(v.suite());
+    Server server = new Server(serverPrivateKey(v), hex(v.serverPublicKey()), hex(v.oprfSeed()),
+        config);
+    Client client = new Client(config);
+
+    // The identity element as a blinded element. blindInv * O = O, so accepting it collapses the
+    // OPRF output to a function of the input alone — independent of the blind and the server key.
+    byte[] identity = identityEncoding(v.suite());
+    assertThatThrownBy(() -> server.createRegistrationResponse(
+        new RegistrationRequest(identity), CREDENTIAL_IDENTIFIER))
+        .as("%s must refuse the identity as a blinded element", v.suite())
+        .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
+
+    // A truncated blinded element: shorter than the suite's element size.
+    byte[] full = hex(v.registrationRequest());
+    byte[] truncated = java.util.Arrays.copyOf(full, full.length - 1);
+    assertThatThrownBy(() -> server.createRegistrationResponse(
+        new RegistrationRequest(truncated), CREDENTIAL_IDENTIFIER))
+        .as("%s must refuse a truncated blinded element", v.suite())
+        .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
+
+    // A blinded element that is the right length but out of range: every coordinate byte set.
+    // Deterministic rather than a bit-flip — flipping bits in x lands back on the curve about half
+    // the time, since y^2 = f(x) is a quadratic residue for roughly half of all x, so a corruption
+    // test built that way passes or fails depending on the vector. All-ones exceeds the field
+    // prime on every NIST curve here and fails ristretto255's s < p canonicity check, so it is
+    // refused on all four for a reason each suite states.
+    byte[] outOfRange = new byte[full.length];
+    java.util.Arrays.fill(outOfRange, (byte) 0xff);
+    if (v.suite() != OpaqueCipherSuite.RISTRETTO255_SHA512) {
+      outOfRange[0] = 0x02;                    // valid SEC1 prefix, impossible coordinate
+    }
+    assertThatThrownBy(() -> server.createRegistrationResponse(
+        new RegistrationRequest(outOfRange), CREDENTIAL_IDENTIFIER))
+        .as("%s must refuse an out-of-range blinded element", v.suite())
+        .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
+
+    // Non-canonical encoding: right length, wrong SEC1 type byte. RFC 9497 section 2.1 requires
+    // DeserializeElement to be the inverse of SerializeElement, which only ever emits compressed.
+    if (v.suite() != OpaqueCipherSuite.RISTRETTO255_SHA512) {
+      byte[] wrongPrefix = full.clone();
+      wrongPrefix[0] = 0x04;
+      assertThatThrownBy(() -> server.createRegistrationResponse(
+          new RegistrationRequest(wrongPrefix), CREDENTIAL_IDENTIFIER))
+          .as("%s must refuse a non-compressed encoding", v.suite())
+          .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
+    }
+
+    // A registration record whose fields are the right shape but whose client public key is the
+    // identity. This is the record-validation path every write endpoint runs.
+    byte[] upload = hex(v.registrationUpload());
+    int npk = config.Npk();
+    byte[] badRecord = upload.clone();
+    java.util.Arrays.fill(badRecord, 0, npk, (byte) 0x00);
+    RegistrationRecord withIdentityKey = new RegistrationRecord(
+        java.util.Arrays.copyOfRange(badRecord, 0, npk),
+        java.util.Arrays.copyOfRange(badRecord, npk, npk + config.Nh()),
+        record(upload, config).envelope());
+    assertThatThrownBy(() -> server.validateRegistrationRecord(withIdentityKey))
+        .as("%s must refuse a record whose client public key is the identity", v.suite())
+        .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
+
+    // A KE2 with a corrupted server MAC must fail client-side authentication rather than being
+    // accepted — the check that stops a server impersonating the one the client registered with.
+    ClientAuthState authState = client.generateKE1Deterministic(
+        PASSWORD, scalar(v, v.blindLogin()), CLIENT_NONCE, CLIENT_KEYSHARE_SEED);
+    byte[] ke2Bytes = hex(v.ke2()).clone();
+    ke2Bytes[ke2Bytes.length - 1] ^= (byte) 0xff;
+    KE2 tamperedKe2 = KE2.deserialize(config, ke2Bytes);
+    assertThatThrownBy(() -> client.generateKE3(authState, null, null, tamperedKe2))
+        .as("%s must refuse a KE2 whose server MAC does not verify", v.suite())
+        .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
+  }
+
+  /** Each suite's canonical identity encoding; they differ, which is why this is not shared. */
+  private static byte[] identityEncoding(OpaqueCipherSuite suite) {
+    return suite == OpaqueCipherSuite.RISTRETTO255_SHA512 ? new byte[32] : new byte[]{0x00};
+  }
+
+  /** Splits a serialized registration upload back into a record. */
+  private static RegistrationRecord record(byte[] upload, OpaqueConfig config) {
+    int npk = config.Npk();
+    int nh = config.Nh();
+    return new RegistrationRecord(
+        java.util.Arrays.copyOfRange(upload, 0, npk),
+        java.util.Arrays.copyOfRange(upload, npk, npk + nh),
+        Envelope.deserialize(upload, npk + nh, OpaqueConfig.Nn, config.Nm()));
   }
 }

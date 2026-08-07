@@ -162,7 +162,7 @@ public class BodySizeLimitFilter extends OncePerRequestFilter {
     private void increment(int read) throws IOException {
       count += read;
       if (count > maxBytes) {
-        throw new IOException("Request body exceeds maximum allowed size");
+        throw new RequestBodyTooLargeException(maxBytes);
       }
     }
 

@@ -4,19 +4,17 @@ Open work from the **August 2026** security review (six-reviewer fan-out across 
 `hofmann-server`, `hofmann-client`, both framework integrations, and the Rust/TypeScript ports),
 plus the RFC 9497 VOPRF/POPRF deferrals and one finding raised while closing the rest.
 
-**Every P0, P1, verification follow-up and RFC 9497 deferral is closed.** What remains is P2 and
-below, plus the documentation and test-coverage backlog.
+**Every P0, P1, verification follow-up, RFC 9497 deferral, documentation and test-coverage item
+is closed.** What remains is P2, P3 and the findings raised while closing the rest.
 
 ## Status
 
 | Section | Open |
 |---|---:|
-| New findings | 3 |
+| New findings | 4 |
 | **P2 Medium** | 6 |
 | **P3 Low** | 4 |
-| Documentation | 4 |
-| Test coverage gaps | 4 |
-| **Total** | **21** |
+| **Total** | **14** |
 
 Recount with `grep -c '^- \[ \]' TODO.md` after editing.
 
@@ -73,6 +71,20 @@ two are documented in code with no action planned.
 ---
 
 ## New findings
+
+- [ ] **ristretto255's ladder does not rescale the scalar to a fixed width** — **[measured]**.
+      `WeierstrassGroupSpecImpl.fixedWidthScalar` exists precisely to stop the loop running cheaply
+      through leading zero bits; `Ristretto255GroupSpec.scalarMul` has no equivalent and starts
+      from the exact neutral element, so the early iterations operate on 0/1 operands. Measured
+      during the August 2026 documentation review: a 64-bit scalar completes ~23% faster than a
+      full-length one on ristretto255, where the Weierstrass curves are flat. Interleaved at
+      realistic widths it resolves to ~0.13% per leading-zero bit, consistent at p10 and p50.
+
+      This is the residual with the most remote-looking profile in the tree: a static, repeatable
+      bias tied to a long-term key on an operation an attacker can trigger without limit. It
+      discloses only the leading-zero count of a reduced scalar — one or two bits of 252 — so it
+      does not lead to key recovery, which is why it is recorded rather than treated as urgent.
+      Closing it means the ristretto equivalent of `fixedWidthScalar`. Documented in `SECURITY.md`.
 
 - [ ] **Decide whether the origin rate limiter should default on when recovery is enabled.**
       `originRateLimitConfig()` returns null by default, and the comment there explains why: as a
@@ -227,58 +239,7 @@ two are documented in code with no action planned.
 
 ---
 
-## Documentation
-
-- [ ] **`USAGE.md` config reference is incomplete** — `:49-53` lists only
-      `maxRequestBodyBytes` under "Security"; `corsAllowedOrigins`, `allowIdentityKsf`, and
-      `trustForwardedHeaders` are absent. The `maxRequestBodyBytes` description still says
-      Content-Length-only, understating the (correct, chunked-safe) implementation.
-      `:222` claims Spring autoconfiguration "activates automatically" — see P1.
-
-- [ ] **`hofmann.trust-forwarded-headers` bypasses `HofmannProperties`** — read via
-      `@Value` at `OprfController.java:52` with no corresponding field. Default is `false`
-      (secure), so this is consistency and docs only.
-
-- [ ] **Stale doc pointers** — `OpaqueCrypto.deserializePoint` and
-      `OctetStringUtils.toEcPoint` (credited in the old TODO for point validation) do not
-      exist; the validation is real but lives in `WeierstrassGroupSpecImpl.deserializePoint`
-      and `Ristretto255GroupSpec.decodeRistretto255`. `OPAQUE.md:168` lists an
-      `OpaqueCrypto` class that is gone. `HASH_TO_CURVE.md:38` still documents
-      `toEcPoint(Curve, String)`.
-
-- [ ] **`SECURITY.md` caveats to add** — (a) the KSF runs client-side *and the client
-      currently takes its parameters from the server* (`:88-93` omits the second half);
-      (b) `BigInteger` arithmetic is magnitude-dependent, so the Montgomery ladder and
-      Fermat inversion are improvements but not constant-time in the strict sense —
-      `ByteUtils.scalarToFixedBytes` (`:77-84`) likewise produces fixed-length output but
-      its `System.arraycopy` length still varies with the scalar's leading zero bytes;
-      (c) the cipher-suite choice has a side-channel consequence today (ristretto255 is
-      laddered, the NIST suites are not).
-
 ---
-
-## Test coverage gaps
-
-- [ ] **No all-suites Java test that scalar multiplication rejects the identity.** The
-      `finalize` half of this is now done — `OprfCipherSuiteTest.finalize_identityEvaluatedElement_isRejected`
-      runs `@EnumSource(CurveHashSuite.class)`, which is the TypeScript regression at
-      `test/oprf.test.ts` ported to Java across all four suites. The `dhMultiply` half is not:
-      identity rejection through `scalarMultiply` is asserted only per-suite, via
-      `GroupSpecArithmeticTest`'s `linearCombination` and `validateElement` cases and
-      `WeierstrassGroupSpecImplTest.identityPoint_throwsSecurityException`. Add the parameterized
-      `scalarMultiply` case. Separately, `Ristretto255GroupSpecTest:42-50` still only asserts the
-      all-zero encoding is *producible* (`0·G`, `L·G`) and never that decoding it is refused —
-      that assertion lives in the OPRF layer rather than the group-spec layer.
-
-- [ ] **`OprfVectorsTest` exercises ristretto255 through `groupSpec` directly**, never
-      through `OprfClientManager` / `OprfServerManager`, so no adversarial server response
-      is ever tested.
-
-- [ ] **Cross-implementation vectors are happy-path only** — add an identity-element case,
-      and malformed/error-path cases per curve.
-
-- [ ] **No test covers the base64 alias aliasing**, the unthrottled `registration/finish`
-      branches, or revocation after a session opened under a non-canonical identifier.
 
 ---
 
