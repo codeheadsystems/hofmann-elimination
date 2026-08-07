@@ -224,12 +224,22 @@ completeness.
       `application.yml` configures a 32-byte `oprf-seed-hex`, which is `Nh` only on P-256; on
       P-384 it is short by 16 bytes and on P-521/ristretto255 by 32. The demo and test-server
       configs are the same shape. Found by adding a seed-length check to `Server`'s constructor,
-      which took down every suite except P-256 — the check was removed rather than the configs
-      changed, because the seed only ever feeds an expansion that accepts any length, so there is
-      no security consequence and refusing would break running deployments at startup.
-      Non-conformance with no known attack, recorded rather than fixed. Closing it means either
-      widening the configured seeds per suite or stating in `SECURITY.md` that the seed length is
-      deployment-chosen.
+      which took down every suite except P-256; the check was removed rather than the configs
+      changed, because refusing would break running deployments at startup.
+
+      **There is a real consequence, and it is not the one first written here.** `oprfSeed` is
+      consumed in exactly one shape — as the PRK to HKDF-Expand in `OpaqueOprf.deriveOprfKey`
+      (and in `Server.createFakeRecord`), whose output seeds `deriveKeyPair`. The credential
+      identifier is public, so **the entire family of per-credential OPRF keys carries at most
+      H(oprfSeed) bits of entropy**, whatever the group order. At 32 bytes that is 256 bits:
+      no reduction on P-256 (n≈2^256) or ristretto255 (n≈2^252), but on **P-384 and P-521 the
+      effective key space is capped at 2^256 instead of the group order**.
+
+      Safe because 256 bits is unreachable — *not* because "the expansion accepts any length",
+      which is true and irrelevant. The distinction matters: the reasoning as first stated would
+      license a 16-byte seed, which is a different question. Closing this means widening the
+      configured seeds per suite, or stating the bound in `SECURITY.md` so the deployment choice
+      is an informed one.
 
 ---
 

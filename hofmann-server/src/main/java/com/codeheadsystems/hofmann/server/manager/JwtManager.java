@@ -47,8 +47,12 @@ public class JwtManager {
     this.sessionStore = sessionStore;
     this.issuer = issuer;
     this.ttlSeconds = ttlSeconds;
-    // Fail at construction rather than at first use, and check through the supplier so a rotation
-    // cannot introduce a weak key later without the same complaint at issue time.
+    // Fail at construction rather than at first use, so a misconfigured deployment does not start.
+    // This is not sufficient on its own — see the re-check in issueToken, which is what actually
+    // covers rotation.
+    //
+    // Note this makes the supplier a construction-time dependency: a custom supplier backed by an
+    // external key service must be able to answer here, not merely at first token issue.
     requireAdequateKey(keyDetailSupplier.get());
   }
 
@@ -110,6 +114,8 @@ public class JwtManager {
    *
    * @param credentialIdentifierBase64 base64-encoded credential identifier
    * @return signed JWT string
+   * @throws IllegalArgumentException if the supplier returns a key below
+   *                                  {@link #MIN_SIGNING_KEY_BYTES}
    */
   public String issueToken(String credentialIdentifierBase64) {
     String jti = UUID.randomUUID().toString();
@@ -117,6 +123,12 @@ public class JwtManager {
     Instant expiresAt = now.plusSeconds(ttlSeconds);
 
     JwtKeyDetail detail = keyDetailSupplier.get();
+    // Re-check on every issue, not only at construction. The whole point of the Supplier is that
+    // key material can be rotated at runtime, so a rotation is precisely how a weak key would
+    // arrive after startup — and Algorithm.HMAC256 accepts any length without complaint, so
+    // without this a rotation to a one-byte key would silently sign real tokens. Two length
+    // comparisons on a path that already computes an HMAC.
+    requireAdequateKey(detail);
     Algorithm algorithm = Algorithm.HMAC256(detail.signingKey());
 
     String token = JWT.create()
@@ -148,9 +160,22 @@ public class JwtManager {
     // Try the current signing key first
     Optional<DecodedJWT> decoded = verifyWith(token, detail.signingKey());
 
-    // Fall back to the previous key during rotation
+    // Fall back to the previous key during rotation, unless it is too short to be trusted.
+    //
+    // Skipped rather than thrown, deliberately. Verification is on the request path for every
+    // authenticated call, so throwing here on a bad rotation would take down every live session
+    // at once — a self-inflicted outage in response to a configuration mistake. Skipping refuses
+    // tokens forged under the weak key while leaving tokens signed with the good current key
+    // working, which is the containing behaviour. ERROR level because it is silent otherwise:
+    // the only symptom would be users mid-rotation being logged out.
     if (decoded.isEmpty() && detail.previousKey() != null) {
-      decoded = verifyWith(token, detail.previousKey());
+      if (detail.previousKey().length < MIN_SIGNING_KEY_BYTES) {
+        log.error("Previous JWT signing key is {} bytes, below the {}-byte minimum; ignoring it "
+                + "for verification. Tokens signed with it will be rejected.",
+            detail.previousKey().length, MIN_SIGNING_KEY_BYTES);
+      } else {
+        decoded = verifyWith(token, detail.previousKey());
+      }
     }
 
     if (decoded.isEmpty()) {

@@ -367,6 +367,16 @@ public record WeierstrassGroupSpecImpl(
    * {@link #scalarMultiply} and so were unprotected. Putting it here covers every path.
    */
   public ECPoint deserializePoint(byte[] bytes) {
+    // The SEC1 identity is the single byte 0x00, which the canonical checks below would refuse as
+    // a malformed encoding. Catch it first and by name so that submitting the identity is
+    // classified the same way on every suite: ristretto255 raises SecurityException for its
+    // all-zero encoding, and without this the identical protocol-level attack was a malformed
+    // request on the NIST curves and an identity rejection on ristretto255 — the same input
+    // producing different statuses, and anything alerting on the rejection seeing only one suite.
+    // This is also what keeps the isInfinity() check below from being unreachable in practice.
+    if (bytes != null && bytes.length == 1 && bytes[0] == 0x00) {
+      throw new SecurityException("Invalid EC point: identity element not allowed");
+    }
     // IllegalArgumentException, not SecurityException: this is a malformed request, and the
     // adapters map the two to 400 and 401 respectively. Answering a bad encoding with an
     // authentication challenge would be wrong on endpoints where the caller has no credentials

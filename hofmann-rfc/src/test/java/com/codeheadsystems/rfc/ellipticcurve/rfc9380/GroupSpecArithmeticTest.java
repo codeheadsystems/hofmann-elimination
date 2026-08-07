@@ -227,21 +227,18 @@ class GroupSpecArithmeticTest {
   }
 
   /**
-   * On the Weierstrass curves the identity has no canonical input encoding to reject any more.
-   * SEC1 spells it {@code 0x00}, a single byte, and {@code deserializePoint} now requires exactly
-   * {@code elementSize()} bytes with a {@code 0x02}/{@code 0x03} prefix — so the identity is
-   * refused as a malformed encoding before the infinity check, and no {@code elementSize()}-byte
-   * compressed string decodes to infinity. The rejection is what matters and it is asserted here;
-   * the {@code isInfinity()} guard inside {@code deserializePoint} is now defence-in-depth against
-   * a future reordering rather than a reachable path.
+   * The SEC1 identity is the single byte {@code 0x00}, which the canonical-encoding checks in
+   * {@code deserializePoint} would otherwise refuse as merely malformed. It is matched by name
+   * first so that the identity is rejected as the identity on every suite — matching the
+   * ristretto255 case above, which is the point of running both.
    */
   @ParameterizedTest(name = "{0}")
   @MethodSource("weierstrassSpecs")
   void weierstrassLinearCombinationRejectsTheIdentityInputEncoding(String name, GroupSpec spec) {
     assertThatThrownBy(() -> spec.linearCombinationPublic(
         new BigInteger[]{BigInteger.ONE}, new byte[][]{new byte[]{0x00}}))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("compressed SEC1");
+        .isInstanceOf(SecurityException.class)
+        .hasMessageContaining("identity");
   }
 
   /**

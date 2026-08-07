@@ -193,6 +193,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   than requiring the consumer's component scan to reach
   `com.codeheadsystems.hofmann.springboot`. Applications already scanning that package are
   unaffected — the duplicate definition is discarded.
+- **Only compressed SEC1 group elements are accepted on the wire.** `deserializePoint` now
+  requires exactly `Ne` bytes with a `0x02`/`0x03` prefix, so uncompressed (`0x04`) and hybrid
+  (`0x06`/`0x07`) encodings are rejected with 400 wherever they previously worked — which
+  included the base-mode OPRF and every OPAQUE endpoint. This is a wire-compatibility
+  tightening, not only internal hardening: serialization has always emitted compressed, and the
+  Java, Rust and TypeScript clients all send compressed, so no first-party client is affected.
+  **A third-party client that sends uncompressed elements will break.** RFC 9497 §2.1 requires
+  `DeserializeElement` to be the inverse of `SerializeElement`; accepting three encodings for one
+  group element let a re-encoding bypass anything keyed on the encoded element rather than the
+  point it denotes — rate limiters, caches, replay dedup, audit logs.
+- **A JWT signing key shorter than 32 bytes is now refused**, at construction and on every token
+  issue, per RFC 8725 §3.5. A deployment running a short `jwtSecretHex` will fail to start rather
+  than sign with a brute-forceable key. A custom `Supplier<JwtKeyDetail>` must now also be
+  callable at construction time, not only at first token issue.
+- **`SessionData` no longer carries the OPAQUE session key.** Nothing read it back, and the
+  record's generated `toString()` rendered it in full. Third-party `SessionStore` implementations
+  that construct `SessionData` need the argument removed;
+  `JwtManager.issueToken(String, String)` is deprecated and now discards its second argument.
 
 ### Changed
 

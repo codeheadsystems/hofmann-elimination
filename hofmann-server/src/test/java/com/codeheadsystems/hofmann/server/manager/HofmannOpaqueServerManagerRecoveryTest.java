@@ -2,6 +2,7 @@ package com.codeheadsystems.hofmann.server.manager;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -189,7 +190,32 @@ class HofmannOpaqueServerManagerRecoveryTest {
 
     assertThatThrownBy(() -> manager.registrationFinish(finishReq, recoveryToken))
         .isInstanceOf(SecurityException.class)
-        .hasMessageContaining("does not match");
+        .hasMessageContaining("Invalid or expired");
+  }
+
+  /**
+   * A wrong identifier and a bogus token must be indistinguishable.
+   *
+   * <p>Now that a wrong-identifier attempt no longer consumes the token, an attacker holding one
+   * can probe identifiers repeatedly rather than once. A distinct "does not match credential"
+   * would confirm the token is live and only the identifier is wrong — an identifier-confirmation
+   * oracle. Both report the same thing; the distinction is logged at DEBUG instead.
+   */
+  @Test
+  void registrationFinish_wrongCredentialAndBogusTokenAreIndistinguishable() {
+    when(recoveryChallenger.verifyResponse(ALICE, "123456")).thenReturn(true);
+
+    String recoveryToken = manager.recoveryVerify(
+        new RecoveryVerifyRequest(ALICE, "123456")).recoveryToken();
+    RegistrationRecord record = new RegistrationRecord(
+        new byte[33], new byte[32], new Envelope(new byte[32], new byte[32]));
+
+    String wrongIdentifier = catchThrowable(() -> manager.registrationFinish(
+        new RegistrationFinishRequest("bob".getBytes(), record), recoveryToken)).getMessage();
+    String bogusToken = catchThrowable(() -> manager.registrationFinish(
+        new RegistrationFinishRequest(ALICE, record), "not-a-real-token")).getMessage();
+
+    assertThat(wrongIdentifier).isEqualTo(bogusToken);
   }
 
   /**
@@ -214,7 +240,7 @@ class HofmannOpaqueServerManagerRecoveryTest {
     assertThatThrownBy(() -> manager.registrationFinish(
         new RegistrationFinishRequest("bob".getBytes(), record), recoveryToken))
         .isInstanceOf(SecurityException.class)
-        .hasMessageContaining("does not match");
+        .hasMessageContaining("Invalid or expired");
 
     // The legitimate holder can still complete recovery.
     manager.registrationFinish(new RegistrationFinishRequest(ALICE, record), recoveryToken);

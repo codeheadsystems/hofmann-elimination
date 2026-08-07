@@ -229,16 +229,16 @@ class WeierstrassGroupSpecImplTest {
     }
 
     @Test
-    void identityPoint_isRejectedAsANonCanonicalEncoding() {
-      // The identity (point at infinity) in SEC1 compressed encoding is a single 0x00 byte, so
-      // the canonical-length check refuses it before the infinity check is reached. It is still
-      // rejected — which is the property that matters — but as a malformed encoding rather than
-      // as the identity, and with IllegalArgumentException so the adapters answer 400 rather
-      // than issuing an authentication challenge.
+    void identityPoint_throwsSecurityException() {
+      // The identity in SEC1 compressed encoding is the single byte 0x00. It is matched by name
+      // ahead of the canonical-encoding checks so that submitting the identity is classified the
+      // same way here as on ristretto255, which raises SecurityException for its all-zero
+      // encoding. Without that, the identical protocol-level attack was a malformed request on
+      // the NIST curves and an identity rejection on ristretto255.
       byte[] infinity = new byte[]{0x00};
       assertThatThrownBy(() -> spec.deserializePoint(infinity))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("compressed SEC1");
+          .isInstanceOf(SecurityException.class)
+          .hasMessageContaining("identity");
     }
 
     @Test

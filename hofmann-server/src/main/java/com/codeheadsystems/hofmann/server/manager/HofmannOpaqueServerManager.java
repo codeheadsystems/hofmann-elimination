@@ -86,6 +86,15 @@ public class HofmannOpaqueServerManager {
   private static final long REGISTRATION_FINISH_MIN_NANOS = 25L * 1_000_000L; // 25 ms
 
   /**
+   * The single message every recovery-token failure reports.
+   * <p>
+   * Shared so that "no such token", "token names a different credential" and "another request
+   * consumed it first" are indistinguishable to the caller. Distinguishing them confirms to
+   * whoever holds a token that it is live and only the identifier is wrong.
+   */
+  private static final String INVALID_RECOVERY_TOKEN = "Invalid or expired recovery token";
+
+  /**
    * Ceiling on requests simultaneously parked inside {@link #recoveryVerify}'s constant-time
    * floor.
    * <p>
@@ -369,13 +378,22 @@ public class HofmannOpaqueServerManager {
       // finishes both pass the comparison, but only one remove() returns a value and the loser
       // is rejected below. TTL/expiry is re-checked by the store at both steps, so there is no
       // TOCTOU against the peek — a token that expires in between simply fails the remove.
+      // One message for every failure here, deliberately. A distinct "does not match credential"
+      // told a token holder that the token was live and only the identifier was wrong — an
+      // identifier-confirmation oracle. Under the old remove-then-compare they got exactly one
+      // such probe before destroying the token; now that a wrong guess is non-destructive they
+      // would get a rate-limited stream of them. The limiter above bounds it, but the signal
+      // costs nothing to remove. Matters most for deployments whose identifiers are
+      // high-entropy rather than email addresses — precisely the ones where the old fail-closed
+      // behaviour was doing real work. The distinction is kept at DEBUG for operators.
       String credId = recoveryTokenStore.peek(bearerToken)
-          .orElseThrow(() -> new SecurityException("Invalid or expired recovery token"));
+          .orElseThrow(() -> new SecurityException(INVALID_RECOVERY_TOKEN));
       if (!credId.equals(req.credentialIdentifierBase64())) {
-        throw new SecurityException("Recovery token does not match credential");
+        log.debug("registrationFinish: recovery token is valid but names a different credential");
+        throw new SecurityException(INVALID_RECOVERY_TOKEN);
       }
       if (recoveryTokenStore.remove(bearerToken).isEmpty()) {
-        throw new SecurityException("Invalid or expired recovery token");
+        throw new SecurityException(INVALID_RECOVERY_TOKEN);
       }
       // DEBUG, not INFO: the credential identifier is usually an email address, and a
       // re-registration line names an account that just went through recovery. That belongs

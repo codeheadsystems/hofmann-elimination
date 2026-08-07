@@ -65,4 +65,24 @@ public record PoprfClientContext(String requestId,
   public int size() {
     return inputs.size();
   }
+
+  /**
+   * Redacts the blinds and the inputs.
+   *
+   * <p>{@code List.toString()} calls {@code BigInteger.toString()} on every element, so the
+   * generated {@code toString} would print <em>every blind in the batch</em> in full decimal —
+   * the same disclosure as {@link ClientHashingContext#blindingFactor()}, multiplied by batch
+   * size. A blind lets an observer unblind the corresponding evaluated element and recover the
+   * OPRF output for that input. The {@code List<byte[]>} fields are harmless on their own (each
+   * element renders as an identity hash) but {@code inputs} is the client's plaintext, so it is
+   * redacted too. Blinded elements are public and are left as a count.
+   */
+  @Override
+  public String toString() {
+    return "PoprfClientContext[requestId=" + requestId
+        + ", inputs=<redacted>, blinds=<redacted>, blindedElements=" + blindedElements.size()
+        + " element(s)"
+        + ", info=<redacted>, tweakedKey=<redacted>"
+        + "]";
+  }
 }

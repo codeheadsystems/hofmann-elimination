@@ -124,4 +124,21 @@ public record VerifiableProcessorDetail(BigInteger masterKey,
               + processorIdentifier + "'; every proof would fail to verify");
     }
   }
+
+  /**
+   * Redacts the master key.
+   *
+   * <p>Same defect as {@link ServerProcessorDetail}, and sharper here: this is the long-term
+   * server key for the verifiable modes, reached through the same {@code Supplier<>} logging
+   * pattern, on code that is newer and more likely to be printed during bring-up. The generated
+   * {@code toString} would render {@code masterKey} as its full decimal value — {@code BigInteger}
+   * has no redacting {@code toString}, unlike {@code byte[]}, which is why {@code publicKey} is
+   * safe by accident. The public key is not secret and is left legible.
+   */
+  @Override
+  public String toString() {
+    return "VerifiableProcessorDetail[masterKey=<redacted>, publicKey="
+        + java.util.HexFormat.of().formatHex(publicKey)
+        + ", processorIdentifier=" + processorIdentifier + ", mode=" + mode + "]";
+  }
 }
