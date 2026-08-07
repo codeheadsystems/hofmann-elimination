@@ -529,21 +529,50 @@ public class Ristretto255GroupSpec implements GroupSpec {
 
   /**
    * Rescales a scalar to exactly {@code L.bitLength() + 1} bits without changing what multiplying
-   * a group element by it produces.
+   * an accepted group element by it produces.
    *
-   * <p>The Weierstrass equivalent leans on {@code n·P = O} for a prime-order point. ristretto255
-   * needs one extra step of reasoning, because its representatives live on Edwards25519 with
-   * cofactor 8 and {@code L·P} is <em>not</em> generally the Edwards identity. It is always
-   * 8-torsion: the order of a representative divides {@code 8L}, so {@code L·P} has order dividing
-   * 8. Ristretto encoding is invariant under adding 8-torsion — that invariance is the whole
-   * construction — so {@code (k + L)·P} and {@code k·P} encode identically even though the
-   * intermediate coordinates differ.
+   * <p><strong>Precondition: the point must come from {@link #decodeRistretto255} or be
+   * {@code BASE_POINT}.</strong> This is not a formality — see below. Every current caller
+   * satisfies it.
    *
-   * <p>Reduce, then add {@code L} once; that lands on either {@code L.bitLength()} or one more,
-   * and adding {@code L} again in the first case always lands on one more. Since
+   * <p>The Weierstrass equivalent leans on {@code n·P = O} for a prime-order point, so adding
+   * {@code n} is arithmetically free. ristretto255 needs a real argument, because its
+   * representatives live on Edwards25519 with cofactor 8 and {@code L·P} is generally not the
+   * Edwards identity.
+   *
+   * <p>It is 8-torsion: {@code decodeRistretto255} returns a point on the curve, and every point on
+   * Edwards25519 has order dividing {@code |E(F_p)| = 8L} by Lagrange, so {@code L·P} has order
+   * dividing 8. That alone is <em>not</em> enough, and the tempting next step is wrong: ristretto
+   * encoding is invariant under the <strong>4</strong>-torsion, not the 8-torsion. RFC 9496 §4.3.3
+   * defines equality as {@code X1·Y2 == X2·Y1 || Y1·Y2 == X1·X2}, which against the identity gives
+   * {@code {O, (0,−1), (±i,0)}} — a group of order 4. Adding a point of order 8 lands in a
+   * different coset and encodes differently.
+   *
+   * <p>So {@code +L} alone would not be safe on an arbitrary Edwards point. Two things make the
+   * rescaling sound, and the first carries almost all of it:
+   *
+   * <ol>
+   *   <li><strong>The {@code +2L} branch needs no premise about the point at all.</strong>
+   *       {@code 2L·P = 2·(L·P)}, and doubling an order-dividing-8 point gives one of order
+   *       dividing 4 — invariant, for any point on the curve. This is the branch taken unless
+   *       {@code k ≥ 2^253 − L}, i.e. for all but about {@code 2^-127} of scalars.</li>
+   *   <li><strong>For that remaining sliver, where only {@code L} is added</strong>, accepted
+   *       representatives are exactly the E[4]-cosets inside {@code 2E}. Writing
+   *       {@code P = a·G8 + b·GL} in {@code E(F_p) ≅ Z/8L}, membership of {@code 2E} makes
+   *       {@code a} even, and since {@code L ≡ 5 (mod 8)}, {@code L·P = (5a mod 8)·G8} is then also
+   *       even — so {@code L·P ∈ E[4]} and the encoding is again invariant.</li>
+   * </ol>
+   *
+   * <p>Both steps depend on the point being an accepted representative, which is why the
+   * precondition above is stated rather than assumed. Handed a raw Edwards point outside
+   * {@code 2E}, this silently returns a different group element.
+   *
+   * <p>Reduce, then add {@code L} once; that lands on either {@code L.bitLength()} or one more, and
+   * adding {@code L} again in the first case always lands on one more. Since
    * {@code L ∈ [2^(len-1), 2^len)}, {@code k + 2L < 2^len + L < 2^(len+1)} and
    * {@code k + 2L ≥ 2L ≥ 2^len}, so the result has exactly {@code len + 1} bits with the top bit
-   * set — which makes the first iteration move r0 off the neutral element regardless of the key.
+   * set — which makes the first ladder iteration move r0 off the neutral element regardless of the
+   * key.
    *
    * @param scalar the secret scalar, any magnitude or sign
    * @return an equivalent scalar of exactly {@code L.bitLength() + 1} bits

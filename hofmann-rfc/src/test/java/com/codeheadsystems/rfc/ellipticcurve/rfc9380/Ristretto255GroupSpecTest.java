@@ -245,9 +245,13 @@ class Ristretto255GroupSpecTest {
    *
    * <p>It also covers what the small-scalar test cannot: full 252-bit scalars, where checking
    * against repeated addition is not tractable. Base points come from four different routes so the
-   * sample is not all generator multiples — the structural argument is that every Edwards25519
-   * point has order dividing 8L, hence {@code L·P} is always 8-torsion and the encoding is
-   * invariant under it, but a sample that only used one construction would not test that.
+   * sample is not all generator multiples.
+   *
+   * <p>The structural argument is in {@code fixedWidthScalar}'s javadoc, and it is subtler than
+   * "adding the group order is free": ristretto encoding is invariant under the <em>4</em>-torsion,
+   * not the 8-torsion, so it turns on the rescaling adding {@code 2L} rather than {@code L} in all
+   * but about {@code 2^-127} of cases. This test is the empirical counterpart to that argument —
+   * it would fail if the equivalence did not hold for the representatives sampled here.
    */
   @Test
   void multiplicationIsAdditiveOverFullWidthScalars() {
@@ -280,34 +284,5 @@ class Ristretto255GroupSpecTest {
       checked++;
     }
     assertThat(checked).as("the loop must actually have asserted something").isGreaterThan(30);
-  }
-
-  /**
-   * Rescaling must not change what the multiplication produces.
-   *
-   * <p>This is the step the Weierstrass version does not need to justify. There, {@code n·P = O}
-   * for a prime-order point and adding {@code n} is arithmetically free. ristretto255's
-   * representatives live on Edwards25519 with cofactor 8, so {@code L·P} is generally <em>not</em>
-   * the Edwards identity — it is 8-torsion, and the encoding is invariant under adding 8-torsion.
-   * That invariance is what makes the rescaling sound, and it is worth an assertion rather than a
-   * comment.
-   */
-  @Test
-  void addingTheGroupOrderDoesNotChangeTheEncodedResult() {
-    SecureRandom rnd = new SecureRandom();
-    BigInteger order = SPEC.groupOrder();
-
-    for (int i = 0; i < 25; i++) {
-      BigInteger k = new BigInteger(252, rnd).mod(order).max(BigInteger.ONE);
-      byte[] point = SPEC.scalarMultiplyGenerator(
-          new BigInteger(252, rnd).mod(order).max(BigInteger.ONE));
-
-      byte[] direct = SPEC.scalarMultiply(k, point);
-      // Drive the ladder with the rescaled value the implementation actually uses, rather than
-      // relying on scalarMultiply's own reduction to undo the addition.
-      BigInteger widened = Ristretto255GroupSpec.fixedWidthScalar(k);
-      assertThat(widened.mod(order)).isEqualTo(k.mod(order));
-      assertThat(SPEC.scalarMultiply(widened, point)).isEqualTo(direct);
-    }
   }
 }

@@ -98,9 +98,9 @@ public class Server {
     if (oprfSeed.length < config.Nh()) {
       LOG.warn("OPRF seed is {} bytes; RFC 9807 §6.3 specifies Nh = {} for this suite. Every "
               + "per-credential OPRF key derives from this seed, so their combined entropy is "
-              + "bounded by its length rather than by the group order. {} bytes is still far "
-              + "beyond reach, so this is a conformance note rather than a break — but widen the "
-              + "seed to {} bytes when you can rotate.",
+              + "bounded by its length rather than by the group order — {} bits here. That is "
+              + "still far beyond reach, so this is a conformance note rather than a break, but "
+              + "widen the seed to {} bytes when you can rotate.",
           oprfSeed.length, config.Nh(), oprfSeed.length * 8, config.Nh());
     }
     //

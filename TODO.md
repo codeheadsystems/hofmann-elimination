@@ -72,33 +72,35 @@ two are documented in code with no action planned.
 
 ## New findings
 
-- [ ] **`:test` intermittently aborts on Gradle's own result bookkeeping** — **[reproduced]**.
-      Tasks fail with `java.io.EOFException` or `NoSuchFileException` on
-      `build/test-results/test/binary/in-progress-results-generic.bin`, having produced results for
-      only some classes. The tests pass on a retry. Gradle 9.6.1, `org.gradle.parallel=true`, and
-      the configuration cache enabled.
+- [ ] **`:test` aborts when more than one `./gradlew` runs in the same project directory** —
+      **[root cause identified]**. Symptoms: `java.io.EOFException`, or `NoSuchFileException` on
+      `build/test-results/test/binary/in-progress-results-generic.bin`, or `NoClassDefFoundError`
+      on arbitrary and different classes each run, with results written for only some classes or
+      none. Gradle 9.6.1.
 
-      **Measured rate:** roughly one build in three on a `clean build` loop, varying by machine and
-      load. `clean build` is markedly more reliable than `--rerun-tasks`.
+      **Cause, from a review that caught it happening.** Gradle does not serialise `build/` outputs
+      across concurrent invocations on one directory. One build's `clean` deletes
+      `build/classes/java/test/**` while another's worker is loading from it, and two builds
+      writing the same Kryo result store truncate it — the read that fails is in Gradle's own
+      report generator (`GenericHtmlTestReportGenerator` → `SerializableTestResultStore` →
+      `KryoException: Buffer underflow`), not in anything this project wrote. It self-poisons: a
+      truncated store makes the *next* run fail in under a second via
+      `Test.getPreviousFailedTestClasses`, before any test executes, until
+      `build/test-results/<task>/binary` is deleted. That is why `--rerun-tasks` stays broken
+      where `clean build` recovers, and why toggling `org.gradle.parallel` changed nothing — the
+      concurrency is across builds, not within one.
 
-      **An attempted fix was reverted, and the reason is worth keeping.** A `verifyTestsRan` task
-      was added to compare result files against concrete test classes, on the reasoning that an
-      aborted task leaves the same artifacts as one with no tests. Two things came out of trying
-      it. Wired with `mustRunAfter(test)` it made the flake dramatically *worse* — 0 of 3 builds
-      passed, against 2 of 3 without it — because `mustRunAfter` does not stop it being scheduled
-      alongside another module's test task under parallel execution, where it reads the very
-      directory Gradle is writing its bookkeeping into. Re-wired with `dependsOn(test)` it passed
-      8 of 8, but then could no longer do the job it was written for: depending on the test task
-      means it re-runs the tests rather than inspecting what a previous run left.
+      **Do not measure this while another agent is building.** An earlier A/B in this repo
+      concluded a build task made the flake three times more likely; a reviewer observed a second
+      agent running `clean build` in the same directory during *both* arms, so that comparison is
+      confounded in an unknown direction and should not be relied on.
 
-      More importantly the premise was wrong. In every observed instance the abort makes the task
-      **fail**, so a green build is not in fact ambiguous — the ambiguity is only in reading result
-      artifacts after the fact, which is what caused two false diagnoses across two sessions. That
-      is a habit to fix, not a build task: when comparing runs, count result files per module
+      A `verifyTestsRan` task was tried and reverted for an unrelated and still-valid reason: the
+      abort always fails the task, so a green build was never ambiguous. The ambiguity is only in
+      reading result artifacts after the fact — when comparing runs, count result files per module
       against concrete test classes rather than trusting a summary.
 
-      Closing this properly means a Gradle or plugin upgrade, or finding what races on that
-      directory. It should not mean adding load to every build to watch for it.
+      Closing this means serialising builds per directory, or giving each agent its own checkout.
 
 ---
 
