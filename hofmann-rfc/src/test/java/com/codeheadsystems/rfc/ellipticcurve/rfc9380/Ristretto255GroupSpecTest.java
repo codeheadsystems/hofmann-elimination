@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import org.bouncycastle.util.encoders.Hex;
 import org.junit.jupiter.api.Test;
@@ -230,6 +231,55 @@ class Ristretto255GroupSpecTest {
         SPEC.groupOrder().add(BigInteger.ONE), BigInteger.ONE.negate()}) {
       assertThat(Ristretto255GroupSpec.fixedWidthScalar(k).bitLength()).isEqualTo(want);
     }
+  }
+
+  /**
+   * Additive homomorphism over full-width scalars, across varied base points.
+   *
+   * <p>The stronger of the two correctness guards on the rescaling. {@code (k1+k2)·P} must equal
+   * {@code k1·P + k2·P}, and each of those three multiplications runs the rescaling independently
+   * with a different scalar — so a wrong {@code (k + L) ≡ k} equivalence would have to be
+   * additively consistent across all three to hide here, which it would not be. {@code k1 + k2} is
+   * deliberately left unreduced so it frequently exceeds {@code L} and exercises the widening path
+   * with an input the old code would have reduced away.
+   *
+   * <p>It also covers what the small-scalar test cannot: full 252-bit scalars, where checking
+   * against repeated addition is not tractable. Base points come from four different routes so the
+   * sample is not all generator multiples — the structural argument is that every Edwards25519
+   * point has order dividing 8L, hence {@code L·P} is always 8-torsion and the encoding is
+   * invariant under it, but a sample that only used one construction would not test that.
+   */
+  @Test
+  void multiplicationIsAdditiveOverFullWidthScalars() {
+    SecureRandom rnd = new SecureRandom();
+    BigInteger order = SPEC.groupOrder();
+    int checked = 0;
+
+    for (int i = 0; i < 40; i++) {
+      byte[] point = switch (i % 4) {
+        case 0 -> SPEC.generator();
+        case 1 -> SPEC.hashToGroup(("hg-" + i).getBytes(StandardCharsets.UTF_8),
+            "dst".getBytes(StandardCharsets.UTF_8));
+        case 2 -> SPEC.scalarMultiplyGenerator(
+            new BigInteger(252, rnd).mod(order).max(BigInteger.ONE));
+        default -> SPEC.add(SPEC.generator(),
+            SPEC.hashToGroup(("mix-" + i).getBytes(StandardCharsets.UTF_8),
+                "dst".getBytes(StandardCharsets.UTF_8)));
+      };
+
+      BigInteger k1 = new BigInteger(252, rnd).mod(order).max(BigInteger.ONE);
+      BigInteger k2 = new BigInteger(252, rnd).mod(order).max(BigInteger.ONE);
+
+      byte[] combined = SPEC.scalarMultiply(k1.add(k2), point);
+      byte[] first = SPEC.scalarMultiply(k1, point);
+      byte[] second = SPEC.scalarMultiply(k2, point);
+      if (k1.add(k2).mod(order).signum() == 0) {
+        continue;                       // add() rejects an identity sum, correctly
+      }
+      assertThat(SPEC.add(first, second)).isEqualTo(combined);
+      checked++;
+    }
+    assertThat(checked).as("the loop must actually have asserted something").isGreaterThan(30);
   }
 
   /**
