@@ -144,10 +144,104 @@ public class Ristretto255GroupSpec implements GroupSpec {
     return encodeRistretto255(scalarMul(BASE_POINT, scalar));
   }
 
-  /** Serializes scalar as 32-byte little-endian (ristretto255 convention). */
+  /**
+   * Serializes scalar as 32-byte little-endian (ristretto255 convention).
+   * <p>
+   * The range check is not decorative. {@link #encodeLittleEndian} copies at most {@code length}
+   * bytes and silently drops the rest, so before this guard a scalar at or above 2^256 was
+   * truncated into a different, valid-looking scalar with no error. That was unreachable while
+   * scalars stayed internal — the OPRF blind and server key are only ever multiplied, and
+   * multiplication reduces mod L first — but RFC 9497 §2.2 puts {@code c} and {@code s} on the
+   * wire, where a silently truncated scalar is a malleable proof encoding. The Weierstrass
+   * implementation has always checked; this brings ristretto255 in line.
+   */
   @Override
   public byte[] serializeScalar(BigInteger k) {
+    if (k.signum() < 0 || k.compareTo(L) >= 0) {
+      throw new IllegalArgumentException("Scalar out of range [0, L-1]");
+    }
     return encodeLittleEndian(k, 32);
+  }
+
+  @Override
+  public int scalarSize() {
+    return 32;
+  }
+
+  @Override
+  public BigInteger deserializeScalar(byte[] bytes) {
+    if (bytes == null || bytes.length != 32) {
+      throw new IllegalArgumentException("Scalar encoding must be exactly 32 bytes");
+    }
+    BigInteger k = decodeLittleEndian(bytes);
+    if (k.compareTo(L) >= 0) {
+      throw new IllegalArgumentException("Scalar encoding is not canonical: value >= group order");
+    }
+    return k;
+  }
+
+  @Override
+  public byte[] generator() {
+    return encodeRistretto255(BASE_POINT);
+  }
+
+  @Override
+  public byte[] add(byte[] a, byte[] b) {
+    byte[] sum = encodeRistretto255(
+        addPoints(decodeRistretto255(a), decodeRistretto255(b)));
+    if (ByteUtils.isAllZero(sum)) {
+      throw new IdentityResultException("Element addition produced the identity element");
+    }
+    return sum;
+  }
+
+  /**
+   * {@inheritDoc}
+   * <p>
+   * ristretto255 has only one scalar multiplication routine here — {@link #scalarMul} is already a
+   * Montgomery ladder — so the secret and public forms are identical. The distinction is kept at
+   * the interface because it is real on the Weierstrass curves, where the public form skips a
+   * ~2x constant-time penalty.
+   */
+  @Override
+  public byte[] linearCombinationSecret(BigInteger[] scalars, byte[][] elements) {
+    return linearCombination(scalars, elements);
+  }
+
+  @Override
+  public byte[] linearCombinationPublic(BigInteger[] scalars, byte[][] elements) {
+    return linearCombination(scalars, elements);
+  }
+
+  /**
+   * Accumulates {@code sum(scalars[i] * elements[i])} in extended Edwards coordinates.
+   * <p>
+   * The accumulator starts at the neutral element and every intermediate stays in coordinate form,
+   * because {@link #decodeRistretto255} rejects the all-zero encoding and the RFC 9497 §2.2
+   * composites legitimately pass through the identity on their way to a non-identity sum.
+   */
+  private byte[] linearCombination(BigInteger[] scalars, byte[][] elements) {
+    if (scalars == null || elements == null) {
+      throw new IllegalArgumentException("Scalars and elements are required");
+    }
+    if (scalars.length != elements.length) {
+      throw new IllegalArgumentException(
+          "Scalar and element counts differ: " + scalars.length + " vs " + elements.length);
+    }
+    if (scalars.length == 0) {
+      throw new IllegalArgumentException("Linear combination requires at least one term");
+    }
+    BigInteger[] acc = neutralElement();
+    for (int i = 0; i < scalars.length; i++) {
+      // decodeRistretto255 still validates each *input* element, including its identity
+      // rejection. Only the products and the running sum may be the identity.
+      acc = addPoints(acc, scalarMul(decodeRistretto255(elements[i]), scalars[i]));
+    }
+    byte[] out = encodeRistretto255(acc);
+    if (ByteUtils.isAllZero(out)) {
+      throw new IdentityResultException("Linear combination produced the identity element");
+    }
+    return out;
   }
 
   // ─── Field arithmetic (GF(p)) ────────────────────────────────────────────
