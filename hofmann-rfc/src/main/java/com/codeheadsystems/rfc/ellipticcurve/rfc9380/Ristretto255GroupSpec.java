@@ -86,6 +86,9 @@ public class Ristretto255GroupSpec implements GroupSpec {
   private static final BigInteger[] BASE_POINT =
       new BigInteger[]{BX, BY, BigInteger.ONE, fmul(BX, BY)};
 
+  /** Cached serialized generator; see {@link #generator()}. */
+  private static final byte[] ENCODED_BASE_POINT = encodeRistretto255(BASE_POINT);
+
   private static final ExpandMessageXmd XMD_SHA512 = ExpandMessageXmd.forSha512();
 
   private Ristretto255GroupSpec() {
@@ -180,9 +183,31 @@ public class Ristretto255GroupSpec implements GroupSpec {
     return k;
   }
 
+  /**
+   * Returns a copy of the cached encoding. Encoding the base point is not free — it runs a
+   * {@code modPow} inside {@code sqrtRatioM1} — and proof verification asks for the generator on
+   * every call, so computing it each time would add a field exponentiation per verification.
+   */
   @Override
   public byte[] generator() {
-    return encodeRistretto255(BASE_POINT);
+    return ENCODED_BASE_POINT.clone();
+  }
+
+  /**
+   * {@inheritDoc}
+   * <p>
+   * {@code decodeRistretto255} already requires exactly 32 bytes and rejects the identity, a
+   * non-canonical {@code s}, and anything failing RFC 9496 §4.3.1 — so unlike the Weierstrass
+   * implementation there is no wider encoding to exclude here. The explicit null check is only so
+   * that a null argument surfaces as the same {@link IllegalArgumentException} both
+   * implementations throw, rather than as a {@link NullPointerException} from the length test.
+   */
+  @Override
+  public void validateElement(byte[] element) {
+    if (element == null) {
+      throw new IllegalArgumentException("Element encoding is required");
+    }
+    decodeRistretto255(element);
   }
 
   @Override

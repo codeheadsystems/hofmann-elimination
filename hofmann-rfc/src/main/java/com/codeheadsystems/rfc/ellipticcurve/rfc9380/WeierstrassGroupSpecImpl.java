@@ -247,6 +247,36 @@ public record WeierstrassGroupSpecImpl(
     return curve.g().getEncoded(true);
   }
 
+  /**
+   * {@inheritDoc}
+   * <p>
+   * The length check is the substantive part. BouncyCastle's {@code decodePoint} accepts SEC1
+   * uncompressed ({@code 0x04}, 65 bytes on P-256) and hybrid ({@code 0x06}/{@code 0x07}) forms
+   * alongside the compressed one, but RFC 9497 §4.3-§4.5 specify deserialization as "attempting to
+   * deserialize a 33-byte input string ... using the compressed Octet-String-to-Elliptic-Curve-Point
+   * method". Accepting a wider set is not merely lax: the proof transcripts hash the element
+   * <em>bytes</em>, so an attacker who re-encodes a client's blinded element in flight from
+   * compressed to uncompressed leaves the server proving over bytes the client never sent. The
+   * composite coefficients differ, verification fails, and the client sees an apparently
+   * misbehaving server with no way to attribute it to a network attacker — a silent, unattributable
+   * denial of service against every verifiable exchange. A public key configured in uncompressed
+   * form would fail the same way, permanently.
+   * <p>
+   * The check lives here rather than in {@link #deserializePoint} deliberately. That method is on
+   * the OPAQUE and base-mode OPRF paths, where a non-canonical encoding is harmless — no transcript
+   * hashes the bytes, so the output is identical either way — and tightening it there is a wider
+   * behaviour change than this commit should carry.
+   */
+  @Override
+  public void validateElement(byte[] element) {
+    if (element == null || element.length != elementSize()) {
+      throw new IllegalArgumentException(
+          "Element encoding must be exactly " + elementSize() + " bytes (compressed SEC1), got "
+              + (element == null ? "null" : element.length));
+    }
+    deserializePoint(element);
+  }
+
   @Override
   public byte[] add(byte[] a, byte[] b) {
     ECPoint sum = deserializePoint(a).add(deserializePoint(b)).normalize();

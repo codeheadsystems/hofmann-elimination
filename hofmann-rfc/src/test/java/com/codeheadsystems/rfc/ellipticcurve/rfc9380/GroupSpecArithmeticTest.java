@@ -241,6 +241,47 @@ class GroupSpecArithmeticTest {
         Arguments.of("P-521", WeierstrassGroupSpecImpl.P521_SHA512));
   }
 
+  // ─── element validation ─────────────────────────────────────────────────────
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("specs")
+  void validateElementAcceptsAWellFormedElement(String name, GroupSpec spec) {
+    assertThatCode(() -> spec.validateElement(point(spec, "valid"))).doesNotThrowAnyException();
+    assertThatCode(() -> spec.validateElement(spec.generator())).doesNotThrowAnyException();
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("specs")
+  void validateElementRejectsTheIdentityAndGarbage(String name, GroupSpec spec) {
+    assertThatThrownBy(() -> spec.validateElement(new byte[spec.elementSize()]))
+        .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
+    assertThatThrownBy(() -> spec.validateElement(null))
+        .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
+  }
+
+  /**
+   * RFC 9497 §4.3-§4.5 specify deserialization as the <em>compressed</em> method over an
+   * {@code Ne}-byte string, but BouncyCastle's {@code decodePoint} also accepts SEC1 uncompressed
+   * ({@code 0x04}) and hybrid ({@code 0x06}/{@code 0x07}) forms, which are longer.
+   * <p>
+   * Accepting them is not a cosmetic laxity. The RFC 9497 §2.2 proof transcripts hash element
+   * <em>bytes</em>, so an attacker who re-encodes a blinded element in flight makes the server
+   * prove over bytes the client never sent: the composite coefficients differ, verification fails,
+   * and the client cannot distinguish a network attacker from a faulty server. This test pins the
+   * length check that closes it — it failed before that check existed.
+   */
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("weierstrassSpecs")
+  void weierstrassValidateElementRejectsNonCompressedEncodings(String name, GroupSpec spec) {
+    WeierstrassGroupSpecImpl impl = (WeierstrassGroupSpecImpl) spec;
+    byte[] uncompressed = impl.deserializePoint(spec.generator()).getEncoded(false);
+
+    assertThat(uncompressed.length).isNotEqualTo(spec.elementSize());
+    assertThatThrownBy(() -> spec.validateElement(uncompressed))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("compressed");
+  }
+
   // ─── scalar serialization ───────────────────────────────────────────────────
 
   @ParameterizedTest(name = "{0}")

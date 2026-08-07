@@ -102,6 +102,23 @@ public interface GroupSpec {
   byte[] generator();
 
   /**
+   * Validates a serialized element that arrived from an untrusted source.
+   * <p>
+   * RFC 9497 §3.3 makes this a requirement: "Applications MUST check that input Element values
+   * received over the wire are not the group identity element." Both implementations already
+   * enforce that — along with on-curve and prime-order-subgroup checks — when they deserialize,
+   * but until now the only way to reach those checks through this interface was to perform an
+   * actual group operation. The verifiable modes need to validate a server public key on load,
+   * before any operation uses it, so the check needs its own entry point.
+   *
+   * @param element the serialized element
+   * @throws SecurityException        if the element is the identity, off-curve, outside the
+   *                                  prime-order subgroup, or otherwise not a canonical encoding
+   * @throws IllegalArgumentException if the encoding is the wrong length
+   */
+  void validateElement(byte[] element);
+
+  /**
    * Adds two group elements.
    *
    * @param a serialized element
