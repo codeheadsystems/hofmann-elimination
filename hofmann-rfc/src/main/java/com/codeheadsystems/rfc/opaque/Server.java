@@ -30,7 +30,22 @@ public class Server {
   /**
    * Constructs an OpaqueServer with explicit key material.
    *
-   * @param serverPrivateKeyBytes big-endian server private key
+   * <p><strong>The private key is in the cipher suite's canonical scalar encoding</strong> — SEC1
+   * big-endian on P-256/384/521, little-endian on ristretto255 per RFC 9496. It is decoded through
+   * {@code GroupSpec.deserializeScalar} rather than as an unconditional big-endian integer.
+   *
+   * <p>That distinction was a real divergence, not a formality. OPAQUE used to read this as
+   * big-endian on every suite, while the Rust port (curve25519-dalek {@code Scalar::to_bytes}) and
+   * the TypeScript port ({@code numberToBytesLE}) both use ristretto255's native little-endian —
+   * so Java disagreed with both on what a given 32-byte ristretto255 private key means. It never
+   * produced a wrong answer, because all three derive the key from a seed and use it as a scalar,
+   * and the byte encoding reaches no transcript or MAC: the envelope tag covers
+   * {@code nonce || cleartext}, and cleartext carries the <em>public</em> key. The cross-implementation
+   * vectors therefore passed for the right reason rather than by luck. The exposure was an operator
+   * exporting a raw ristretto255 private key from one implementation and configuring it into
+   * another, which would silently be a different key.
+   *
+   * @param serverPrivateKeyBytes server private key in the suite's canonical scalar encoding
    * @param serverPublicKey       compressed SEC1 server public key
    * @param oprfSeed              OPRF seed
    * @param config                OPAQUE configuration
@@ -45,17 +60,22 @@ public class Server {
     if (serverPrivateKeyBytes == null || serverPublicKey == null || oprfSeed == null) {
       throw new IllegalArgumentException("Server key material is required");
     }
-    BigInteger sk = new BigInteger(1, serverPrivateKeyBytes);
+    BigInteger sk = config.cipherSuite().oprfSuite().groupSpec()
+        .deserializeScalar(serverPrivateKeyBytes);
     BigInteger n = config.cipherSuite().oprfSuite().groupSpec().groupOrder();
     // The constructor previously validated nothing at all, so a misconfigured deployment started
     // cleanly and failed later as an authentication error with no indication of the cause.
     //
     // A key congruent to 0 mod n is the one that is actively unsafe rather than merely wrong:
     // dh2 then produces the identity for every client, collapsing the AKE's contribution from the
-    // long-term key. Mirrors the check the OPRF key supplier already performs. Keys at or above n
-    // are normalised rather than refused, for the same reason as there — `openssl rand -hex 32`
-    // exceeds ristretto255's order about 94% of the time, and scalar multiplication reduces
-    // anyway, so refusing would break working deployments.
+    // long-term key. Mirrors the check the OPRF key supplier already performs.
+    //
+    // Keys at or above n are now refused by deserializeScalar above, where the OPRF key supplier
+    // normalises them instead. The asymmetry is deliberate: the OPRF master key is configured as
+    // raw random hex, and `openssl rand -hex 32` exceeds ristretto255's order about 94% of the
+    // time, so refusing there would break working deployments. This key cannot be raw random
+    // bytes — the caller must also supply the matching public key, checked below, so it can only
+    // have come from a real key generation, which yields a scalar in [1, n-1].
     if (sk.mod(n).signum() == 0) {
       throw new IllegalArgumentException(
           "Server private key is congruent to zero mod the group order");
@@ -76,8 +96,13 @@ public class Server {
           "Server public key does not match the private key");
     }
     this.serverPrivateKey = sk;
-    this.serverPublicKey = serverPublicKey;
-    this.oprfSeed = oprfSeed;
+    // Copied, not aliased. Mutating oprfSeed after construction changes the OPRF key for every
+    // credential identifier; mutating serverPublicKey after the match check above puts a key the
+    // private key does not correspond to into CleartextCredentials, the masked response and the
+    // preamble — past the one check that would have caught it. Same aliasing that was fixed in the
+    // VOPRF/POPRF client contexts, and more consequential here.
+    this.serverPublicKey = serverPublicKey.clone();
+    this.oprfSeed = oprfSeed.clone();
     this.config = config;
   }
 
@@ -92,7 +117,10 @@ public class Server {
     byte[] pk = config.cipherSuite().oprfSuite().groupSpec().scalarMultiplyGenerator(sk);
     byte[] seed = config.randomProvider().randomBytes(config.Nh());
 
-    byte[] skFixed = ByteUtils.scalarToFixedBytes(sk, config.Nsk());
+    // Canonical per-suite encoding, matching what the constructor decodes. Byte-identical to the
+    // old ByteUtils.scalarToFixedBytes on the three NIST suites, and little-endian rather than
+    // big-endian on ristretto255 — see the constructor's javadoc.
+    byte[] skFixed = config.cipherSuite().oprfSuite().groupSpec().serializeScalar(sk);
     return new Server(skFixed, pk, seed, config);
   }
 
@@ -156,12 +184,15 @@ public class Server {
   }
 
   /**
-   * Returns the server's public key.
+   * Returns a copy of the server's public key.
    *
-   * @return the byte [ ]
+   * <p>A copy so a caller cannot reach in and change the key this server presents. The value is
+   * public, so the copy is about integrity rather than secrecy.
+   *
+   * @return a copy of the compressed SEC1 server public key
    */
   public byte[] getServerPublicKey() {
-    return serverPublicKey;
+    return serverPublicKey.clone();
   }
 
   // ─── Registration ─────────────────────────────────────────────────────────

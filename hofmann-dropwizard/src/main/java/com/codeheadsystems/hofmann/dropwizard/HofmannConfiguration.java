@@ -75,6 +75,17 @@ public class HofmannConfiguration extends Configuration {
    * (useful when rotating keys).
    */
   private String oprfProcessorId = "hofmann-oprf-v1";
+  /**
+   * VOPRF (RFC 9497 mode 0x01) master key, hex. Empty disables {@code POST /oprf/verifiable}.
+   *
+   * <p>Separate from {@code oprfMasterKeyHex}: the mode byte is part of every domain-separation
+   * tag, so one secret serving two modes computes two different functions under two different tag
+   * sets. There is deliberately no ephemeral fallback — the point of a verifiable mode is that
+   * clients pin the public key, and a key regenerated on restart makes every pinned key wrong.
+   */
+  private String voprfMasterKeyHex = "";
+  /** POPRF (RFC 9497 mode 0x02) master key, hex. Empty disables {@code POST /oprf/partially-oblivious}. */
+  private String poprfMasterKeyHex = "";
 
   /**
    * Application context string bound into the OPAQUE preamble.
@@ -574,5 +585,41 @@ public class HofmannConfiguration extends Configuration {
   @JsonProperty
   public void setAllowIdentityKsf(boolean allowIdentityKsf) {
     this.allowIdentityKsf = allowIdentityKsf;
+  }
+
+  /**
+   * Gets the VOPRF master key hex.
+   *
+   * @return the voprf master key hex
+   */
+  public String getVoprfMasterKeyHex() {
+    return voprfMasterKeyHex;
+  }
+
+  /**
+   * Sets the VOPRF master key hex.
+   *
+   * @param voprfMasterKeyHex the voprf master key hex
+   */
+  public void setVoprfMasterKeyHex(String voprfMasterKeyHex) {
+    this.voprfMasterKeyHex = voprfMasterKeyHex;
+  }
+
+  /**
+   * Gets the POPRF master key hex.
+   *
+   * @return the poprf master key hex
+   */
+  public String getPoprfMasterKeyHex() {
+    return poprfMasterKeyHex;
+  }
+
+  /**
+   * Sets the POPRF master key hex.
+   *
+   * @param poprfMasterKeyHex the poprf master key hex
+   */
+  public void setPoprfMasterKeyHex(String poprfMasterKeyHex) {
+    this.poprfMasterKeyHex = poprfMasterKeyHex;
   }
 }

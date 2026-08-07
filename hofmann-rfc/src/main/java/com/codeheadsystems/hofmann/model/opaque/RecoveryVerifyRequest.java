@@ -17,9 +17,20 @@ import java.util.Base64;
  */
 public record RecoveryVerifyRequest(
     @JsonProperty("credentialIdentifier") String credentialIdentifierBase64,
-    @JsonProperty("challengeResponse") String challengeResponse) {
+    @JsonProperty("challengeResponse") String challengeResponse,
+    @JsonProperty("challengeId") String challengeId) {
 
   private static final Base64.Encoder B64 = Base64.getEncoder();
+
+  /**
+   * Instantiates a new Recovery verify request without a challenge id.
+   *
+   * @param credentialIdentifierBase64 base64-encoded credential identifier
+   * @param challengeResponse          the user's challenge response
+   */
+  public RecoveryVerifyRequest(String credentialIdentifierBase64, String challengeResponse) {
+    this(credentialIdentifierBase64, challengeResponse, null);
+  }
 
   /**
    * Instantiates a new Recovery verify request from raw credential identifier bytes.
@@ -28,7 +39,35 @@ public record RecoveryVerifyRequest(
    * @param challengeResponse    the user's challenge response
    */
   public RecoveryVerifyRequest(byte[] credentialIdentifier, String challengeResponse) {
-    this(B64.encodeToString(credentialIdentifier), challengeResponse);
+    this(B64.encodeToString(credentialIdentifier), challengeResponse, null);
+  }
+
+  /**
+   * Instantiates a new Recovery verify request carrying the challenge id.
+   *
+   * @param credentialIdentifier the credential identifier
+   * @param challengeResponse    the user's challenge response
+   * @param challengeId          the challenge id delivered out of band
+   */
+  public RecoveryVerifyRequest(byte[] credentialIdentifier, String challengeResponse,
+                               String challengeId) {
+    this(B64.encodeToString(credentialIdentifier), challengeResponse, challengeId);
+  }
+
+  /**
+   * Returns the challenge id, bounded like every other client-supplied field.
+   *
+   * <p>Optional on the wire: a deployment whose {@code RecoveryChallenger} does not deliver one
+   * omits it, and the server falls back to identifier keying. Where it <em>is</em> delivered it
+   * is what the verification rate limiter keys on, so it is attacker-supplied input reaching a
+   * map key and gets the same cap as the rest.
+   *
+   * @return the challenge id, or null if not supplied
+   */
+  @Override
+  public String challengeId() {
+    WireFields.checkLength(challengeId, "challengeId");
+    return challengeId;
   }
 
   /**

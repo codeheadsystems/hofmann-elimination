@@ -11,6 +11,7 @@ import com.codeheadsystems.hofmann.server.ratelimit.InMemoryRateLimiter;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfig;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfigSupplier;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
+import com.codeheadsystems.hofmann.server.oprf.VerifiableKeyConfig;
 import com.codeheadsystems.hofmann.server.recovery.RecoveryChallenger;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemoryCredentialStore;
@@ -20,17 +21,22 @@ import com.codeheadsystems.hofmann.server.store.InMemorySessionStore;
 import com.codeheadsystems.hofmann.server.store.PendingSessionStore;
 import com.codeheadsystems.hofmann.server.store.RecoveryTokenStore;
 import com.codeheadsystems.hofmann.server.store.SessionStore;
-import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.common.RandomProvider;
 import com.codeheadsystems.rfc.opaque.Server;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
+import com.codeheadsystems.hofmann.model.oprf.VerifiableOprfLimits;
 import com.codeheadsystems.rfc.oprf.manager.OprfServerManager;
+import com.codeheadsystems.rfc.oprf.manager.PoprfServerManager;
+import com.codeheadsystems.rfc.oprf.manager.VoprfServerManager;
 import com.codeheadsystems.rfc.oprf.model.ServerProcessorDetail;
+import com.codeheadsystems.rfc.oprf.model.VerifiableProcessorDetail;
 import com.codeheadsystems.rfc.oprf.rfc9497.OprfCipherSuite;
+import com.codeheadsystems.rfc.oprf.rfc9497.OprfMode;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.util.Map;
 import java.util.HexFormat;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
@@ -40,6 +46,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import com.codeheadsystems.hofmann.springboot.controller.OpaqueController;
 import com.codeheadsystems.hofmann.springboot.controller.OprfController;
@@ -227,7 +234,9 @@ public class HofmannAutoConfiguration {
     BigInteger sk = keyPair.privateKey();
     byte[] pk = keyPair.publicKeyBytes();
 
-    byte[] skFixed = ByteUtils.scalarToFixedBytes(sk, opaqueConfig.Nsk());
+    // Canonical per-suite scalar encoding, matching what Server's constructor decodes:
+    // big-endian on the NIST curves, little-endian on ristretto255. See Server's javadoc.
+    byte[] skFixed = opaqueConfig.cipherSuite().oprfSuite().groupSpec().serializeScalar(sk);
 
     return new Server(skFixed, pk, oprfSeed, opaqueConfig);
   }
@@ -448,7 +457,15 @@ public class HofmannAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   public BodySizeLimitFilter bodySizeLimitFilter(HofmannProperties props) {
-    return new BodySizeLimitFilter(props.getMaxRequestBodyBytes());
+    // The batched verifiable endpoints get a tighter, cap-derived limit. The generic limit bounds
+    // memory but not element count: at 64 KiB it admits roughly 470 hex-encoded P-521 elements
+    // against a configured batch cap of 64, and every one of them is parsed before the manager
+    // rejects the batch. See VerifiableOprfLimits.
+    long verifiableLimit = VerifiableOprfLimits.maxRequestBodyBytes(
+        VoprfServerManager.DEFAULT_MAX_BATCH_SIZE);
+    return new BodySizeLimitFilter(props.getMaxRequestBodyBytes(), Map.of(
+        "/oprf/verifiable", verifiableLimit,
+        "/oprf/partially-oblivious", verifiableLimit));
   }
 
   /**
@@ -574,5 +591,51 @@ public class HofmannAutoConfiguration {
     OprfCipherSuite oprfSuite = OprfCipherSuite.builder().withSuite(props.getOprfCipherSuite())
         .withRandom(secureRandom).build();
     return new OprfServerManager(oprfSuite, serverProcessorDetailSupplier);
+  }
+
+  /**
+   * VOPRF (RFC 9497 mode 0x01) manager, present only when {@code hofmann.voprf-master-key-hex}
+   * is configured.
+   *
+   * <p>Conditional rather than always-on, and there is no ephemeral fallback the way there is for
+   * the OPAQUE server keys. The point of a verifiable mode is that clients pin the server's public
+   * key and check proofs against it; a key regenerated at every restart makes every previously
+   * pinned key wrong, so a deployment that has not decided on a key is better off with the
+   * endpoint returning 404 than with one that silently changes identity.
+   *
+   * @param props        the props
+   * @param secureRandom the secure random
+   * @return the voprf server manager
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  @ConditionalOnExpression("!'${hofmann.voprf-master-key-hex:}'.isEmpty()")
+  public VoprfServerManager voprfServerManager(HofmannProperties props, SecureRandom secureRandom) {
+    OprfCipherSuite suite = VerifiableKeyConfig.suiteFor(
+        props.getOprfCipherSuite(), OprfMode.VOPRF, secureRandom);
+    VerifiableProcessorDetail detail = VerifiableKeyConfig.detailFrom(
+        suite, props.getVoprfMasterKeyHex(), props.getOprfProcessorId() + "-voprf",
+        "hofmann.voprf-master-key-hex");
+    return new VoprfServerManager(suite, () -> detail);
+  }
+
+  /**
+   * POPRF (RFC 9497 mode 0x02) manager, present only when {@code hofmann.poprf-master-key-hex}
+   * is configured. See {@link #voprfServerManager} for why this is conditional.
+   *
+   * @param props        the props
+   * @param secureRandom the secure random
+   * @return the poprf server manager
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  @ConditionalOnExpression("!'${hofmann.poprf-master-key-hex:}'.isEmpty()")
+  public PoprfServerManager poprfServerManager(HofmannProperties props, SecureRandom secureRandom) {
+    OprfCipherSuite suite = VerifiableKeyConfig.suiteFor(
+        props.getOprfCipherSuite(), OprfMode.POPRF, secureRandom);
+    VerifiableProcessorDetail detail = VerifiableKeyConfig.detailFrom(
+        suite, props.getPoprfMasterKeyHex(), props.getOprfProcessorId() + "-poprf",
+        "hofmann.poprf-master-key-hex");
+    return new PoprfServerManager(suite, () -> detail);
   }
 }

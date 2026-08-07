@@ -29,8 +29,9 @@ class OprfControllerTest {
   @Mock private HttpServletRequest httpRequest;
 
   private OprfController controller(boolean trustForwardedHeaders) {
+    // null verifiable managers: base-mode deployment, which is the default shape.
     return new OprfController(oprfServerManager, new OprfClientConfigResponse("P256_SHA256"),
-        rateLimiter, trustForwardedHeaders);
+        rateLimiter, trustForwardedHeaders, null, null);
   }
 
   private OprfRequest validRequest() {

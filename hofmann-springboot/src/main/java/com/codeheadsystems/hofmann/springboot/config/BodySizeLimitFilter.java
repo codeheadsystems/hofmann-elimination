@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
@@ -24,6 +25,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class BodySizeLimitFilter extends OncePerRequestFilter {
 
   private final long maxBytes;
+  private final Map<String, Long> perPathMaxBytes;
 
   /**
    * Instantiates a new Body size limit filter.
@@ -31,19 +33,72 @@ public class BodySizeLimitFilter extends OncePerRequestFilter {
    * @param maxBytes the maximum allowed request body size in bytes
    */
   public BodySizeLimitFilter(long maxBytes) {
+    this(maxBytes, Map.of());
+  }
+
+  /**
+   * Instantiates a new Body size limit filter with tighter limits on specific paths.
+   *
+   * <p>The generic limit is one size for every endpoint, which is right for the OPAQUE messages —
+   * they are fixed-width. It is loose for the batched verifiable OPRF endpoints, where the
+   * meaningful bound is the batch cap: at 64 KiB and ~138 bytes per hex-encoded P-521 element,
+   * the generic limit admits roughly 470 elements against a configured cap of 64. Every one of
+   * those is read and materialised into a {@code List<String>} before the manager rejects the
+   * batch, so the cap bounds the curve work but not the work before it.
+   *
+   * <p>A per-path limit derived from the cap closes that, and keeps the two in step if either is
+   * retuned. It is applied here rather than in the resource because it has to act before the body
+   * is parsed, which is the whole point.
+   *
+   * @param maxBytes        the default maximum request body size in bytes
+   * @param perPathMaxBytes exact request paths mapped to their own, usually smaller, maximum
+   */
+  public BodySizeLimitFilter(long maxBytes, Map<String, Long> perPathMaxBytes) {
     this.maxBytes = maxBytes;
+    this.perPathMaxBytes = Map.copyOf(perPathMaxBytes);
   }
 
   @Override
   protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                   FilterChain filterChain) throws ServletException, IOException {
+    long limit = limitFor(request);
     long declaredLength = request.getContentLengthLong();
-    if (declaredLength > maxBytes) {
+    if (declaredLength > limit) {
       response.sendError(HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE,
           "Request body exceeds maximum allowed size");
       return;
     }
-    filterChain.doFilter(new BoundedRequest(request, maxBytes), response);
+    filterChain.doFilter(new BoundedRequest(request, limit), response);
+  }
+
+  /**
+   * Resolves the limit for a request, taking the smaller of the generic limit and any per-path
+   * override.
+   *
+   * <p>{@code min} rather than the override outright: a deployment that lowers the generic limit
+   * below a per-path value means it, and a per-path entry should only ever tighten.
+   */
+  private long limitFor(HttpServletRequest request) {
+    // Guard the null URI rather than assuming a container always supplies one. Map.copyOf is
+    // null-hostile, so an absent URI would make get(null) throw straight out of a filter that sits
+    // in front of every request — turning an odd request into a 500 for the whole endpoint. The
+    // generic limit is the safe answer when the path is unknown.
+    String uri = request.getRequestURI();
+    if (uri == null) {
+      return maxBytes;
+    }
+    // Strip the context path before matching. getRequestURI() is contextPath + servletPath +
+    // pathInfo, so an application deployed under a context path — server.servlet.context-path,
+    // which is ordinary in Spring Boot — would present "/api/oprf/verifiable" against a key of
+    // "/oprf/verifiable" and silently fall back to the generic limit. A size bound that stops
+    // applying because someone set an unrelated config property is the worst kind: nothing fails,
+    // the protection is just gone.
+    String contextPath = request.getContextPath();
+    String path = contextPath != null && !contextPath.isEmpty() && uri.startsWith(contextPath)
+        ? uri.substring(contextPath.length())
+        : uri;
+    Long override = perPathMaxBytes.get(path);
+    return override == null ? maxBytes : Math.min(maxBytes, override);
   }
 
   /**

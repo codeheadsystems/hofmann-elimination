@@ -16,6 +16,17 @@ public class HofmannProperties {
   private String previousOprfSeedHex = "";
   private String oprfMasterKeyHex = "";
   private String oprfProcessorId = "hofmann-oprf-v1";
+  /**
+   * VOPRF (RFC 9497 mode 0x01) master key, hex. Empty disables the verifiable endpoint.
+   *
+   * <p>Separate from {@code oprfMasterKeyHex} deliberately. The mode byte is part of every
+   * domain-separation tag, so one secret serving two modes computes two different functions under
+   * two different tag sets — sharing it buys nothing and makes a later key rotation ambiguous
+   * about which mode it is rotating.
+   */
+  private String voprfMasterKeyHex = "";
+  /** POPRF (RFC 9497 mode 0x02) master key, hex. Empty disables the partially-oblivious endpoint. */
+  private String poprfMasterKeyHex = "";
   private String context = "hofmann-opaque-v1";
   private String jwtSecretHex = "";
   private String jwtPreviousSecretHex = "";
@@ -383,5 +394,41 @@ public class HofmannProperties {
    */
   public void setMaxRequestBodyBytes(long maxRequestBodyBytes) {
     this.maxRequestBodyBytes = maxRequestBodyBytes;
+  }
+
+  /**
+   * Gets the VOPRF master key hex.
+   *
+   * @return the voprf master key hex
+   */
+  public String getVoprfMasterKeyHex() {
+    return voprfMasterKeyHex;
+  }
+
+  /**
+   * Sets the VOPRF master key hex.
+   *
+   * @param voprfMasterKeyHex the voprf master key hex
+   */
+  public void setVoprfMasterKeyHex(String voprfMasterKeyHex) {
+    this.voprfMasterKeyHex = voprfMasterKeyHex;
+  }
+
+  /**
+   * Gets the POPRF master key hex.
+   *
+   * @return the poprf master key hex
+   */
+  public String getPoprfMasterKeyHex() {
+    return poprfMasterKeyHex;
+  }
+
+  /**
+   * Sets the POPRF master key hex.
+   *
+   * @param poprfMasterKeyHex the poprf master key hex
+   */
+  public void setPoprfMasterKeyHex(String poprfMasterKeyHex) {
+    this.poprfMasterKeyHex = poprfMasterKeyHex;
   }
 }

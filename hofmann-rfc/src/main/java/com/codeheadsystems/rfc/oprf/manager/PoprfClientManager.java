@@ -180,11 +180,17 @@ public class PoprfClientManager {
               + "'; the server did not evaluate with the committed key under this public input");
     }
 
+    // Hoisted out of the loop, info included. The accessors now deep-copy, so calling them per
+    // element made this quadratic: at the 1024 batch cap with 4 KB inputs that is ~0.32 s of pure
+    // copying and gigabytes of transient allocation, against microseconds hoisted. It also
+    // produced n^2 unzeroed heap copies of the client's plaintext.
+    List<byte[]> inputs = context.inputs();
+    List<BigInteger> blinds = context.blinds();
+    byte[] info = context.info();
     List<HashResult> results = new ArrayList<>(context.size());
     for (int i = 0; i < context.size(); i++) {
       byte[] hash = suite.finalizeWithInfo(
-          context.inputs().get(i), context.info(),
-          context.blinds().get(i), evaluatedElements[i]);
+          inputs.get(i), info, blinds.get(i), evaluatedElements[i]);
       results.add(new HashResult(hash, response.processIdentifier()));
     }
     return results;

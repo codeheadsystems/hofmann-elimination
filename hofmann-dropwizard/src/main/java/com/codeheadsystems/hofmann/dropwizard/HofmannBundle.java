@@ -16,6 +16,7 @@ import com.codeheadsystems.hofmann.server.ratelimit.RateLimitConfig;
 import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
 import com.codeheadsystems.hofmann.server.resource.OpaqueResource;
 import com.codeheadsystems.hofmann.server.resource.OprfResource;
+import com.codeheadsystems.hofmann.server.oprf.VerifiableKeyConfig;
 import com.codeheadsystems.hofmann.server.recovery.RecoveryChallenger;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemoryCredentialStore;
@@ -25,15 +26,19 @@ import com.codeheadsystems.hofmann.server.store.InMemorySessionStore;
 import com.codeheadsystems.hofmann.server.store.PendingSessionStore;
 import com.codeheadsystems.hofmann.server.store.RecoveryTokenStore;
 import com.codeheadsystems.hofmann.server.store.SessionStore;
-import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.common.RandomProvider;
 import com.codeheadsystems.rfc.opaque.Server;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
+import com.codeheadsystems.hofmann.model.oprf.VerifiableOprfLimits;
 import com.codeheadsystems.rfc.oprf.manager.OprfServerManager;
+import com.codeheadsystems.rfc.oprf.manager.PoprfServerManager;
+import com.codeheadsystems.rfc.oprf.manager.VoprfServerManager;
 import com.codeheadsystems.rfc.oprf.model.ServerProcessorDetail;
+import com.codeheadsystems.rfc.oprf.model.VerifiableProcessorDetail;
 import com.codeheadsystems.rfc.oprf.rfc9497.CurveHashSuite;
 import com.codeheadsystems.rfc.oprf.rfc9497.OprfCipherSuite;
+import com.codeheadsystems.rfc.oprf.rfc9497.OprfMode;
 import io.dropwizard.auth.AuthDynamicFeature;
 import io.dropwizard.auth.AuthValueFactoryProvider;
 import io.dropwizard.auth.oauth.OAuthCredentialAuthFilter;
@@ -55,6 +60,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.HashSet;
 import java.util.HexFormat;
+import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
@@ -351,7 +357,8 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     OprfServerManager oprfServerManager = new OprfServerManager(oprfSuite, oprfSupplier);
     RateLimiter oprfRateLimiter = rateLimiterFunction.apply(rateLimitConfigSupplier.oprfRateLimitConfig());
     environment.jersey().register(new OprfResource(oprfServerManager, oprfClientConfig, oprfRateLimiter,
-        configuration.isTrustForwardedHeaders()));
+        configuration.isTrustForwardedHeaders(),
+        buildVoprfManager(configuration), buildPoprfManager(configuration)));
 
     // Shutdown lifecycle for manager and rate limiters
     environment.lifecycle().manage(new io.dropwizard.lifecycle.Managed() {
@@ -367,9 +374,89 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     });
   }
 
+  /**
+   * Normalises a JAX-RS request path for per-path limit lookup: never null, no leading slash.
+   *
+   * <p>{@code UriInfo.getPath()} is specified as relative to the base URI and so should carry no
+   * leading slash, but the lookup does not need to depend on that being true in every container.
+   *
+   * @param path the raw request path
+   * @return the path without a leading slash, or the empty string if it was null
+   */
+  static String normalizePath(final String path) {
+    if (path == null) {
+      return "";
+    }
+    int start = path.startsWith("/") ? 1 : 0;
+    int end = path.length();
+    // Strip trailing slashes as well as a leading one. Jersey's path pattern for a resource
+    // method is `/verifiable(/)?`, so `POST /oprf/verifiable/` routes to the same method but
+    // getPath() reports "oprf/verifiable/". Matching the raw string missed, the request fell back
+    // to the generic 64 KiB limit instead of the cap-derived one, and the ~470-elements-against-a
+    // -cap-of-64 amplification this bound exists to close came back — for one extra character, on
+    // an unauthenticated endpoint. Loop rather than a single strip: `//` routes too.
+    while (end > start && path.charAt(end - 1) == '/') {
+      end--;
+    }
+    return path.substring(start, end);
+  }
+
+  /**
+   * Builds the VOPRF manager, or null when no key is configured.
+   *
+   * <p>Null rather than an ephemerally-keyed manager. The value of a verifiable mode is that
+   * clients pin the server's public key and grade proofs against it, so a key regenerated at every
+   * restart makes every previously pinned key wrong — silently, and only for clients that were
+   * actually checking. A deployment that has not chosen a key is better served by the endpoint
+   * answering 404.
+   */
+  private VoprfServerManager buildVoprfManager(C configuration) {
+    String keyHex = configuration.getVoprfMasterKeyHex();
+    if (!VerifiableKeyConfig.isConfigured(keyHex)) {
+      return null;
+    }
+    OprfCipherSuite suite = VerifiableKeyConfig.suiteFor(
+        configuration.getOprfCipherSuite(), OprfMode.VOPRF, secureRandom);
+    VerifiableProcessorDetail detail = VerifiableKeyConfig.detailFrom(
+        suite, keyHex, configuration.getOprfProcessorId() + "-voprf", "voprfMasterKeyHex");
+    log.info("VOPRF (mode 0x01) enabled");
+    return new VoprfServerManager(suite, () -> detail);
+  }
+
+  /**
+   * Builds the POPRF manager, or null when no key is configured. See {@link #buildVoprfManager}.
+   */
+  private PoprfServerManager buildPoprfManager(C configuration) {
+    String keyHex = configuration.getPoprfMasterKeyHex();
+    if (!VerifiableKeyConfig.isConfigured(keyHex)) {
+      return null;
+    }
+    OprfCipherSuite suite = VerifiableKeyConfig.suiteFor(
+        configuration.getOprfCipherSuite(), OprfMode.POPRF, secureRandom);
+    VerifiableProcessorDetail detail = VerifiableKeyConfig.detailFrom(
+        suite, keyHex, configuration.getOprfProcessorId() + "-poprf", "poprfMasterKeyHex");
+    log.info("POPRF (mode 0x02) enabled");
+    return new PoprfServerManager(suite, () -> detail);
+  }
+
   private void registerSizeLimitFilter(C configuration, Environment environment) {
-    long maxBytes = configuration.getMaxRequestBodyBytes();
+    long defaultMaxBytes = configuration.getMaxRequestBodyBytes();
+    // The batched verifiable endpoints get a tighter, cap-derived limit. The generic limit bounds
+    // memory but not element count: at 64 KiB it admits roughly 470 hex-encoded P-521 elements
+    // against a configured batch cap of 64, and every one is parsed before the manager rejects the
+    // batch. min() rather than the override outright, so lowering the generic limit still wins.
+    long verifiableMaxBytes = Math.min(defaultMaxBytes,
+        VerifiableOprfLimits.maxRequestBodyBytes(VoprfServerManager.DEFAULT_MAX_BATCH_SIZE));
+    // Keyed without a leading slash and matched after stripping one, so it does not matter
+    // whether the container reports "oprf/verifiable" or "/oprf/verifiable". Getting that wrong
+    // would not fail — the bound would just silently stop applying, which is the failure mode
+    // worth designing out rather than asserting against.
+    Map<String, Long> perPath = Map.of(
+        "oprf/verifiable", verifiableMaxBytes,
+        "oprf/partially-oblivious", verifiableMaxBytes);
     ContainerRequestFilter filter = (ContainerRequestContext ctx) -> {
+      long maxBytes = perPath.getOrDefault(
+          normalizePath(ctx.getUriInfo().getPath()), defaultMaxBytes);
       long length = ctx.getLength();
       if (length > maxBytes) {
         ctx.abortWith(Response.status(Response.Status.REQUEST_ENTITY_TOO_LARGE)
@@ -497,7 +584,9 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     OpaqueCipherSuite.AkeKeyPair keyPair = suite.deriveAkeKeyPair(keySeed);
     BigInteger sk = keyPair.privateKey();
     byte[] pk = keyPair.publicKeyBytes();
-    byte[] skFixed = ByteUtils.scalarToFixedBytes(sk, opaqueConfig.Nsk());
+    // Canonical per-suite scalar encoding, matching what Server's constructor decodes:
+    // big-endian on the NIST curves, little-endian on ristretto255. See Server's javadoc.
+    byte[] skFixed = opaqueConfig.cipherSuite().oprfSuite().groupSpec().serializeScalar(sk);
     return new Server(skFixed, pk, oprfSeed, opaqueConfig);
   }
 
@@ -574,7 +663,9 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     BigInteger sk = keyPair.privateKey();
     byte[] pk = keyPair.publicKeyBytes();
 
-    byte[] skFixed = ByteUtils.scalarToFixedBytes(sk, opaqueConfig.Nsk());
+    // Canonical per-suite scalar encoding, matching what Server's constructor decodes:
+    // big-endian on the NIST curves, little-endian on ristretto255. See Server's javadoc.
+    byte[] skFixed = opaqueConfig.cipherSuite().oprfSuite().groupSpec().serializeScalar(sk);
 
     return new Server(skFixed, pk, oprfSeed, opaqueConfig);
   }

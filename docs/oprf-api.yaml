@@ -2,8 +2,17 @@ openapi: "3.1.1"
 info:
   title: Hofmann OPRF API
   description: |
-    Oblivious Pseudorandom Function (OPRF) service implementing RFC 9497 mode 0
-    (base mode) over NIST P-256 with SHA-256.
+    Oblivious Pseudorandom Function (OPRF) service implementing RFC 9497 over NIST
+    P-256 with SHA-256: base mode (0x00), VOPRF (0x01) and POPRF (0x02).
+
+    The verifiable endpoints are present only when the deployment has configured a key
+    for that mode; otherwise they return `404`. There is deliberately no ephemeral
+    fallback — the value of a verifiable mode is that clients pin the server's public
+    key, so a key regenerated on restart would silently invalidate every pinned key.
+
+    Each mode uses a **separate** key. RFC 9497 puts the mode byte in every
+    domain-separation tag, so one secret serving two modes computes two different
+    functions under two different tag sets.
 
     In OPRF mode 0, the server evaluates a PRF on a client-supplied input without
     learning the input. The client blinds its input before sending it, and the
@@ -34,8 +43,20 @@ servers:
 tags:
   - name: OPRF
     description: |
-      Oblivious Pseudorandom Function evaluation (RFC 9497 §3.3, mode 0).
+      Oblivious Pseudorandom Function evaluation (RFC 9497 §3.3.1, mode 0x00).
       The server applies its keyed PRF to the client's blinded EC point.
+  - name: VOPRF
+    description: |
+      Verifiable OPRF (RFC 9497 §3.3.2, mode 0x01). Same evaluation, plus a DLEQ proof
+      that the server used the key it publicly committed to. A client that does not
+      check the proof has a base-mode OPRF with extra bytes.
+  - name: POPRF
+    description: |
+      Partially-oblivious OPRF (RFC 9497 §3.3.3, mode 0x02). The server evaluates under
+      a key tweaked by a public input agreed by both parties, so the same private input
+      under a different public input yields an unrelated output. The proof is graded
+      against the tweaked key the client derives, which is what binds the response to
+      the public input the client actually asked for.
 
 paths:
   /oprf/config:
@@ -123,8 +144,220 @@ paths:
                   value:
                     message: "Invalid EC point data"
 
+  /oprf/verifiable:
+    post:
+      tags:
+        - VOPRF
+      operationId: evaluateVerifiable
+      summary: Evaluate a batch of blinded elements with a DLEQ proof (mode 0x01)
+      description: |
+        Evaluates every element in the batch under the VOPRF key and returns one DLEQ
+        proof covering the whole batch. A batch rather than a single element because
+        one proof covers all of them: the server proves once that every evaluation used
+        the same committed key, and sending elements one at a time would cost a proof
+        each and prove strictly less.
+
+        **The client must verify the proof.** It is graded against the server public key
+        the client obtained out of band, not against anything in the response — a response
+        that verifies against a key taken from the same response proves nothing.
+
+        **Bounds.** The batch is capped at the deployment's configured maximum (64 by
+        default, 1024 absolute). The request body is separately bounded to a size derived
+        from that cap, enforced before the body is parsed, so an oversized batch is
+        refused rather than materialised and then rejected.
+
+        **Error conditions:**
+        - `400 Bad Request` — malformed batch, an element that is not a valid compressed
+          point, or a batch over the configured cap. The response does not distinguish
+          which, and does not name the offending element.
+        - `404 Not Found` — this deployment has no VOPRF key configured.
+        - `413 Payload Too Large` — the body exceeds the cap-derived size bound.
+        - `429 Too Many Requests` — rate limit exceeded for the client address.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoprfRequest"
+            examples:
+              typical:
+                summary: Two-element batch
+                value:
+                  blindedElements:
+                    - "02b94d27b9934d3e08a52e52d7da7dabfac484efe04a50200000000000000000000"
+                    - "03a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+                  requestId: "req-abc123"
+      responses:
+        "200":
+          description: Evaluation succeeded; the proof covers the whole batch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoprfResponse"
+        "400":
+          description: Malformed batch, invalid element, or batch over the configured cap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: VOPRF is not enabled on this server
+        "413":
+          description: Request body exceeds the cap-derived size bound
+        "429":
+          description: Rate limit exceeded
+
+  /oprf/partially-oblivious:
+    post:
+      tags:
+        - POPRF
+      operationId: evaluatePartiallyOblivious
+      summary: Evaluate a batch under a key tweaked by a public input (mode 0x02)
+      description: |
+        As `/oprf/verifiable`, but the evaluation uses a key tweaked by `info`, the public
+        input. `info` travels in the clear and is covered by the proof — that is what
+        distinguishes POPRF from concatenating it onto the private input.
+
+        `info` is **required**, and an empty string is a valid value meaning "no public
+        input". It is not optional: an absent public input and an empty one are different
+        public inputs producing different outputs, so a missing field is rejected rather
+        than defaulted.
+
+        **Error conditions:** as `/oprf/verifiable`, plus a `400` when `info` is absent or
+        over its length bound.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PoprfRequest"
+            examples:
+              typical:
+                summary: Single element with a public input
+                value:
+                  blindedElements:
+                    - "02b94d27b9934d3e08a52e52d7da7dabfac484efe04a50200000000000000000000"
+                  info: "74656e616e742d61"
+                  requestId: "req-abc123"
+              noPublicInput:
+                summary: Explicitly empty public input
+                value:
+                  blindedElements:
+                    - "02b94d27b9934d3e08a52e52d7da7dabfac484efe04a50200000000000000000000"
+                  info: ""
+                  requestId: "req-abc123"
+      responses:
+        "200":
+          description: Evaluation succeeded; the proof is graded against the tweaked key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoprfResponse"
+        "400":
+          description: Malformed batch, invalid element, missing `info`, or batch over the cap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: POPRF is not enabled on this server
+        "413":
+          description: Request body exceeds the cap-derived size bound
+        "429":
+          description: Rate limit exceeded
+
 components:
   schemas:
+    VoprfRequest:
+      type: object
+      required:
+        - blindedElements
+        - requestId
+      properties:
+        blindedElements:
+          type: array
+          minItems: 1
+          maxItems: 1024
+          description: |
+            Hex-encoded compressed SEC1 points, in order. The response preserves this
+            order and the proof covers the batch as a whole, so reordering invalidates it.
+            Capped at the deployment's configured batch maximum (64 by default); 1024 is
+            the absolute ceiling no configuration can raise.
+          items:
+            type: string
+            maxLength: 512
+        requestId:
+          type: string
+          maxLength: 512
+          description: Client-chosen value correlating the request with its response.
+
+    VoprfResponse:
+      type: object
+      required:
+        - evaluatedElements
+        - proof
+        - processIdentifier
+      properties:
+        evaluatedElements:
+          type: array
+          description: Hex-encoded evaluated points, aligned with the request order.
+          items:
+            type: string
+        proof:
+          type: string
+          description: |
+            Hex-encoded DLEQ proof (RFC 9497 §2.2) over the whole batch, exactly `2 * Ns`
+            bytes. Verify it against the server public key obtained out of band.
+        processIdentifier:
+          type: string
+          description: |
+            Identifies the server key the proof is graded against, so a client pinning a
+            public key can tell it is talking to the key it expects.
+
+    PoprfRequest:
+      type: object
+      required:
+        - blindedElements
+        - info
+        - requestId
+      properties:
+        blindedElements:
+          type: array
+          minItems: 1
+          maxItems: 1024
+          items:
+            type: string
+            maxLength: 512
+        info:
+          type: string
+          maxLength: 4096
+          description: |
+            Hex-encoded public input, agreed by both parties and covered by the proof.
+            Required; use an empty string for no public input. Absent and empty are
+            different public inputs, so the field is not defaulted.
+        requestId:
+          type: string
+          maxLength: 512
+
+    PoprfResponse:
+      type: object
+      required:
+        - evaluatedElements
+        - proof
+        - processIdentifier
+      properties:
+        evaluatedElements:
+          type: array
+          items:
+            type: string
+        proof:
+          type: string
+          description: |
+            Hex-encoded DLEQ proof graded against the **tweaked** key the client derives
+            from the public input it asked for, not against the server's raw public key.
+        processIdentifier:
+          type: string
+
     OprfRequest:
       type: object
       required:

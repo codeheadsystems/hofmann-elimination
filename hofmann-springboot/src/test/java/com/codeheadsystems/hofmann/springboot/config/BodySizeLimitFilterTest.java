@@ -2,6 +2,9 @@ package com.codeheadsystems.hofmann.springboot.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -16,6 +19,7 @@ import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -141,5 +145,83 @@ class BodySizeLimitFilterTest {
     public void setReadListener(ReadListener readListener) {
       throw new UnsupportedOperationException();
     }
+  }
+
+  // ─── per-path limits ────────────────────────────────────────────────────────
+
+  private HttpServletRequest requestAt(String uri, String contextPath, long declaredLength) {
+    HttpServletRequest request = mock(HttpServletRequest.class);
+    when(request.getContentLengthLong()).thenReturn(declaredLength);
+    when(request.getRequestURI()).thenReturn(uri);
+    when(request.getContextPath()).thenReturn(contextPath);
+    return request;
+  }
+
+  @Test
+  void perPathLimit_appliesToTheMatchingPath() throws Exception {
+    BodySizeLimitFilter filter = new BodySizeLimitFilter(1000, Map.of("/oprf/verifiable", 100L));
+    HttpServletResponse response = mock(HttpServletResponse.class);
+    FilterChain chain = mock(FilterChain.class);
+
+    // Within the generic limit but over the per-path one.
+    filter.doFilter(requestAt("/oprf/verifiable", "", 500), response, chain);
+
+    verify(response).sendError(eq(HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE), any());
+    verify(chain, never()).doFilter(any(), any());
+  }
+
+  @Test
+  void perPathLimit_leavesOtherPathsOnTheGenericLimit() throws Exception {
+    BodySizeLimitFilter filter = new BodySizeLimitFilter(1000, Map.of("/oprf/verifiable", 100L));
+    HttpServletResponse response = mock(HttpServletResponse.class);
+    FilterChain chain = mock(FilterChain.class);
+
+    filter.doFilter(requestAt("/opaque/auth/start", "", 500), response, chain);
+
+    verify(response, never()).sendError(anyInt(), any());
+    verify(chain).doFilter(any(), any());
+  }
+
+  /**
+   * A size bound that stops applying because someone set an unrelated config property is the
+   * worst kind: nothing fails, the protection is simply gone. {@code getRequestURI()} is
+   * contextPath + servletPath + pathInfo, so an app under {@code server.servlet.context-path}
+   * presents "/api/oprf/verifiable" against a key of "/oprf/verifiable".
+   */
+  @Test
+  void perPathLimit_stillAppliesUnderAServletContextPath() throws Exception {
+    BodySizeLimitFilter filter = new BodySizeLimitFilter(1000, Map.of("/oprf/verifiable", 100L));
+    HttpServletResponse response = mock(HttpServletResponse.class);
+    FilterChain chain = mock(FilterChain.class);
+
+    filter.doFilter(requestAt("/api/oprf/verifiable", "/api", 500), response, chain);
+
+    verify(response).sendError(eq(HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE), any());
+    verify(chain, never()).doFilter(any(), any());
+  }
+
+  @Test
+  void perPathLimit_neverLoosensTheGenericLimit() throws Exception {
+    // min(), not the override outright: a deployment that lowers the generic limit means it.
+    BodySizeLimitFilter filter = new BodySizeLimitFilter(50, Map.of("/oprf/verifiable", 100L));
+    HttpServletResponse response = mock(HttpServletResponse.class);
+    FilterChain chain = mock(FilterChain.class);
+
+    filter.doFilter(requestAt("/oprf/verifiable", "", 80), response, chain);
+
+    verify(response).sendError(eq(HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE), any());
+  }
+
+  @Test
+  void nullRequestUri_fallsBackRatherThanThrowing() throws Exception {
+    // Map.copyOf is null-hostile, so get(null) would throw out of a filter in front of every
+    // request. The generic limit is the safe answer when the path is unknown.
+    BodySizeLimitFilter filter = new BodySizeLimitFilter(1000, Map.of("/oprf/verifiable", 100L));
+    HttpServletResponse response = mock(HttpServletResponse.class);
+    FilterChain chain = mock(FilterChain.class);
+
+    filter.doFilter(requestAt(null, null, 500), response, chain);
+
+    verify(chain).doFilter(any(), any());
   }
 }
