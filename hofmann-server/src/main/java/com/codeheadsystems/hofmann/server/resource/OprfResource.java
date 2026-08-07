@@ -192,8 +192,14 @@ public class OprfResource {
       return new VoprfResponse(voprfServerManager.process(request.blindedRequest()));
     } catch (IllegalArgumentException e) {
       // Covers a malformed batch, an element that is not a valid group encoding, and a batch over
-      // the configured cap. All are the caller's fault and none should distinguish itself: the
-      // element-level failures in particular must not tell an attacker which element was bad.
+      // the configured cap. All are the caller's fault, and the *response* does not distinguish
+      // them — one status, one message.
+      //
+      // Timing does, and deliberately not claimed otherwise: the over-cap check is O(1) and runs
+      // first, so an over-cap batch fails far faster than any element error, and a bad element at
+      // index i costs i prior decodes and validations, so the clock reveals which element was
+      // rejected. Nothing secret leaks either way — the batch is attacker-authored, so they
+      // already know what they sent.
       log.debug("verifiable evaluate bad request: {}", e.getMessage());
       throw new WebApplicationException("Invalid request", Response.Status.BAD_REQUEST);
     } catch (SecurityException e) {

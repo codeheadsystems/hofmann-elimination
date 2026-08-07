@@ -66,7 +66,7 @@ class RecoveryLockoutTest {
   }
 
   /**
-   * A challenger that delivers and binds the challenge id, i.e. one that has opted in.
+   * A challenger that delivers and binds the challenge id.
    *
    * <p>Remembers every id it issued rather than only the newest. A real challenger with several
    * outstanding challenges for one account behaves this way, and keeping only the last one would
@@ -100,10 +100,6 @@ class RecoveryLockoutTest {
           && issued.contains(challengeId);
     }
 
-    @Override
-    public boolean bindsChallengeId() {
-      return true;
-    }
   }
 
   private HofmannOpaqueServerManager build(RecoveryChallenger challenger, RateLimiter limiter) {
@@ -156,14 +152,15 @@ class RecoveryLockoutTest {
     CountingLimiter limiter = new CountingLimiter(3);
     manager = build(challenger, limiter);
     manager.recoveryStart(new com.codeheadsystems.hofmann.model.opaque.RecoveryStartRequest(VICTIM));
+    String issuedId = challenger.lastChallengeId;
 
     try {
-      manager.recoveryVerify(new RecoveryVerifyRequest(VICTIM, "wrong", "some-challenge"));
+      manager.recoveryVerify(new RecoveryVerifyRequest(VICTIM, "wrong", issuedId));
     } catch (SecurityException expected) {
       // verification fails; the key is what is under test
     }
 
-    assertThat(limiter.keys).contains("challenge:some-challenge");
+    assertThat(limiter.keys).contains("challenge:" + issuedId);
     assertThat(limiter.keys.stream().filter(k -> k.startsWith("verify:")).toList()).isEmpty();
   }
 
@@ -192,8 +189,9 @@ class RecoveryLockoutTest {
 
   @Test
   void withoutAChallengeId_theOldIdentifierKeyingApplies() {
-    // A challenger that has not opted in keeps the previous behaviour, residual included. This is
-    // asserted rather than assumed so the fallback cannot silently become something else.
+    // A challenger that never delivers the id keeps the previous behaviour, residual included:
+    // the client cannot present an id, so verification keys on the identifier. Asserted rather
+    // than assumed so the fallback cannot silently become something else.
     RecoveryChallenger legacy = new RecoveryChallenger() {
       @Override
       public void sendChallenge(byte[] credentialIdentifier) {
@@ -221,23 +219,27 @@ class RecoveryLockoutTest {
   }
 
   @Test
-  void aBindingChallengerPresentedNoId_fallsBackRatherThanGivingAFreeBucket() {
-    // An absent id must not count as its own key. If it did, an attacker could omit it on every
-    // request and get an unlimited guessing budget — worse than the lockout being fixed.
+  void anUnissuedChallengeId_isRefusedAsALimiterKey() {
+    // The whole point of recording issued ids. A fabricated id must not become its own bucket:
+    // if it did, an attacker could vary it per request and get an unlimited guessing budget —
+    // worse than the lockout being fixed. Unknown ids fall back to identifier keying, which costs
+    // a legitimate user nothing because they always present an id the server issued.
     BindingChallenger challenger = new BindingChallenger();
     CountingLimiter limiter = new CountingLimiter(2);
     manager = build(challenger, limiter);
 
     for (int i = 0; i < 3; i++) {
       try {
-        manager.recoveryVerify(new RecoveryVerifyRequest(VICTIM, "wrong", null));
+        manager.recoveryVerify(new RecoveryVerifyRequest(VICTIM, "wrong", "fabricated-" + i));
       } catch (RateLimitExceededException | SecurityException expected) {
         // expected
       }
     }
 
-    assertThat(limiter.keys).allMatch(k -> k.startsWith("verify:") || k.startsWith("start:"));
-    assertThatThrownBy(() -> manager.recoveryVerify(new RecoveryVerifyRequest(VICTIM, "wrong", null)))
+    // Every fabricated id landed on the identifier bucket, not one bucket each.
+    assertThat(limiter.keys).noneMatch(k -> k.startsWith("challenge:fabricated"));
+    assertThatThrownBy(() -> manager.recoveryVerify(
+        new RecoveryVerifyRequest(VICTIM, "wrong", "fabricated-99")))
         .isInstanceOf(RateLimitExceededException.class);
   }
 

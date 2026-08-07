@@ -189,6 +189,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `OprfResource.evaluate` take an additional `HttpServletRequest` parameter, needed to key
   rate limits by origin. This affects callers invoking the resource classes directly; it is
   transparent to HTTP clients.
+- **OPAQUE server private keys now use the cipher suite's canonical scalar encoding.** Unchanged
+  on P-256/P-384/P-521. On **ristretto255** the encoding is now little-endian per RFC 9496, where
+  it was previously big-endian — so a raw private key produced by the old code is byte-reversed
+  relative to what `Server`'s constructor now expects. Java previously disagreed with both the Rust
+  and TypeScript ports on this; it now matches them.
+
+  Deployments configure *seeds* (`serverKeySeedHex`), not raw private keys, so every framework
+  path is unaffected. The exposed case is a consumer that persisted raw `sk` bytes and calls
+  `new Server(...)` directly — for instance through the documented KMS-backed
+  `opaqueServerKeyDetailSupplier` override. **That failure is always loud and always at startup**:
+  the constructor checks the supplied public key against the one the private key derives, so a
+  stale-encoding key fails to boot rather than degrading. Measured on 200 fresh ristretto keypairs
+  in the old encoding: 186 rejected as non-canonical, 14 rejected on the public-key mismatch, 0
+  silently accepted. `deserializeScalar` also refuses a scalar at or above the group order, where
+  the old path silently reduced.
+- **`RecoveryChallenger` gained three default methods** and `RecoveryVerifyRequest` gained an
+  optional `challengeId` component. Existing implementations compile and behave exactly as before.
+  Delivering the challenge id is what closes the targeted recovery lockout; see `RECOVERY.md`.
+- **`OprfResource` and `OprfController` constructors** take the VOPRF and POPRF managers. The
+  previous signatures remain as delegating overloads that pass null, which is the supported way to
+  run base mode only.
 - **Spring Boot components are now registered by the autoconfiguration** via `@Import` rather
   than requiring the consumer's component scan to reach
   `com.codeheadsystems.hofmann.springboot`. Applications already scanning that package are

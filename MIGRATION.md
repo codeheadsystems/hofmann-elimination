@@ -14,6 +14,25 @@ seamless.
 
 ---
 
+## Upgrading an existing Hofmann deployment
+
+> **ristretto255 raw private keys changed encoding.** If you configure the OPAQUE server with a
+> **seed** — `serverKeySeedHex`, which is what both framework adapters and every documented setup
+> use — there is nothing to do; skip this.
+>
+> It matters only if you persisted the server's raw private key *bytes* and hand them to
+> `new Server(sk, pk, seed, config)` yourself, typically through a KMS-backed
+> `opaqueServerKeyDetailSupplier`. On ristretto255 those bytes are now read little-endian per
+> RFC 9496, where they were previously read big-endian, so a stored key needs its bytes reversed
+> once. P-256, P-384 and P-521 are unchanged.
+>
+> **You cannot get this wrong quietly.** `Server`'s constructor checks the supplied public key
+> against the one the private key derives, so a stale-encoding key fails at startup rather than
+> authenticating incorrectly. If your server boots, your key is right.
+>
+> Java previously disagreed with the Rust and TypeScript ports here; all three now agree, so a raw
+> key can be moved between implementations.
+
 ## Before you start
 
 ### 1. Deploy the OPAQUE server alongside your existing auth

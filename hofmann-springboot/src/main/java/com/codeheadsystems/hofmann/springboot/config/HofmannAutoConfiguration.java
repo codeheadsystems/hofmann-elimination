@@ -21,7 +21,6 @@ import com.codeheadsystems.hofmann.server.store.InMemorySessionStore;
 import com.codeheadsystems.hofmann.server.store.PendingSessionStore;
 import com.codeheadsystems.hofmann.server.store.RecoveryTokenStore;
 import com.codeheadsystems.hofmann.server.store.SessionStore;
-import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.common.RandomProvider;
 import com.codeheadsystems.rfc.opaque.Server;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
@@ -47,7 +46,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import com.codeheadsystems.hofmann.springboot.controller.OpaqueController;
 import com.codeheadsystems.hofmann.springboot.controller.OprfController;
@@ -610,7 +609,7 @@ public class HofmannAutoConfiguration {
    */
   @Bean
   @ConditionalOnMissingBean
-  @ConditionalOnProperty(prefix = "hofmann", name = "voprf-master-key-hex")
+  @ConditionalOnExpression("!'${hofmann.voprf-master-key-hex:}'.isEmpty()")
   public VoprfServerManager voprfServerManager(HofmannProperties props, SecureRandom secureRandom) {
     OprfCipherSuite suite = VerifiableKeyConfig.suiteFor(
         props.getOprfCipherSuite(), OprfMode.VOPRF, secureRandom);
@@ -630,7 +629,7 @@ public class HofmannAutoConfiguration {
    */
   @Bean
   @ConditionalOnMissingBean
-  @ConditionalOnProperty(prefix = "hofmann", name = "poprf-master-key-hex")
+  @ConditionalOnExpression("!'${hofmann.poprf-master-key-hex:}'.isEmpty()")
   public PoprfServerManager poprfServerManager(HofmannProperties props, SecureRandom secureRandom) {
     OprfCipherSuite suite = VerifiableKeyConfig.suiteFor(
         props.getOprfCipherSuite(), OprfMode.POPRF, secureRandom);

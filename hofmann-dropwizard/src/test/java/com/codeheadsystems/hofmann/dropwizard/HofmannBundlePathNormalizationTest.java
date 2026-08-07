@@ -24,6 +24,31 @@ class HofmannBundlePathNormalizationTest {
     assertThat(HofmannBundle.normalizePath("oprf/verifiable")).isEqualTo("oprf/verifiable");
   }
 
+  /**
+   * Jersey's path pattern for a resource method is {@code /verifiable(/)?}, so
+   * {@code POST /oprf/verifiable/} routes to the same method while {@code getPath()} reports the
+   * trailing slash. Matching the raw string missed, dropping the request back to the generic
+   * 64 KiB limit and restoring the amplification the cap-derived bound exists to close — for one
+   * extra character, unauthenticated.
+   */
+  @Test
+  void stripsATrailingSlash() {
+    assertThat(HofmannBundle.normalizePath("oprf/verifiable/")).isEqualTo("oprf/verifiable");
+    assertThat(HofmannBundle.normalizePath("/oprf/verifiable/")).isEqualTo("oprf/verifiable");
+  }
+
+  @Test
+  void stripsRepeatedTrailingSlashes() {
+    // `//` routes as well, so one strip is not enough.
+    assertThat(HofmannBundle.normalizePath("/oprf/verifiable//")).isEqualTo("oprf/verifiable");
+  }
+
+  @Test
+  void aPathOfOnlySlashesDoesNotUnderflow() {
+    assertThat(HofmannBundle.normalizePath("/")).isEmpty();
+    assertThat(HofmannBundle.normalizePath("///")).isEmpty();
+  }
+
   @Test
   void nullBecomesEmptyRatherThanThrowing() {
     // Map.of is null-hostile, so a null path reaching getOrDefault would throw out of a filter

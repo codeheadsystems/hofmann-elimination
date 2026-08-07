@@ -315,8 +315,10 @@ with stricter defaults (3 tokens, 3 per 60 seconds refill). This prevents:
 
 ### Targeted lockout, and the challenge id that closes it
 
-**Implement the challenge-id methods if you can.** This is the one place where the default
-`RecoveryChallenger` shape carries a real residual.
+**Deliver the challenge id if you can.** This is the one place where the default
+`RecoveryChallenger` shape carries a real residual. Note this is **off unless you deliver the
+id** — a deployment that does nothing keeps the identifier-keyed behaviour and the lockout below
+in full.
 
 Both recovery endpoints are unauthenticated, and the only thing the caller supplies is the
 credential identifier. Rate-limiting on that identifier is right for bounding guessing
@@ -328,20 +330,21 @@ It cannot be fixed by rate-limiting differently. Before a challenge exists there
 to key on that an attacker cannot also supply. What breaks it is a value the server
 generates and delivers *out of band*.
 
-`recoveryStart` generates a random challenge id and passes it to
+`recoveryStart` generates a random challenge id, **records it**, and passes it to
 `sendChallenge(credentialIdentifier, challengeId)`. Deliver it to the user alongside the
 challenge — embedded in the recovery link is the usual shape. The client presents it at
-`recoveryVerify`, and the server keys the verification limiter on it instead of on the
-identifier. An attacker naming a victim now spends their own budget; spending the victim's
-costs them a 122-bit guess.
+`recoveryVerify`; the server checks it is an id it actually issued for that credential, and only
+then keys the verification limiter on it. An attacker naming a victim spends their own budget;
+spending the victim's costs them a 122-bit guess, and a fabricated id is refused as a limiter key
+rather than becoming a fresh bucket.
+
+There is **no capability flag to set.** An earlier design had one and it was a trap: declaring it
+told the server to key the limiter on the id, but the server had no way to tell an issued id from
+a fabricated one — only the challenger could, and the limiter runs first. Recording the ids moves
+that check to where it can actually be made.
 
 ```java
 public class EmailChallenger implements RecoveryChallenger {
-
-  @Override
-  public boolean bindsChallengeId() {
-    return true;                       // opt in — see the caveats below
-  }
 
   @Override
   public void sendChallenge(byte[] credentialIdentifier, String challengeId) {
@@ -363,30 +366,38 @@ public class EmailChallenger implements RecoveryChallenger {
                                  challengeResponse.getBytes(UTF_8));
   }
 
-  // The two-argument methods remain on the interface; with bindsChallengeId() returning
-  // true they are never called by the manager.
+  // The two-argument methods remain the interface's required surface. The manager always calls
+  // the three-argument ones, so these are unreachable once you override both.
   @Override public void sendChallenge(byte[] id) { throw new UnsupportedOperationException(); }
   @Override public boolean verifyResponse(byte[] id, String r) { throw new UnsupportedOperationException(); }
 }
 ```
 
-Two ways to get this wrong, both worse than not opting in:
+**Still bind the response to the challenge.** `verifyResponse` should check that the response
+belongs to the challenge named by `challengeId`, not merely that it is a valid response for the
+identifier — otherwise a caller could pair a stolen or replayed code with an id of their choosing.
+The server has already checked that the id is one it issued for this credential, so what is left
+to you is tying the response to that specific challenge. Failing to do so is an ordinary bug with
+an ordinary symptom, not a silent weakening of the limiter.
 
-- **Returning `true` without delivering the id** makes recovery unusable — the client
-  cannot present an id it never received.
-- **Returning `true` without binding the id to the challenge** is worse than useless. The
-  limiter would key on a value the attacker picks freely, so every guess gets its own
-  budget and the guessing bound disappears. `verifyResponse` must check the response
-  against *that* challenge, not merely that it is a valid response for the identifier.
+**Residuals, all real:**
 
-**What remains, and is inherent.** `recoveryStart` is still identifier-keyed, because at
-that point no challenge exists. An attacker can still exhaust a victim's *start* budget and
-stop them requesting a **new** challenge for a while. The two endpoints draw from separate
-buckets, so this no longer prevents completing a challenge already in flight. Letting an
-unauthenticated caller trigger an email at all is what costs this.
-
-**If you do not opt in**, `bindsChallengeId()` returns `false`, the manager keys on the
-credential identifier as before, and the targeted lockout is live for your deployment.
+- **`recoveryStart` is still identifier-keyed**, because at that point no challenge exists. An
+  attacker can exhaust a victim's *start* budget and stop them requesting a **new** challenge for
+  a while. The two endpoints draw from separate buckets, so this no longer blocks completing a
+  challenge already in flight. Letting an unauthenticated caller trigger an email at all is what
+  costs this. Note also that splitting the buckets doubles the total unauthenticated request
+  budget per identifier; the *guessing* budget that matters is unchanged.
+- **A leaked challenge id re-opens the lockout for that recovery.** The id travels in a link, so
+  it can reach a `Referer` header, a proxy log, or browser history. Whoever has it can drain
+  `challenge:<id>` and lock the victim out of the recovery *already in progress* — the exact harm
+  this removes in the non-leaking case. Treat the recovery link like the code it carries.
+- **If you never deliver the id**, the client cannot present one, the manager keys on the
+  credential identifier as before, and the targeted lockout is live for your deployment.
+- **In a cluster**, back `RecoveryChallengeStore` with the same distributed store as the recovery
+  tokens. If `recoveryStart` and `recoveryVerify` land on different nodes with an unshared store,
+  the id is unknown on the verifying node and keying falls back to the identifier — the lockout
+  returns, quietly.
 
 ### Recovery Token Properties
 

@@ -2,6 +2,7 @@ package com.codeheadsystems.rfc.oprf.model;
 
 import java.math.BigInteger;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Client-side state for one partially-oblivious exchange.
@@ -71,8 +72,22 @@ public record PoprfClientContext(String requestId,
     tweakedKey = tweakedKey.clone();
   }
 
+  /**
+   * Copies each element, rejecting nulls.
+   *
+   * <p>The explicit null rejection restores what {@code List.copyOf} was doing before this method
+   * replaced it: {@code Stream.toList()} permits nulls where {@code List.copyOf} throws, so a
+   * tolerant copy would have quietly turned a construction-time rejection into a stored null. That
+   * null then surfaces much later — as {@code Hex.toHexString(null)}, or as an NPE inside
+   * {@code DleqVerifier.verifyProof}, which catches {@code SecurityException} and
+   * {@code IllegalArgumentException} but not NPE, so it would escape the uniform-failure
+   * discipline that class documents. {@code blinds} still goes through {@code List.copyOf} and so
+   * still rejects nulls; one constructor with two null contracts is worse than either contract.
+   */
   private static List<byte[]> copyEach(final List<byte[]> values) {
-    return values.stream().map(v -> v == null ? null : v.clone()).toList();
+    return values.stream()
+        .map(v -> Objects.requireNonNull(v, "Context lists must not contain null elements").clone())
+        .toList();
   }
 
   /**

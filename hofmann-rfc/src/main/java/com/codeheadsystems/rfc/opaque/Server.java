@@ -96,8 +96,13 @@ public class Server {
           "Server public key does not match the private key");
     }
     this.serverPrivateKey = sk;
-    this.serverPublicKey = serverPublicKey;
-    this.oprfSeed = oprfSeed;
+    // Copied, not aliased. Mutating oprfSeed after construction changes the OPRF key for every
+    // credential identifier; mutating serverPublicKey after the match check above puts a key the
+    // private key does not correspond to into CleartextCredentials, the masked response and the
+    // preamble — past the one check that would have caught it. Same aliasing that was fixed in the
+    // VOPRF/POPRF client contexts, and more consequential here.
+    this.serverPublicKey = serverPublicKey.clone();
+    this.oprfSeed = oprfSeed.clone();
     this.config = config;
   }
 
@@ -179,12 +184,15 @@ public class Server {
   }
 
   /**
-   * Returns the server's public key.
+   * Returns a copy of the server's public key.
    *
-   * @return the byte [ ]
+   * <p>A copy so a caller cannot reach in and change the key this server presents. The value is
+   * public, so the copy is about integrity rather than secrecy.
+   *
+   * @return a copy of the compressed SEC1 server public key
    */
   public byte[] getServerPublicKey() {
-    return serverPublicKey;
+    return serverPublicKey.clone();
   }
 
   // ─── Registration ─────────────────────────────────────────────────────────

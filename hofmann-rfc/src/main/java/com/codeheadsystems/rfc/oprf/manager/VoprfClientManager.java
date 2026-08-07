@@ -163,10 +163,15 @@ public class VoprfClientManager {
               + "'; the server did not evaluate with the committed key");
     }
 
+    // Hoisted out of the loop. The accessors now deep-copy, so calling inputs() per element made
+    // this quadratic: at the 1024 batch cap with 4 KB inputs that is ~0.32 s of pure copying and
+    // gigabytes of transient allocation, against microseconds hoisted. It also produced n^2
+    // unzeroed heap copies of the client's plaintext, which is the part that matters beyond speed.
+    List<byte[]> inputs = context.inputs();
+    List<BigInteger> blinds = context.blinds();
     List<HashResult> results = new ArrayList<>(context.size());
     for (int i = 0; i < context.size(); i++) {
-      byte[] hash = suite.finalize(
-          context.inputs().get(i), context.blinds().get(i), evaluatedElements[i]);
+      byte[] hash = suite.finalize(inputs.get(i), blinds.get(i), evaluatedElements[i]);
       results.add(new HashResult(hash, response.processIdentifier()));
     }
     return results;

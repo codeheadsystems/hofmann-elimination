@@ -18,7 +18,9 @@ import com.codeheadsystems.hofmann.server.ratelimit.RateLimiter;
 import com.codeheadsystems.hofmann.server.recovery.RecoveryChallenger;
 import com.codeheadsystems.hofmann.server.store.CredentialStore;
 import com.codeheadsystems.hofmann.server.store.InMemoryPendingSessionStore;
+import com.codeheadsystems.hofmann.server.store.InMemoryRecoveryChallengeStore;
 import com.codeheadsystems.hofmann.server.store.InMemoryRecoveryTokenStore;
+import com.codeheadsystems.hofmann.server.store.RecoveryChallengeStore;
 import com.codeheadsystems.hofmann.server.store.PendingSessionStore;
 import com.codeheadsystems.hofmann.server.store.RecoveryTokenStore;
 import com.codeheadsystems.hofmann.server.store.VersionedCredential;
@@ -118,6 +120,7 @@ public class HofmannOpaqueServerManager {
   private final PendingSessionStore pendingSessionStore;
   private final RecoveryChallenger recoveryChallenger;
   private final RecoveryTokenStore recoveryTokenStore;
+  private final RecoveryChallengeStore recoveryChallengeStore;
   private final RateLimiter recoveryRateLimiter;
 
   /**
@@ -204,11 +207,18 @@ public class HofmannOpaqueServerManager {
     if (recoveryChallenger != null) {
       this.recoveryTokenStore = recoveryTokenStore != null
           ? recoveryTokenStore : new InMemoryRecoveryTokenStore();
+      // Always present when recovery is enabled. Recording the ids we issue is what lets the
+      // verification limiter key on a server-chosen value; without it the key would be whatever
+      // the caller sent, which is an unbounded dimension and a guessing budget that resets on
+      // demand. Not a constructor parameter yet — a distributed deployment needs one, and that is
+      // called out on the interface.
+      this.recoveryChallengeStore = new InMemoryRecoveryChallengeStore();
       this.recoveryRateLimiter = recoveryRateLimiter != null
           ? recoveryRateLimiter : new InMemoryRateLimiter(
           new RateLimitConfigSupplier.DefaultRateLimitConfigSupplier().recoveryRateLimitConfig());
     } else {
       this.recoveryTokenStore = null;
+      this.recoveryChallengeStore = null;
       this.recoveryRateLimiter = null;
     }
   }
@@ -251,6 +261,9 @@ public class HofmannOpaqueServerManager {
     registrationRateLimiter.shutdown();
     if (recoveryTokenStore != null) {
       recoveryTokenStore.shutdown();
+    }
+    if (recoveryChallengeStore != null) {
+      recoveryChallengeStore.shutdown();
     }
     if (recoveryRateLimiter != null) {
       recoveryRateLimiter.shutdown();
@@ -599,6 +612,10 @@ public class HofmannOpaqueServerManager {
     // Generated unconditionally, even for a challenger that ignores it, so the value never
     // depends on anything the caller sent and the two paths cost the same.
     String challengeId = UUID.randomUUID().toString();
+    // Recorded before it is sent. If the challenger throws mid-send the entry is harmless — it
+    // expires on its TTL and authorises nothing — whereas sending first and recording second
+    // could deliver an id the server does not recognise, silently costing the user the protection.
+    recoveryChallengeStore.store(challengeId, req.credentialIdentifierBase64());
     recoveryChallenger.sendChallenge(req.credentialIdentifier(), challengeId);
   }
 
@@ -693,12 +710,24 @@ public class HofmannOpaqueServerManager {
    * which is worse than the lockout this is fixing.
    */
   private String recoveryVerifyRateLimitKey(final RecoveryVerifyRequest req) {
-    if (recoveryChallenger.bindsChallengeId()) {
-      String challengeId = req.challengeId();
-      if (challengeId != null && !challengeId.isBlank()) {
+    String challengeId = req.challengeId();
+    if (challengeId != null && !challengeId.isBlank()) {
+      // Only an id this server actually issued may key the limiter. A fabricated one is not
+      // merely useless to the attacker — keying on it would give every guess a fresh bucket, and
+      // let a caller mint unbounded distinct keys. Checking it here is why the store exists.
+      String issuedFor = recoveryChallengeStore.peek(challengeId).orElse(null);
+      if (issuedFor != null && issuedFor.equals(req.credentialIdentifierBase64())) {
         return "challenge:" + challengeId;
       }
-      log.debug("recoveryVerify: challenger binds challenge ids but none was presented; "
+      // A known id presented against a different credential is charged to that id's own bucket:
+      // it belongs to whoever holds it, so let them spend their own budget rather than the
+      // named victim's. An unknown id falls through to identifier keying, which is the
+      // pre-existing behaviour and costs a legitimate user nothing — they always present an id
+      // this server issued, so they are on a different bucket entirely.
+      if (issuedFor != null) {
+        return "challenge:" + challengeId;
+      }
+      log.debug("recoveryVerify: presented challenge id is unknown or expired; "
           + "falling back to identifier keying for this request");
     }
     return "verify:" + req.credentialIdentifierBase64();

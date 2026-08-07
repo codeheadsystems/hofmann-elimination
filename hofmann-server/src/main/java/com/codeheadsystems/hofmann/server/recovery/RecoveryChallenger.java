@@ -8,12 +8,19 @@ package com.codeheadsystems.hofmann.server.recovery;
  * <p>
  * See {@code RECOVERY.md} for implementation examples and security guidance.
  *
- * <p><strong>Implement the challenge-id methods if you can.</strong> The three-argument
- * {@link #sendChallenge(byte[], String)} and {@link #verifyResponse(byte[], String, String)},
- * together with {@link #bindsChallengeId()} returning true, are what close the targeted
- * account-recovery lockout described below. The two-argument methods remain the interface's
- * required surface so existing implementations keep working, but a deployment using only those
- * carries a real residual.
+ * <p><strong>Deliver the challenge id if you can.</strong> {@link #sendChallenge(byte[], String)}
+ * receives a server-generated id; putting it somewhere the account owner will see it — a recovery
+ * link is the usual shape — is what closes the targeted account-recovery lockout described below.
+ * The two-argument methods remain the interface's required surface so existing implementations
+ * keep working, but a deployment that never delivers the id carries a real residual.
+ *
+ * <p>There is no capability flag to set, and deliberately so. An earlier design had one, and it
+ * was a trap: declaring it told the server to key a rate limiter on the id, but the server had no
+ * way to tell an issued id from a fabricated one — only this interface could, and the limiter runs
+ * first. Declaring it without genuinely binding the id would have handed every guess its own
+ * budget. The server now records the ids it issues and checks them itself, so delivering the id is
+ * all that is asked of you, and failing to deliver it costs the protection rather than weakening
+ * anything.
  *
  * <h2>The lockout, and why the challenge id closes it</h2>
  *
@@ -25,9 +32,11 @@ package com.codeheadsystems.hofmann.server.recovery;
  *
  * <p>It cannot be fixed by rate-limiting differently. Before a challenge exists there is nothing
  * to key on that an attacker cannot also supply — which is the whole difficulty. What breaks it is
- * a value the server generates and delivers <em>out of band</em>: the challenge id. It reaches the
- * account owner's mailbox and nowhere else, so keying the verification limiter on it means an
- * attacker spends their own budget, not the victim's. Guessing someone else's costs them 122 bits.
+ * a value the server generates, records, and delivers <em>out of band</em>: the challenge id. It
+ * reaches the account owner's mailbox and nowhere else, so keying the verification limiter on it
+ * means an attacker spends their own budget, not the victim's. Guessing someone else's costs them
+ * 122 bits. An id the server never issued is refused as a limiter key, so fabricating them buys
+ * nothing.
  *
  * <p>What remains, and is inherent: an attacker can still make {@code recoveryStart} send
  * challenge messages to a victim, and that is still identifier-keyed, so they can still exhaust a
@@ -61,25 +70,6 @@ public interface RecoveryChallenger {
   boolean verifyResponse(byte[] credentialIdentifier, String challengeResponse);
 
   /**
-   * Whether this challenger delivers the challenge id out of band and binds it to the challenge.
-   *
-   * <p>Return true only if {@link #sendChallenge(byte[], String)} actually puts the id somewhere
-   * the account owner will see it — in the recovery link, or alongside the code — and
-   * {@link #verifyResponse(byte[], String, String)} checks the response against <em>that</em>
-   * challenge. Returning true without delivering it makes recovery unusable, because the client
-   * cannot present an id it never received. Returning true without binding it is worse than
-   * useless: the limiter would key on a value the attacker can pick freely, giving each guess its
-   * own budget.
-   *
-   * <p>False, the default, keeps the identifier-keyed behaviour and the lockout residual.
-   *
-   * @return true if the challenge id is delivered out of band and bound to the challenge
-   */
-  default boolean bindsChallengeId() {
-    return false;
-  }
-
-  /**
    * Sends an out-of-band challenge carrying a server-generated challenge id.
    *
    * <p>The id is unguessable and single-purpose. Deliver it to the user along with the challenge —
@@ -100,10 +90,11 @@ public interface RecoveryChallenger {
   /**
    * Verifies a challenge response against a specific challenge.
    *
-   * <p>An implementation that returns true from {@link #bindsChallengeId()} must check that the
-   * response belongs to the challenge named by {@code challengeId}, and not merely that it is a
-   * valid response for the identifier. Without that binding a caller could pair a stolen or
-   * replayed code with an id of their choosing.
+   * <p>Check that the response belongs to the challenge named by {@code challengeId}, not merely
+   * that it is a valid response for the identifier. Without that binding a caller could pair a
+   * stolen or replayed code with an id of their choosing. The server verifies that the id is one
+   * it issued for this credential before it gets here, so what is left to you is tying the
+   * response to that specific challenge.
    *
    * <p>The default ignores the id and delegates.
    *

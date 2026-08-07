@@ -54,15 +54,15 @@ class VerifiableKeyConfigTest {
   }
 
   @Test
-  void detailFrom_emptyKey_namesThePropertyAndSaysHowToDisableTheMode() {
-    // Spring's @ConditionalOnProperty treats a set-but-empty property as present, so
-    // "voprf-master-key-hex:" with nothing after it reaches the parser rather than disabling
-    // the mode. Without this the operator sees "Zero length BigInteger".
+  void detailFrom_emptyKey_isAWiringBugAndSaysSo() {
+    // Both adapters treat empty as "mode disabled" and check isConfigured() first, so reaching
+    // this method with an empty key means a caller skipped that check rather than an operator
+    // misconfiguring. The message says which, instead of "Zero length BigInteger".
     assertThatThrownBy(() -> VerifiableKeyConfig.detailFrom(
         suite(), "", "test-voprf", "hofmann.voprf-master-key-hex"))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("hofmann.voprf-master-key-hex")
-        .hasMessageContaining("Remove the property");
+        .hasMessageContaining("disables the mode on both adapters");
   }
 
   @Test

@@ -56,10 +56,16 @@ public final class VerifiableKeyConfig {
    *
    * <p>Parsing is done here so a malformed key fails at startup with a message naming the property,
    * rather than as {@code NumberFormatException: Zero length BigInteger} from somewhere in bean
-   * construction. An explicitly empty value is the case that motivated it: Spring's
-   * {@code @ConditionalOnProperty} treats a set-but-empty property as present, so
-   * {@code voprf-master-key-hex:} with nothing after it reaches the parser rather than disabling
-   * the mode.
+   * construction.
+   *
+   * <p><strong>An empty value means the mode is disabled, on both adapters.</strong> That took
+   * arranging: Spring's {@code @ConditionalOnProperty} treats a set-but-empty property as present,
+   * so {@code voprf-master-key-hex:} with nothing after it used to reach this method and fail
+   * startup, while Dropwizard's identically-shaped config disabled the mode and answered 404. The
+   * same YAML meaning two different things across adapters is the kind of divergence a shared
+   * helper is supposed to remove, so the Spring condition now tests for a non-empty value.
+   * Reaching this method with an empty key is therefore a wiring bug rather than a configuration
+   * one, and it says so.
    *
    * <p>A key congruent to zero is rejected by {@code VerifiableProcessorDetail.derive}, which
    * normalises through {@code validateSecretKey} — every evaluation under such a key would return
@@ -78,8 +84,9 @@ public final class VerifiableKeyConfig {
                                                      final String propertyName) {
     if (!isConfigured(masterKeyHex)) {
       throw new IllegalStateException(
-          propertyName + " is set but empty. Remove the property to disable this mode, or set a "
-              + "hex key; an empty value is not a way to turn it off.");
+          propertyName + " is empty, but this method was reached anyway — the caller should have "
+              + "checked isConfigured() and disabled the mode. An empty or absent value disables "
+              + "the mode on both adapters.");
     }
     final BigInteger masterKey;
     try {

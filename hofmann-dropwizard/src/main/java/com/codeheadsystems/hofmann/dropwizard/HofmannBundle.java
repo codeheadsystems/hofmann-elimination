@@ -26,7 +26,6 @@ import com.codeheadsystems.hofmann.server.store.InMemorySessionStore;
 import com.codeheadsystems.hofmann.server.store.PendingSessionStore;
 import com.codeheadsystems.hofmann.server.store.RecoveryTokenStore;
 import com.codeheadsystems.hofmann.server.store.SessionStore;
-import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.common.RandomProvider;
 import com.codeheadsystems.rfc.opaque.Server;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
@@ -388,7 +387,18 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     if (path == null) {
       return "";
     }
-    return path.startsWith("/") ? path.substring(1) : path;
+    int start = path.startsWith("/") ? 1 : 0;
+    int end = path.length();
+    // Strip trailing slashes as well as a leading one. Jersey's path pattern for a resource
+    // method is `/verifiable(/)?`, so `POST /oprf/verifiable/` routes to the same method but
+    // getPath() reports "oprf/verifiable/". Matching the raw string missed, the request fell back
+    // to the generic 64 KiB limit instead of the cap-derived one, and the ~470-elements-against-a
+    // -cap-of-64 amplification this bound exists to close came back — for one extra character, on
+    // an unauthenticated endpoint. Loop rather than a single strip: `//` routes too.
+    while (end > start && path.charAt(end - 1) == '/') {
+      end--;
+    }
+    return path.substring(start, end);
   }
 
   /**

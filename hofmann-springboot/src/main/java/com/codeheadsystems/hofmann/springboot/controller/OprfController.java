@@ -133,8 +133,9 @@ public class OprfController {
       return new VoprfResponse(voprfServerManager.process(request.blindedRequest()));
     } catch (IllegalArgumentException | SecurityException e) {
       // One status and one message for a malformed batch, an element that is not a valid group
-      // encoding, and a batch over the configured cap. Which element was bad is not the caller's
-      // business, and the two exception types depend on the suite rather than on the fault.
+      // encoding, and a batch over the configured cap; the two exception types depend on the suite
+      // rather than on the fault. Timing still separates them — see the note on the Dropwizard
+      // resource — but the batch is attacker-authored, so that reveals nothing they did not send.
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid request");
     }
   }
