@@ -170,6 +170,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+- **The Spring Boot default security chain bean is renamed** from `securityFilterChain` to
+  `hofmannSecurityFilterChain`. Nothing needs to change unless you referenced it *by name* — a
+  `@Qualifier("securityFilterChain")`, an injection by that bean name, or an override that relied
+  on matching it. Referencing a library's chain bean by name was never something this project
+  invited, so the expected impact is nil, but it shipped under the old name in 3.0.0 and is
+  therefore a visible change rather than an internal one.
+
+  The reason is a startup failure it removes. `securityFilterChain` is the name Spring Boot's own
+  reference documentation uses, so a consumer whose *auto-configuration* defined a bean of that
+  name did not get the documented back-off — they got `BeanDefinitionOverrideException` and an
+  application that would not start. That collision happens at bean-definition registration, which
+  is earlier than any condition or post-processor can intervene, so a distinct name is the only
+  fix. The same argument was already made for `hofmannCorsConfigurationSource` and simply had not
+  been applied to the chain.
+
 - **`OpaqueClientConfig.fromServerConfig(cfg)` and `OpaqueHttpClient.create(url)` now throw**
   against a server offering the identity KSF or parameters below the floor. Warning and
   proceeding was considered and rejected: a warning that the attacker's own payload triggers does

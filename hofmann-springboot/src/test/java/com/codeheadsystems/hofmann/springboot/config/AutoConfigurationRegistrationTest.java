@@ -35,7 +35,8 @@ class AutoConfigurationRegistrationTest {
   };
 
   private final WebApplicationContextRunner runner = new WebApplicationContextRunner()
-      .withConfiguration(AutoConfigurations.of(HofmannAutoConfiguration.class))
+      .withConfiguration(AutoConfigurations.of(HofmannAutoConfiguration.class,
+          com.codeheadsystems.hofmann.springboot.security.HofmannSecurityConfig.class))
       .withPropertyValues(REQUIRED_PROPERTIES);
 
   @Test
@@ -48,22 +49,19 @@ class AutoConfigurationRegistrationTest {
     });
   }
 
-  /**
-   * The default chain is unscoped so the JWT filter authenticates the consumer's own endpoints.
-   * That is only safe while it is the sole chain — two chains are applied in order, first match
-   * wins per request, so an unconditional one would either swallow the host application's
-   * authorization policy or be swallowed by it, silently. It must therefore back off entirely
-   * when the application defines its own.
-   */
-  @Test
-  void defaultSecurityChainBacksOffWhenTheApplicationDefinesItsOwn() {
-    runner.withUserConfiguration(ApplicationOwnSecurity.class).run(context -> {
-      assertThat(context).hasSingleBean(SecurityFilterChain.class);
-      assertThat(context.getBean(SecurityFilterChain.class))
-          .as("the application's own chain must be the one that survives")
-          .isSameAs(context.getBean("applicationChain"));
-    });
-  }
+  // The back-off test that used to live here has moved to SecurityChainBackOffTest, which boots
+  // real @SpringBootTest contexts.
+  //
+  // It is not that the old test was redundant — it was actively misleading. ApplicationContextRunner
+  // .withUserConfiguration registers user beans directly on the context before refresh, so
+  // @ConditionalOnMissingBean sees them and backs off. A real application registers them through
+  // the configuration class post-processor instead, where the library's chain was evaluated first,
+  // found nothing, and registered itself anyway — leaving the application unable to start with
+  // UnreachableFilterChainException. This test reported success on that configuration for as long
+  // as it existed. A green test asserting a property the product does not have is worse than no
+  // test, because it answers the question nobody re-asks.
+  //
+  // What remains here is registration wiring, which is what a context runner is good for.
 
   /** The filter stays available so an application with its own chain can wire it in. */
   @Test

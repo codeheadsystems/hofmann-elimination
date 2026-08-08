@@ -1,13 +1,20 @@
 package com.codeheadsystems.hofmann.springboot.security;
 
 import com.codeheadsystems.hofmann.server.manager.JwtManager;
+import com.codeheadsystems.hofmann.springboot.config.HofmannAutoConfiguration;
 import jakarta.servlet.DispatcherType;
+import java.util.Arrays;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
+import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
+import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -26,6 +33,38 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 /**
  * Default Spring Security configuration for a Hofmann-based application.
+ *
+ * <p><strong>An {@code @AutoConfiguration} in its own right, listed in
+ * {@code AutoConfiguration.imports}, rather than a plain {@code @Configuration} imported from
+ * {@link HofmannAutoConfiguration}.</strong> That is what makes the back-off below work for a
+ * consumer whose component scan reaches this package, and it is not a stylistic choice.
+ *
+ * <p>As a plain {@code @Configuration} in a scannable package, this class could be picked up
+ * twice: once through the auto-configuration import, and again as an ordinary user configuration
+ * if the application's {@code @ComponentScan} covered
+ * {@code com.codeheadsystems.hofmann.springboot}. Scanned in, it loses the deferred phase that
+ * guarantees auto-configuration is read last, so {@code @ConditionalOnMissingBean} was evaluated
+ * before the application's own {@code @Bean} was registered, found nothing, registered this chain
+ * anyway, and the application died with {@code UnreachableFilterChainException}. An
+ * {@code @AutoConfiguration} class cannot be scanned in — Boot's
+ * {@code AutoConfigurationExcludeFilter} excludes it by construction.
+ *
+ * <p>Not hypothetical: {@code IntegrationTestApplication} in this repository scans
+ * {@code com.codeheadsystems.hofmann.springboot} explicitly, commented as picking up "controllers
+ * and security config". That is in-repo documented practice, so a consumer who copied it hit this.
+ *
+ * <p><strong>An earlier version of this note claimed the condition was evaluated too early for
+ * every consumer. That was wrong.</strong> A consumer who does not scan this package backed off
+ * correctly before the change; a reviewer demonstrated it by booting one. The same reviewer showed
+ * the {@code ApplicationContextRunner} test previously covering this was not "worse than absent"
+ * as I had written, but incomplete — it exercised the non-scanning path and told the truth about
+ * it, while saying nothing about the scanning one. Both paths now have real
+ * {@code @SpringBootTest} coverage: {@code SecurityChainBackOffTest} for a consumer that scans
+ * this package, {@code NonScanningConsumerBackOffTest} for one that does not.
+ *
+ * <p>A consumer whose own <em>auto-configuration</em> contributes the chain is covered too, but
+ * not by the condition — see {@link #hofmannSecurityChainWithdrawal()}. That case used to be
+ * decided by alphabetical class name and now is not.
  *
  * <p><strong>This chain is only registered when the application defines no
  * {@link SecurityFilterChain} of its own.</strong> It is unscoped by design — it applies to every
@@ -70,9 +109,28 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  * that do need authentication — credential deletion and password change — verify the bearer
  * token themselves and check that its subject matches the credential being acted on.
  */
-@Configuration
+@AutoConfiguration(
+    // `after` is load-bearing rather than decorative: @ConditionalOnBean below can only see beans
+    // an earlier auto-configuration has already contributed, and JwtManager comes from
+    // HofmannAutoConfiguration.
+    after = HofmannAutoConfiguration.class,
+    // Without this, winning against Boot's own default chain is decided by alphabetical class
+    // name — `com.codeheadsystems` happens to sort before `org.springframework`. Deliberate beats
+    // lucky.
+    before = ServletWebSecurityAutoConfiguration.class)
+// Excluding HofmannAutoConfiguration via spring.autoconfigure.exclude used to disable the library
+// cleanly, because this class was imported from it. Now that it stands alone, excluding the other
+// half would leave this chain reaching for a JwtManager that no longer exists — a startup failure
+// with NoSuchBeanDefinitionException where the consumer had asked for the library to be off.
+@ConditionalOnBean(JwtManager.class)
+// Matches what Boot does for its own chain. A non-servlet application has nothing for a filter
+// chain to filter, and registering one there is inert at best.
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @EnableWebSecurity
 public class HofmannSecurityConfig {
+
+  private static final org.slf4j.Logger LOG =
+      org.slf4j.LoggerFactory.getLogger(HofmannSecurityConfig.class);
 
   /**
    * Order for the default chain: last, matching Spring Boot's own default.
@@ -82,11 +140,85 @@ public class HofmannSecurityConfig {
    * application has none of its own, and Spring Security 6.2+ rejects two any-request chains
    * outright — but a catch-all registered early is the wrong shape to leave in place for whoever
    * changes the condition next.
+   *
+   * <p><strong>If this value ever stops being inert, its test has to change with it.</strong>
+   * {@code AutoConfigurationRegistrationTest.catchAllChainIsOrderedLast} asserts the value of this
+   * constant, not the order of the chains actually registered — so it cannot notice the
+   * {@code @Order} annotation being removed from the {@code @Bean} below, which is the failure its
+   * own javadoc claims to guard against. That is acceptable only while the chain cannot coexist
+   * with a consumer's. The moment it can, this constant becomes the thing standing between a
+   * catch-all and a narrower chain it would shadow, and the test must assert the registered order
+   * instead.
    */
   public static final int HOFMANN_CHAIN_ORDER = Ordered.LOWEST_PRECEDENCE - 5;
 
   /**
-   * Jwt authentication filter jwt authentication filter.
+   * Bean name of this library's chain.
+   *
+   * <p><strong>Deliberately not {@code securityFilterChain}</strong>, which is the name Spring
+   * Boot's own reference documentation uses and therefore the one a consumer reaches for. A
+   * consumer auto-configuration defining a bean of that name did not collide with this chain — it
+   * failed to start, with {@code BeanDefinitionOverrideException}, and the post-processor below
+   * cannot help because registration is where it dies.
+   *
+   * <p>Exactly the argument already made for {@link #hofmannCorsConfigurationSource()}, which is
+   * "deliberately NOT named {@code corsConfigurationSource}" for this reason. It simply had not
+   * been applied here.
+   *
+   * <p>The post-processor also needs an unambiguous name to withdraw, which this makes true by
+   * construction rather than by coincidence.
+   */
+  static final String CHAIN_BEAN_NAME = "hofmannSecurityFilterChain";
+
+  /**
+   * Withdraws this library's chain if any other {@link SecurityFilterChain} is defined, whatever
+   * defined it.
+   *
+   * <p>{@code @ConditionalOnMissingBean} below handles the common case and is kept because it is
+   * what a Spring user expects to read and what shows up in the condition report. It cannot handle
+   * every case: a condition can only see beans that auto-configurations processed <em>before</em>
+   * it contributed, and {@code AutoConfigurationSorter} orders by class name before applying
+   * before/after. So a consumer whose own {@code @AutoConfiguration} contributes a chain won or
+   * lost on the alphabet — the same consumer auto-configuration booted from {@code com.aaa} and
+   * failed from {@code zzz}, which is not a contract anyone can rely on.
+   *
+   * <p>Ordering cannot fix that. {@code @AutoConfigureOrder} already defaults to
+   * {@code LOWEST_PRECEDENCE}, so there is no value that places this after an arbitrary consumer's
+   * auto-configuration — tried, and it changed nothing.
+   *
+   * <p>A {@link BeanFactoryPostProcessor} can, because it runs after every bean definition is
+   * registered and every condition has been evaluated. At that point the set of chains is final
+   * regardless of the order they arrived in, so "stand down if anyone else defined one" becomes a
+   * decidable question rather than a race. Declared {@code static} so it can be instantiated
+   * without forcing early construction of this configuration class.
+   *
+   * @return the post-processor
+   */
+  @Bean
+  static BeanFactoryPostProcessor hofmannSecurityChainWithdrawal() {
+    return beanFactory -> {
+      // allowEagerInit=false: types come from @Bean method signatures, and instantiating beans
+      // this early to answer a type query is exactly what a post-processor must not do. Same
+      // limitation @ConditionalOnMissingBean has, so this is no less accurate than the condition
+      // it backs up.
+      String[] chains = beanFactory.getBeanNamesForType(SecurityFilterChain.class, true, false);
+      boolean somebodyElseHasOne =
+          Arrays.stream(chains).anyMatch(name -> !CHAIN_BEAN_NAME.equals(name));
+      if (somebodyElseHasOne
+          && beanFactory instanceof BeanDefinitionRegistry registry
+          && registry.containsBeanDefinition(CHAIN_BEAN_NAME)) {
+        LOG.info("An application-defined SecurityFilterChain is present ({}); withdrawing the "
+            + "Hofmann default chain. The JWT filter remains available to wire into your own.",
+            String.join(", ", Arrays.stream(chains)
+                .filter(name -> !CHAIN_BEAN_NAME.equals(name)).toList()));
+        registry.removeBeanDefinition(CHAIN_BEAN_NAME);
+      }
+    };
+  }
+
+  /**
+   * The JWT authentication filter, exposed as a bean so an application that supplies its own
+   * {@link SecurityFilterChain} can wire it into that chain.
    *
    * @param jwtManager the jwt manager
    * @return the jwt authentication filter
@@ -107,7 +239,7 @@ public class HofmannSecurityConfig {
   @Bean
   @Order(HOFMANN_CHAIN_ORDER)
   @ConditionalOnMissingBean(SecurityFilterChain.class)
-  public SecurityFilterChain securityFilterChain(
+  public SecurityFilterChain hofmannSecurityFilterChain(
       HttpSecurity http,
       JwtAuthenticationFilter jwtFilter,
       @Qualifier("hofmannCorsConfigurationSource") CorsConfigurationSource corsSource,

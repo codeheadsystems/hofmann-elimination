@@ -1,1 +1,2 @@
 com.codeheadsystems.hofmann.springboot.config.HofmannAutoConfiguration
+com.codeheadsystems.hofmann.springboot.security.HofmannSecurityConfig

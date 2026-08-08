@@ -51,7 +51,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import com.codeheadsystems.hofmann.springboot.controller.OpaqueController;
 import com.codeheadsystems.hofmann.springboot.controller.OprfController;
 import com.codeheadsystems.hofmann.springboot.health.OpaqueServerHealthIndicator;
-import com.codeheadsystems.hofmann.springboot.security.HofmannSecurityConfig;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Bean;
 
@@ -63,7 +62,6 @@ import org.springframework.context.annotation.Bean;
 @Import({
     OpaqueController.class,
     OprfController.class,
-    HofmannSecurityConfig.class,
     OpaqueServerHealthIndicator.class,
     RequestBodyTooLargeAdvice.class,
 })

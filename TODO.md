@@ -11,9 +11,9 @@ P2 item is closed.** What remains is P3 and the findings raised while closing th
 
 | Section | Open |
 |---|---:|
-| New findings | 5 |
+| New findings | 4 |
 | **P3 Low** | 4 |
-| **Total** | **9** |
+| **Total** | **8** |
 
 Recount with `grep -c '^- \[ \]' TODO.md` after editing.
 
@@ -108,24 +108,6 @@ on.
 ---
 
 ## New findings
-
-- [ ] **The Spring Security escape hatch documented on `HofmannSecurityConfig` does not work** —
-      **[reproduced]**. `HofmannSecurityConfig.java:51-66` tells a consumer they can supply their
-      own `SecurityFilterChain` and the library's will back off, via
-      `@ConditionalOnMissingBean(SecurityFilterChain.class)`. Declaring one the ordinary way — a
-      `@Bean` on the `@SpringBootApplication` class — does **not** make it back off: the
-      application fails to start with `UnreachableFilterChainException`, scoped or unscoped,
-      unless the consumer also adds `@Order` below `LOWEST_PRECEDENCE - 5`, which the docs do not
-      mention.
-
-      `AutoConfigurationRegistrationTest:94` passes and does not catch this, because
-      `ApplicationContextRunner.withUserConfiguration` registers beans differently from a real
-      application. That makes the test worse than absent — it is evidence for a claim it does not
-      actually check.
-
-      Pre-existing; found while closing the API-docs finding. Either fix the ordering so the
-      documented approach works, or document the `@Order` requirement and give the test a real
-      application context.
 
 - [ ] **The `...opaque.internal` package re-exposes every capability just made package-private** —
       **[reproduced]**. `Client` and `Server`'s five `*Deterministic` methods are package-private,
