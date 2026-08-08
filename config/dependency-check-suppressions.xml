@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Suppressions for `./gradlew dependencyCheckAggregate`.
+
+  Empty on purpose. Every entry added here silences a finding, so each one must say which CVE it
+  silences, why this project is not reachable by it, and when the claim should be re-checked —
+  otherwise the file becomes the place findings go to be forgotten, which is worse than not having
+  the scan at all.
+
+  Prefer raising the version. `buildlogic.security-floor-conventions.gradle.kts` holds minimum
+  versions for transitive dependencies with advisories, and a floor is self-removing: it stops
+  mattering the moment the framework catches up. A suppression is not — it stays until somebody
+  deliberately deletes it.
+
+  Template:
+
+  <suppress until="2027-01-01Z">
+    <notes><![CDATA[
+      CVE-YYYY-NNNNN in <artifact>. Not reachable here because <specific reason, not "we do not
+      think it applies">. Re-check when <the condition that would make it apply>.
+    ]]></notes>
+    <packageUrl regex="true">^pkg:maven/group/artifact@.*$</packageUrl>
+    <cve>CVE-YYYY-NNNNN</cve>
+  </suppress>
+-->
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+</suppressions>

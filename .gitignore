@@ -8,3 +8,6 @@ build
 .kotlin
 .idea
 node_modules/
+
+# Subagent git worktrees — transient, and an embedded repo if committed.
+.claude/worktrees/

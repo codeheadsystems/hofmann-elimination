@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
+import com.codeheadsystems.rfc.opaque.testfixtures.OpaqueTestConfigs;
 import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 
@@ -12,7 +13,7 @@ import org.junit.jupiter.api.Test;
  */
 class KE2Test {
 
-  private static final OpaqueConfig CONFIG = OpaqueConfig.forTesting(); // P256-SHA256, IdentityKsf
+  private static final OpaqueConfig CONFIG = OpaqueTestConfigs.forTesting(); // P256-SHA256, IdentityKsf
 
   private static void fill(byte[] arr, int offset, int length, byte value) {
     Arrays.fill(arr, offset, offset + length, value);

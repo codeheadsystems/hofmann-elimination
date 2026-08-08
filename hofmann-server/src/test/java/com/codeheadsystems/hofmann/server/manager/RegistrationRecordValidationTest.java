@@ -16,6 +16,7 @@ import com.codeheadsystems.rfc.opaque.model.ClientRegistrationState;
 import com.codeheadsystems.rfc.opaque.model.Envelope;
 import com.codeheadsystems.rfc.opaque.model.KE1;
 import com.codeheadsystems.rfc.opaque.model.RegistrationRecord;
+import com.codeheadsystems.rfc.opaque.testfixtures.OpaqueTestConfigs;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.stream.Stream;
@@ -57,7 +58,7 @@ class RegistrationRecordValidationTest {
                          HofmannOpaqueServerManager manager, RegistrationRecord valid) {
 
     static Fixture of(OpaqueCipherSuite suite) {
-      OpaqueConfig config = OpaqueConfig.forTesting(suite);
+      OpaqueConfig config = OpaqueTestConfigs.forTesting(suite);
       Client client = new Client(config);
       Server server = Server.generate(config);
       InMemoryCredentialStore store = new InMemoryCredentialStore();

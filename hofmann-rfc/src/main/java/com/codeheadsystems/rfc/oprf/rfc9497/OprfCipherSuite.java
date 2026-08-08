@@ -100,8 +100,26 @@ public class OprfCipherSuite {
 
   /**
    * Returns a new {@code OprfCipherSuite} identical to this one but using the given
-   * {@link SecureRandom} for all scalar and random byte generation. Use this to inject
-   * a custom or deterministic random source (e.g. in tests or DI frameworks).
+   * {@link SecureRandom} for all scalar and random byte generation.
+   *
+   * <p><strong>Stays public, but not for the reason first given here.</strong> A security review
+   * grouped this with the deterministic test-vector APIs that are now package-private. I declined,
+   * writing that "all three framework integrations call it". They do not: {@code HofmannBundle},
+   * {@code HofmannAutoConfiguration} and {@code VerifiableKeyConfig} all call
+   * {@link Builder#withRandom(SecureRandom)}, the builder method, and a repo-wide search finds no
+   * production caller of this instance method at all. A second reviewer checked and the claim was
+   * specific enough to be wrong.
+   *
+   * <p>The decision survives on better evidence. {@code Builder.withRandom} is unambiguously
+   * production API and load-bearing — it is how an operator installs an HSM-backed or otherwise
+   * policy-constrained source instead of the platform default — and the same reviewer replayed an
+   * entire OPAQUE exchange by handing a stub {@link SecureRandom} to that builder. Restricting
+   * this copy-with variant would close nothing while removing a capability. It is kept for
+   * symmetry with the builder, with no current production caller.
+   *
+   * <p>The residual is inherent to accepting a {@link SecureRandom} at all — nothing can
+   * distinguish a hardware source from a fixed-output stub — and it is the caller's to get right.
+   * That is a different situation from a method whose entire purpose is to fix a nonce.
    *
    * @param random the {@link SecureRandom} to use
    * @return a new suite with the provided random source

@@ -22,6 +22,7 @@ import com.codeheadsystems.rfc.opaque.model.KE2;
 import com.codeheadsystems.rfc.opaque.model.KE3;
 import com.codeheadsystems.rfc.opaque.model.RegistrationRecord;
 import com.codeheadsystems.rfc.opaque.model.RegistrationResponse;
+import com.codeheadsystems.rfc.opaque.testfixtures.OpaqueTestConfigs;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,7 +48,7 @@ class HofmannOpaqueServerManagerAuthTest {
   private static final byte[] ALICE = "alice@example.com".getBytes(StandardCharsets.UTF_8);
   private static final byte[] UNKNOWN = "nobody@example.com".getBytes(StandardCharsets.UTF_8);
   private static final byte[] PASSWORD = "correct-horse-battery".getBytes(StandardCharsets.UTF_8);
-  private static final OpaqueConfig CONFIG = OpaqueConfig.forTesting();
+  private static final OpaqueConfig CONFIG = OpaqueTestConfigs.forTesting();
 
   private Client client;
   private Server server;

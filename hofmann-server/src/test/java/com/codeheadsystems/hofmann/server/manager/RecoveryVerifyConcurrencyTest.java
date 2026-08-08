@@ -11,6 +11,7 @@ import com.codeheadsystems.hofmann.server.store.InMemoryRecoveryTokenStore;
 import com.codeheadsystems.hofmann.server.store.InMemorySessionStore;
 import com.codeheadsystems.rfc.opaque.Server;
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
+import com.codeheadsystems.rfc.opaque.testfixtures.OpaqueTestConfigs;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -40,7 +41,7 @@ class RecoveryVerifyConcurrencyTest {
   void setUp() {
     concurrent = new AtomicInteger();
     peak = new AtomicInteger();
-    OpaqueConfig config = OpaqueConfig.forTesting();
+    OpaqueConfig config = OpaqueTestConfigs.forTesting();
     RecoveryChallenger slowChallenger = new RecoveryChallenger() {
       @Override public void sendChallenge(byte[] id) { }
 

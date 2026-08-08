@@ -3,6 +3,7 @@ package com.codeheadsystems.rfc.opaque.config;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.codeheadsystems.rfc.common.RandomProvider;
+import com.codeheadsystems.rfc.opaque.testfixtures.OpaqueTestConfigs;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
@@ -22,7 +23,7 @@ class OpaqueConfigTest {
 
   @Test
   void forTesting_usesIdentityKsf() {
-    OpaqueConfig config = OpaqueConfig.forTesting();
+    OpaqueConfig config = OpaqueTestConfigs.forTesting();
     assertThat(config.cipherSuite()).isSameAs(OpaqueCipherSuite.P256_SHA256);
     assertThat(config.ksf()).isInstanceOf(OpaqueConfig.IdentityKsf.class);
     assertThat(config.context()).isEqualTo("OPAQUE-POC".getBytes(StandardCharsets.US_ASCII));
@@ -30,7 +31,7 @@ class OpaqueConfigTest {
 
   @Test
   void forTesting_withSuite_usesGivenSuite() {
-    OpaqueConfig config = OpaqueConfig.forTesting(OpaqueCipherSuite.P384_SHA384);
+    OpaqueConfig config = OpaqueTestConfigs.forTesting(OpaqueCipherSuite.P384_SHA384);
     assertThat(config.cipherSuite()).isSameAs(OpaqueCipherSuite.P384_SHA384);
     assertThat(config.ksf()).isInstanceOf(OpaqueConfig.IdentityKsf.class);
   }
@@ -60,7 +61,7 @@ class OpaqueConfigTest {
 
   @Test
   void withRandomConfig_preservesOtherFields() {
-    OpaqueConfig original = OpaqueConfig.forTesting();
+    OpaqueConfig original = OpaqueTestConfigs.forTesting();
     RandomProvider rp = new RandomProvider();
     OpaqueConfig copy = original.withRandomConfig(rp);
     assertThat(copy.randomProvider()).isSameAs(rp);
@@ -73,7 +74,7 @@ class OpaqueConfigTest {
 
   @Test
   void sizeDelegates_matchCipherSuite() {
-    OpaqueConfig config = OpaqueConfig.forTesting();
+    OpaqueConfig config = OpaqueTestConfigs.forTesting();
     OpaqueCipherSuite cs = config.cipherSuite();
     assertThat(config.Nm()).isEqualTo(cs.Nm());
     assertThat(config.Nh()).isEqualTo(cs.Nh());
@@ -97,7 +98,7 @@ class OpaqueConfigTest {
   void identityKsf_returnsInputUnchanged() {
     OpaqueConfig.IdentityKsf ksf = new OpaqueConfig.IdentityKsf();
     byte[] input = {1, 2, 3, 4, 5};
-    byte[] result = ksf.stretch(input, OpaqueConfig.forTesting());
+    byte[] result = ksf.stretch(input, OpaqueTestConfigs.forTesting());
     assertThat(result).isSameAs(input);
   }
 

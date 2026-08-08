@@ -1,0 +1,20 @@
+# Same as test-config.yml but with the API docs enabled at a non-default path, so the tests
+# exercise both the opt-in switch and the fact that the path is the consumer's to choose.
+context: "hofmann-test"
+
+argon2MemoryKib: 0
+allowIdentityKsf: true
+allowEphemeralKeys: true
+
+serverKeySeedHex: ""
+oprfSeedHex: ""
+
+oprfMasterKeyHex: ""
+oprfProcessorId: "test-processor"
+
+jwtSecretHex: ""
+jwtTtlSeconds: 3600
+jwtIssuer: "hofmann-test"
+
+serveApiDocs: true
+apiDocsPath: "/reference/docs"

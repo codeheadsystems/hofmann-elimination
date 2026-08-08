@@ -14,6 +14,7 @@ import com.codeheadsystems.rfc.opaque.model.RegistrationRequest;
 import com.codeheadsystems.rfc.opaque.model.RegistrationResponse;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 
 /**
  * Handles the credential request/response lifecycle for OPAQUE registration and authentication.
@@ -109,10 +110,17 @@ public class OpaqueCredentials {
                                                                  byte[] envelopeNonce) {
     byte[] randomizedPwd = deriveRandomizedPwd(state.password(), state.blind(),
         response.evaluatedElement(), config);
-
-    StoreResult stored = OpaqueEnvelope.store(config,
-        randomizedPwd, response.serverPublicKey(), serverIdentity, clientIdentity, envelopeNonce);
-    return new RegistrationRecord(stored.clientPublicKey(), stored.maskingKey(), stored.envelope());
+    try {
+      StoreResult stored = OpaqueEnvelope.store(config,
+          randomizedPwd, response.serverPublicKey(), serverIdentity, clientIdentity, envelopeNonce);
+      // This entry point discards the export key — RegistrationRecord has nowhere to carry it, so
+      // it is unreachable after this returns. Zero it rather than leave a live secret on the heap
+      // for the GC to copy around. A caller who wants it should use the envelope layer directly.
+      Arrays.fill(stored.exportKey(), (byte) 0);
+      return new RegistrationRecord(stored.clientPublicKey(), stored.maskingKey(), stored.envelope());
+    } finally {
+      Arrays.fill(randomizedPwd, (byte) 0);
+    }
   }
 
   /**
@@ -165,12 +173,21 @@ public class OpaqueCredentials {
         "CredentialResponsePad".getBytes(StandardCharsets.US_ASCII)
     );
     byte[] pad = suite.hkdfExpand(record.maskingKey(), padInfo, config.maskedResponseSize());
+    try {
+      // plaintext = server_public_key || envelope_nonce || auth_tag
+      byte[] plaintext = ByteUtils.concat(serverPublicKey, record.envelope().serialize());
+      byte[] maskedResponse = ByteUtils.xor(pad, plaintext);
+      Arrays.fill(plaintext, (byte) 0);
 
-    // plaintext = server_public_key || envelope_nonce || auth_tag
-    byte[] plaintext = ByteUtils.concat(serverPublicKey, record.envelope().serialize());
-    byte[] maskedResponse = ByteUtils.xor(pad, plaintext);
-
-    return new CredentialResponse(evaluatedElement, maskingNonce, maskedResponse);
+      return new CredentialResponse(evaluatedElement, maskingNonce, maskedResponse);
+    } finally {
+      // Cleared for symmetry with the client's recoverCredentials rather than because the server
+      // gains much: it holds oprfSeed and the stored maskingKey regardless, so pad tells an
+      // attacker with server heap access nothing they cannot already derive. The reason to do it
+      // anyway is that the same two variable names are cleared thirty lines away, and a reader
+      // should not have to work out which side is deliberate.
+      Arrays.fill(pad, (byte) 0);
+    }
   }
 
   /**
@@ -191,41 +208,82 @@ public class OpaqueCredentials {
                                                  OpaqueConfig config) {
     OpaqueCipherSuite suite = config.cipherSuite();
     byte[] randomizedPwd = deriveRandomizedPwd(password, blind, response.evaluatedElement(), config);
+    byte[] maskingKey = null;
+    byte[] pad = null;
+    byte[] plaintext = null;
+    try {
+      // Recover masking_key = Expand(randomized_pwd, "MaskingKey", Nh)
+      maskingKey = suite.hkdfExpand(randomizedPwd,
+          "MaskingKey".getBytes(StandardCharsets.US_ASCII), config.Nh());
 
-    // Recover masking_key = Expand(randomized_pwd, "MaskingKey", Nh)
-    byte[] maskingKey = suite.hkdfExpand(randomizedPwd,
-        "MaskingKey".getBytes(StandardCharsets.US_ASCII), config.Nh());
+      // Unmask: pad = HKDF-Expand(masking_key, masking_nonce || "CredentialResponsePad", ...)
+      byte[] padInfo = ByteUtils.concat(
+          response.maskingNonce(),
+          "CredentialResponsePad".getBytes(StandardCharsets.US_ASCII)
+      );
+      pad = suite.hkdfExpand(maskingKey, padInfo, config.maskedResponseSize());
+      plaintext = ByteUtils.xor(pad, response.maskedResponse());
 
-    // Unmask: pad = HKDF-Expand(masking_key, masking_nonce || "CredentialResponsePad", ...)
-    byte[] padInfo = ByteUtils.concat(
-        response.maskingNonce(),
-        "CredentialResponsePad".getBytes(StandardCharsets.US_ASCII)
-    );
-    byte[] pad = suite.hkdfExpand(maskingKey, padInfo, config.maskedResponseSize());
-    byte[] plaintext = ByteUtils.xor(pad, response.maskedResponse());
+      // Extract server_public_key || envelope. Both copy out of plaintext rather than aliasing
+      // it — Envelope.deserialize allocates — so zeroing plaintext below is safe.
+      byte[] serverPublicKey = new byte[config.Npk()];
+      System.arraycopy(plaintext, 0, serverPublicKey, 0, config.Npk());
+      Envelope envelope = Envelope.deserialize(plaintext, config.Npk(), OpaqueConfig.Nn, config.Nm());
 
-    // Extract server_public_key || envelope
-    byte[] serverPublicKey = new byte[config.Npk()];
-    System.arraycopy(plaintext, 0, serverPublicKey, 0, config.Npk());
-    Envelope envelope = Envelope.deserialize(plaintext, config.Npk(), OpaqueConfig.Nn, config.Nm());
-
-    return OpaqueEnvelope.recover(config, randomizedPwd, serverPublicKey, envelope, serverIdentity, clientIdentity);
+      return OpaqueEnvelope.recover(config, randomizedPwd, serverPublicKey, envelope, serverIdentity, clientIdentity);
+    } finally {
+      // maskingKey is not merely key material for this exchange: it is what the server stores, so
+      // recovering it from a client heap dump lets the holder unmask any future credential
+      // response for this account offline. pad is equivalent to it for one exchange. plaintext is
+      // public once unmasked, but it is zeroed too so a reader does not have to work out which of
+      // the three is safe to leave behind.
+      Arrays.fill(randomizedPwd, (byte) 0);
+      if (maskingKey != null) {
+        Arrays.fill(maskingKey, (byte) 0);
+      }
+      if (pad != null) {
+        Arrays.fill(pad, (byte) 0);
+      }
+      if (plaintext != null) {
+        Arrays.fill(plaintext, (byte) 0);
+      }
+    }
   }
 
   /**
    * Derives randomized password from OPRF output.
    *
+   * <p><strong>The returned array is password-equivalent and the caller owns it.</strong>
+   * Everything the envelope protects — the envelope keys, the masking key, the client's long-term
+   * private key — derives from this value, so holding it is equivalent to holding the password;
+   * no guessing step follows. Clear it when you are done. Both callers in this class do, in a
+   * {@code finally}.
+   *
+   * <p>The intermediates are cleared here, but see {@link
+   * com.codeheadsystems.rfc.opaque.model.ClientAuthState} on why that shortens a window rather
+   * than removing the material from the heap.
+   *
    * @param password         the password
    * @param blind            the blind
    * @param evaluatedElement the evaluated element
    * @param config           the config
-   * @return the byte [ ]
+   * @return the randomized password; password-equivalent, and the caller's to clear
    */
   public static byte[] deriveRandomizedPwd(byte[] password, BigInteger blind,
                                            byte[] evaluatedElement, OpaqueConfig config) {
     byte[] oprfOutput = OpaqueOprf.finalize(config.cipherSuite(), password, blind, evaluatedElement);
     byte[] stretchedOutput = config.ksf().stretch(oprfOutput, config);
-    return config.cipherSuite().hkdfExtract(new byte[0],
-        ByteUtils.concat(oprfOutput, stretchedOutput));
+    byte[] ikm = ByteUtils.concat(oprfOutput, stretchedOutput);
+    try {
+      return config.cipherSuite().hkdfExtract(new byte[0], ikm);
+    } finally {
+      // Each of these is password-equivalent on its own: oprfOutput is a deterministic function
+      // of the password under the server's key, and stretchedOutput is the KSF applied to it, so
+      // either one recovered from a heap dump reproduces randomizedPwd without a guess. The
+      // caller owns the returned value and is responsible for zeroing it.
+      Arrays.fill(oprfOutput, (byte) 0);
+      Arrays.fill(stretchedOutput, (byte) 0);
+      Arrays.fill(ikm, (byte) 0);
+    }
   }
 }

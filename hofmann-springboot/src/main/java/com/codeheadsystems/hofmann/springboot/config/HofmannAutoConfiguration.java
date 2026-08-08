@@ -137,12 +137,19 @@ public class HofmannAutoConfiguration {
       log.warn("Argon2 disabled — using identity KSF. Do not use in production.");
       return new OpaqueConfig(suite, 0, 0, 0, context, new OpaqueConfig.IdentityKsf(), new RandomProvider(secureRandom));
     }
+    // withRandomConfig is not decoration. OpaqueConfig.withArgon2id builds its own
+    // `new RandomProvider()` internally, so without this the deployment's SecureRandom reached the
+    // identity-KSF branch above and was silently dropped on this one — the production branch. An
+    // operator wiring an HSM-backed source got it for OPRF scalars and blinds, and the platform
+    // default for every OPAQUE masking nonce, server AKE key seed, server nonce, envelope nonce
+    // and client nonce. No symptom; exactly inverted from the intent.
     return OpaqueConfig.withArgon2id(
         suite,
         context,
         props.getArgon2MemoryKib(),
         props.getArgon2Iterations(),
-        props.getArgon2Parallelism());
+        props.getArgon2Parallelism())
+        .withRandomConfig(new RandomProvider(secureRandom));
   }
 
   /**

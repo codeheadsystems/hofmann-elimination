@@ -233,6 +233,12 @@ public class OpaqueAke {
       Arrays.fill(expectedServerMac, (byte) 0);
       Arrays.fill(keys.km3(), (byte) 0);
       Arrays.fill(keys.sessionKey(), (byte) 0);
+      // The export key was missing from this list, and it is the most sensitive thing on the
+      // branch. Reaching here means the *envelope* MAC already verified inside recoverCredentials,
+      // so the password was correct and this is the real long-term export key — not the garbage a
+      // wrong password would produce. This is the rogue-server and MITM path, where a client
+      // retries against an attacker and leaves a live client secret on the heap each time.
+      Arrays.fill(recovered.exportKey(), (byte) 0);
       throw new SecurityException("Authentication failed");
     }
     Arrays.fill(expectedServerMac, (byte) 0);

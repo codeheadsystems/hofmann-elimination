@@ -16,6 +16,7 @@ import com.codeheadsystems.rfc.opaque.model.RegistrationRecord;
 import com.codeheadsystems.rfc.opaque.model.RegistrationResponse;
 import com.codeheadsystems.rfc.opaque.model.ServerAuthState;
 import com.codeheadsystems.rfc.opaque.model.ServerKE2Result;
+import com.codeheadsystems.rfc.opaque.testfixtures.OpaqueTestConfigs;
 import java.math.BigInteger;
 import org.bouncycastle.util.encoders.Hex;
 import org.junit.jupiter.api.Test;
@@ -169,7 +170,7 @@ class OpaqueCrossImplVectorsTest {
   }
 
   private void assertSuite(Vector v) {
-    OpaqueConfig config = OpaqueConfig.forTesting(v.suite());
+    OpaqueConfig config = OpaqueTestConfigs.forTesting(v.suite());
     Client client = new Client(config);
     Server server = new Server(serverPrivateKey(v), hex(v.serverPublicKey()), hex(v.oprfSeed()), config);
 
@@ -247,7 +248,7 @@ class OpaqueCrossImplVectorsTest {
   }
 
   private void assertRejections(Vector v) {
-    OpaqueConfig config = OpaqueConfig.forTesting(v.suite());
+    OpaqueConfig config = OpaqueTestConfigs.forTesting(v.suite());
     Server server = new Server(serverPrivateKey(v), hex(v.serverPublicKey()), hex(v.oprfSeed()),
         config);
     Client client = new Client(config);

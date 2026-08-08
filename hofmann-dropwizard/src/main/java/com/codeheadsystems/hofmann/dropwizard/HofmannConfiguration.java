@@ -188,6 +188,31 @@ public class HofmannConfiguration extends Configuration {
   private boolean trustForwardedHeaders = false;
 
   /**
+   * Whether to serve the OpenAPI specs and Swagger UI from this bundle.
+   *
+   * <p><strong>Off by default, and it used to be unconditional.</strong> This is a bundle every
+   * consumer installs into their own application, so registering a servlet was claiming a path on
+   * someone else's server without asking — and a consumer with their own {@code /api-docs}
+   * mapping collided with it. Opting in is the only way a library can register a servlet
+   * honestly.
+   *
+   * <p>The servlet is also outside the JAX-RS filter chain, so {@link SecurityHeadersFilter} and
+   * {@link CorsFilter} — which are registered with {@code environment.jersey()} — never saw these
+   * responses. When enabled, {@link ApiDocsSecurityHeadersFilter} is installed on the same path
+   * so the assets get security headers rather than none.
+   */
+  private boolean serveApiDocs = false;
+
+  /**
+   * Path prefix for the API docs when {@link #serveApiDocs} is enabled.
+   *
+   * <p>Configurable so a consumer who already serves something at {@code /api-docs} can move
+   * these out of the way rather than having to choose between the two.
+   */
+  @NotEmpty
+  private String apiDocsPath = "/api-docs";
+
+  /**
    * Gets opaque cipher suite.
    *
    * @return the opaque cipher suite
@@ -525,6 +550,46 @@ public class HofmannConfiguration extends Configuration {
   @JsonProperty
   public void setTrustForwardedHeaders(boolean trustForwardedHeaders) {
     this.trustForwardedHeaders = trustForwardedHeaders;
+  }
+
+  /**
+   * Whether the bundle serves the OpenAPI specs and Swagger UI.
+   *
+   * @return true if the API docs servlet should be registered
+   */
+  @JsonProperty
+  public boolean isServeApiDocs() {
+    return serveApiDocs;
+  }
+
+  /**
+   * Sets whether the bundle serves the OpenAPI specs and Swagger UI.
+   *
+   * @param serveApiDocs true to register the API docs servlet
+   */
+  @JsonProperty
+  public void setServeApiDocs(boolean serveApiDocs) {
+    this.serveApiDocs = serveApiDocs;
+  }
+
+  /**
+   * Gets the path prefix the API docs are served from.
+   *
+   * @return the api docs path
+   */
+  @JsonProperty
+  public String getApiDocsPath() {
+    return apiDocsPath;
+  }
+
+  /**
+   * Sets the path prefix the API docs are served from.
+   *
+   * @param apiDocsPath the api docs path
+   */
+  @JsonProperty
+  public void setApiDocsPath(String apiDocsPath) {
+    this.apiDocsPath = apiDocsPath;
   }
 
   /**

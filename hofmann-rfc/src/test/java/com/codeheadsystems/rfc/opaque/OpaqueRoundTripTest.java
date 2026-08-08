@@ -16,6 +16,7 @@ import com.codeheadsystems.rfc.opaque.model.RegistrationResponse;
 import com.codeheadsystems.rfc.opaque.model.ServerAuthState;
 import com.codeheadsystems.rfc.opaque.model.ServerKE2Result;
 import com.codeheadsystems.rfc.common.RandomProvider;
+import com.codeheadsystems.rfc.opaque.testfixtures.OpaqueTestConfigs;
 import java.nio.charset.StandardCharsets;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,7 +32,7 @@ class OpaqueRoundTripTest {
   private static final byte[] CREDENTIAL_IDENTIFIER = "user@example.com".getBytes(StandardCharsets.UTF_8);
   private static final byte[] PASSWORD_CORRECT = "correct-password".getBytes(StandardCharsets.UTF_8);
   private static final byte[] PASSWORD_WRONG = "wrong-password".getBytes(StandardCharsets.UTF_8);
-  private static final OpaqueConfig CONFIG = OpaqueConfig.forTesting(); // Identity KSF for speed
+  private static final OpaqueConfig CONFIG = OpaqueTestConfigs.forTesting(); // Identity KSF for speed
 
   private Client client;
   private Server server;
@@ -836,7 +837,7 @@ class OpaqueRoundTripTest {
   @ParameterizedTest(name = "fullRoundTrip_{0}")
   @MethodSource("allSuites")
   void fullRoundTripAllSuites(OpaqueCipherSuite suite) {
-    OpaqueConfig cfg = OpaqueConfig.forTesting(suite);
+    OpaqueConfig cfg = OpaqueTestConfigs.forTesting(suite);
     Server srv = Server.generate(cfg);
     Client cli = new Client(cfg);
 
@@ -865,7 +866,7 @@ class OpaqueRoundTripTest {
   @ParameterizedTest(name = "wrongPasswordFails_{0}")
   @MethodSource("allSuites")
   void wrongPasswordFailsAllSuites(OpaqueCipherSuite suite) {
-    OpaqueConfig cfg = OpaqueConfig.forTesting(suite);
+    OpaqueConfig cfg = OpaqueTestConfigs.forTesting(suite);
     Server srv = Server.generate(cfg);
     Client cli = new Client(cfg);
 

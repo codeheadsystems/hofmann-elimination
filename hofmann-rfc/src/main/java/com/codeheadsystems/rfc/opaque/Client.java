@@ -91,7 +91,33 @@ public class Client {
         config.context(), config);
   }
 
-  // ─── Deterministic API (for testing) ──────────────────────────────────────
+  // ─── Deterministic API (test vectors only; package-private on purpose) ─────
+  //
+  // These were public with nothing but a "(for testing)" javadoc between them and a production
+  // caller, and every misuse is silent — the protocol keeps working and produces plausible output.
+  //
+  // The blind is the worst of them, which is not where an earlier version of this comment ranked
+  // it. It called blind reuse "a cross-account password-equality oracle", which understates it,
+  // because the realistic misuse of a deterministic API is pasting the constant out of the RFC's
+  // test vectors — and then the blind is not merely fixed, it is *public*. Since
+  // blindedElement = blind · H(password), an attacker who knows the blind recovers the password
+  // offline from one passively observed KE1: compute blind · H(guess) and compare. No server
+  // interaction, no compromise, no second account. A reviewer did exactly that against this code
+  // and recovered the test password. Denying offline guessing is the whole point of OPAQUE.
+  //
+  // Reusing the client AKE seed is the mild one: clientAkePublicKey is wire-visible and stable
+  // across logins while everything else varies, so a user's sessions become linkable.
+  //
+  // See Server for the server-side seeds, which are worse still.
+  //
+  // *** What this does and does not close. *** It removes these from the two classes a caller
+  // actually types, which is worth doing — but it is not a boundary. The same capabilities remain
+  // public in com.codeheadsystems.rfc.opaque.internal: OpaqueCredentials.createRegistrationRequest-
+  // WithBlind and finalizeRegistrationWithNonce are public static with identical bodies, and
+  // OpaqueAke.generateKE2 takes maskingNonce and serverAkeKeySeed as ordinary parameters. A
+  // reviewer reconstructed every one of these five capabilities from outside the package using
+  // public API and no reflection. Closing it properly needs a module-info that does not export
+  // the internal package; recorded in TODO.md rather than claimed here.
 
   /**
    * Creates a registration request with a fixed blinding factor (for test vectors).
@@ -100,8 +126,8 @@ public class Client {
    * @param blind    the blind
    * @return the client registration state
    */
-  public ClientRegistrationState createRegistrationRequestDeterministic(byte[] password,
-                                                                        BigInteger blind) {
+  ClientRegistrationState createRegistrationRequestDeterministic(byte[] password,
+                                                                 BigInteger blind) {
     return OpaqueCredentials.createRegistrationRequestWithBlind(password, blind, config);
   }
 
@@ -115,11 +141,11 @@ public class Client {
    * @param envelopeNonce  the envelope nonce
    * @return the registration record
    */
-  public RegistrationRecord finalizeRegistrationDeterministic(ClientRegistrationState state,
-                                                              RegistrationResponse response,
-                                                              byte[] serverIdentity,
-                                                              byte[] clientIdentity,
-                                                              byte[] envelopeNonce) {
+  RegistrationRecord finalizeRegistrationDeterministic(ClientRegistrationState state,
+                                                       RegistrationResponse response,
+                                                       byte[] serverIdentity,
+                                                       byte[] clientIdentity,
+                                                       byte[] envelopeNonce) {
     return OpaqueCredentials.finalizeRegistrationWithNonce(state, response, serverIdentity, clientIdentity,
         config, envelopeNonce);
   }
@@ -133,10 +159,10 @@ public class Client {
    * @param clientAkeKeySeed the client ake key seed
    * @return the client auth state
    */
-  public ClientAuthState generateKE1Deterministic(byte[] password,
-                                                  BigInteger blind,
-                                                  byte[] clientNonce,
-                                                  byte[] clientAkeKeySeed) {
+  ClientAuthState generateKE1Deterministic(byte[] password,
+                                           BigInteger blind,
+                                           byte[] clientNonce,
+                                           byte[] clientAkeKeySeed) {
     byte[] blindedElement = OpaqueOprf.blind(config.cipherSuite(), password, blind);
     CredentialRequest credReq = new CredentialRequest(blindedElement);
 
