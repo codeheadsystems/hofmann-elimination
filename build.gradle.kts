@@ -44,6 +44,11 @@ repositories {
  *                   resulting UpdateException fails the task. Get a key at
  *                   https://nvd.nist.gov/developers/request-an-api-key.
  *
+ *                   In CI the scan step is skipped when the key is absent rather than run and
+ *                   failed. The job is advisory (continue-on-error), so a hard failure there
+ *                   would look exactly like a real finding — and an advisory check is only worth
+ *                   having if red means something.
+ *
  * *** Deliberately NOT wired into `check`. *** Building the NVD database is slow and depends on a
  * network service, and attaching that to `./gradlew build` would make every local build hostage to
  * it. The predictable outcome is that somebody disables it. It runs as its own CI job instead.

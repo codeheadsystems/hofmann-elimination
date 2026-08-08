@@ -163,9 +163,20 @@ jobs:
     permissions:
       contents: read
 
+    # Advisory: a finding here does not block a merge. That is a deliberate choice about *this*
+    # gate rather than about gates generally — the scan depends on an external service (the NVD
+    # feed) whose availability and latency this repository does not control, and a required check
+    # that can go red because someone else's API is down gets routed around rather than fixed.
+    #
+    # The cost is that somebody has to look. Two things below exist to make that worth doing:
+    # the report is uploaded as an artifact so the finding is readable without re-running the
+    # scan, and the missing-key case is a skip rather than a failure, so a red job here means a
+    # vulnerable dependency and nothing else.
+    continue-on-error: true
+
     # Lifted to the job so the steps below can test it. The `secrets` context is not available in
     # a step-level `if` — only `env` is — so checking `secrets.NVD_API_KEY` directly there would
-    # not have worked, and would have failed as a silently-skipped warning rather than loudly.
+    # not have worked.
     env:
       NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
 
@@ -197,21 +208,32 @@ jobs:
           key: ${{ runner.os }}-nvd-${{ steps.nvd-week.outputs.week }}
           restore-keys: ${{ runner.os }}-nvd-
 
-      # NVD_API_KEY is REQUIRED. An earlier version of this job warned and carried on, on the
-      # belief that without a key the scan runs rate-limited. It does not: dependency-check ships
-      # nvd.api.key as an empty string rather than absent, which passes its own null check and goes
-      # out as an empty apiKey header — and NVD answers that with 404 where it answers a missing
-      # header with 200. The task then fails with "Invalid API Key, length of 0". So the choice is
-      # between failing here with an explanation and failing twenty seconds later without one.
-      # Get a key at https://nvd.nist.gov/developers/request-an-api-key.
-      - name: Require an NVD API key
+      # The scan cannot run without a key — this is not a rate-limit that can be waited out.
+      # dependency-check ships nvd.api.key as an empty string rather than absent, which passes its
+      # own null check and goes out as an empty apiKey header; NVD answers that with 404 where it
+      # answers a missing header with 200, and the task dies with "Invalid API Key, length of 0".
+      #
+      # So the scan step below is gated on the key rather than left to fail. With the job set to
+      # continue-on-error, a hard failure here would be indistinguishable from a real finding —
+      # both are just a red job — and the whole value of an advisory check is that red means
+      # something. This way the absence of a key is a visible annotation on a green job, and red
+      # means a vulnerable dependency.
+      #
+      # Get a key at https://nvd.nist.gov/developers/request-an-api-key and add it as the
+      # repository secret NVD_API_KEY.
+      - name: Note that the scan is skipped without an NVD API key
         if: ${{ env.NVD_API_KEY == '' }}
         run: |
-          echo "::error::NVD_API_KEY is not set. OWASP Dependency-Check cannot reach the NVD"
-          echo "::error::feed without one — it fails rather than degrading. Request a key at"
-          echo "::error::https://nvd.nist.gov/developers/request-an-api-key and add it as the"
-          echo "::error::repository secret NVD_API_KEY."
-          exit 1
+          echo "::warning title=Dependency scan skipped::NVD_API_KEY is not set, so OWASP"
+          echo "::warning title=Dependency scan skipped::Dependency-Check cannot reach the NVD"
+          echo "::warning title=Dependency scan skipped::feed and the scan did not run. Request a"
+          echo "::warning title=Dependency scan skipped::key at"
+          echo "::warning title=Dependency scan skipped::https://nvd.nist.gov/developers/request-an-api-key"
+          echo "::warning title=Dependency scan skipped::and add it as the secret NVD_API_KEY."
+          echo "### Dependency scan skipped" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`NVD_API_KEY\` is not configured, so no dependency scan ran. This job is" >> "$GITHUB_STEP_SUMMARY"
+          echo "advisory, so it stays green — but nothing was checked." >> "$GITHUB_STEP_SUMMARY"
 
       # --no-parallel is required, not tidiness. gradle.properties sets org.gradle.parallel=true,
       # and dependencyCheckAggregate resolves other projects' configurations at execution time,
@@ -219,6 +241,7 @@ jobs:
       # Without this the job fails in about ten seconds having scanned nothing — a permanently red
       # job, which decays into an ignored one, which is exactly what this was meant to replace.
       - name: Scan dependencies for known vulnerabilities
+        if: ${{ env.NVD_API_KEY != '' }}
         run: ./gradlew --no-parallel dependencyCheckAggregate
 
       # Uploaded on failure so the CVE list is readable without re-running the scan locally, which
@@ -227,6 +250,9 @@ jobs:
       # up that this first pointed at, where upload-artifact would have found nothing and, with its
       # default if-no-files-found: warn, said so only in passing.
       - name: Upload the report
+        # failure() only, not always(): a clean scan's report says nothing worth an artifact, and
+        # this is the one path where somebody has to go and read something, since the job itself
+        # no longer blocks.
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
