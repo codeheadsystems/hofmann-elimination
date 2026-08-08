@@ -227,12 +227,17 @@ public class HofmannOpaqueClientManager {
       AuthStartResponse startResp = accessor.authStart(serverId,
           new AuthStartRequest(credentialIdentifier, authState.ke1()));
 
-      // Step 2 — reconstruct KE2 and compute KE3 (throws SecurityException on bad server MAC)
-      AuthResult authResult = clientFor(serverId).generateKE3(authState, null, null, startResp.ke2());
-
-      // Step 3 — send KE3 to the server; throws SecurityException on 401
-      response = accessor.authFinish(serverId,
-          new AuthFinishRequest(startResp.sessionToken(), authResult.ke3()));
+      // Step 2 — reconstruct KE2 and compute KE3 (throws SecurityException on bad server MAC).
+      // The result is closed because this manager uses only ke3 from it: the session key comes
+      // back from the server in the response below, and the export key has nowhere to go through
+      // this API. Dropping them left both live on the heap after every authentication, and the
+      // export key is a long-term client secret derived from the password.
+      try (AuthResult authResult =
+               clientFor(serverId).generateKE3(authState, null, null, startResp.ke2())) {
+        // Step 3 — send KE3 to the server; throws SecurityException on 401
+        response = accessor.authFinish(serverId,
+            new AuthFinishRequest(startResp.sessionToken(), authResult.ke3()));
+      }
     }
 
     // Step 4 — if key rotation required, silently re-register with the same password

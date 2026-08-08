@@ -13,10 +13,14 @@ import java.util.Arrays;
  * <p><strong>The caller still owns its own array.</strong> This zeroes what it copied, not what it
  * was given.
  *
- * <p>{@code blind} is a {@link BigInteger} and cannot be zeroed at the Java level. It is worth
- * more here than in the authentication flow: {@code blind} together with the server's evaluated
- * element and the password reproduces {@code randomizedPwd}, so it is a per-registration secret
- * rather than a throwaway.
+ * <p><strong>{@code blind} cannot be zeroed, and it is a password verifier.</strong> It is a
+ * {@link BigInteger}, and with the {@code request} held in this same record —
+ * {@code blindedElement = blind · H(password)} — anyone holding both recovers {@code H(password)}
+ * and can mount an offline dictionary attack without the server. That is a stronger statement
+ * than the earlier one here, which said {@code blind} plus the evaluated element plus
+ * <em>the password</em> reproduces {@code randomizedPwd}; the real attack needs no password at
+ * all. See {@link ClientAuthState} for the same point and for why clearing the array is defence
+ * in depth rather than a guarantee.
  */
 public record ClientRegistrationState(BigInteger blind, byte[] password, RegistrationRequest request)
     implements AutoCloseable {

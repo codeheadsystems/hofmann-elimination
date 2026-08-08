@@ -16,6 +16,7 @@ import com.codeheadsystems.rfc.opaque.model.ServerKE2Result;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Arrays;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -260,6 +261,12 @@ public class Server {
   public byte[] serverFinish(ServerAuthState state, KE3 ke3) {
     // Security: constant-time comparison prevents timing side-channel attacks on MAC verification
     if (!MessageDigest.isEqual(state.expectedClientMac(), ke3.clientMac())) {
+      // A failed KE3 ends this handshake for good — the pending session is removed before the MAC
+      // is checked, so the state can never be presented again and both values are dead from here.
+      // Clearing them keeps a failed guess from leaving a usable session key behind; the caller
+      // has no handle to do it, since this throws instead of returning.
+      Arrays.fill(state.sessionKey(), (byte) 0);
+      Arrays.fill(state.expectedClientMac(), (byte) 0);
       throw new SecurityException("Authentication failed");
     }
     return state.sessionKey();

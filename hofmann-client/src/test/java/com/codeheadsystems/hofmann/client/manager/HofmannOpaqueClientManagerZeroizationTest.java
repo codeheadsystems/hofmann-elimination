@@ -18,8 +18,10 @@ import com.codeheadsystems.rfc.opaque.Client;
 import com.codeheadsystems.rfc.opaque.Server;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
+import com.codeheadsystems.rfc.opaque.model.AuthResult;
 import com.codeheadsystems.rfc.opaque.model.ClientAuthState;
 import com.codeheadsystems.rfc.opaque.model.ClientRegistrationState;
+import com.codeheadsystems.rfc.opaque.model.KE2;
 import com.codeheadsystems.rfc.opaque.model.RegistrationRecord;
 import com.codeheadsystems.rfc.opaque.model.RegistrationRequest;
 import com.codeheadsystems.rfc.opaque.model.RegistrationResponse;
@@ -155,6 +157,12 @@ class HofmannOpaqueClientManagerZeroizationTest {
 
     assertThat(recordingClient.registrationStates).hasSize(1);
     assertThat(recordingClient.registrationStates.get(0).password()).containsOnly((byte) 0);
+    // Added after a reviewer pointed out this was the one manager test that asserted nothing
+    // about the caller's array — which made it a control for the try-with-resources half only,
+    // and left my claim that reverting the copy fails all six tests wrong. It failed five.
+    assertThat(newPassword)
+        .as("the caller's array belongs to the caller")
+        .isEqualTo("a-brand-new-password".getBytes(StandardCharsets.UTF_8));
   }
 
   // ─── authentication ─────────────────────────────────────────────────────────
@@ -183,6 +191,43 @@ class HofmannOpaqueClientManagerZeroizationTest {
     assertThat(password)
         .as("authenticate() may hand this same array to changePassword on key rotation")
         .isEqualTo(password());
+  }
+
+  /**
+   * The manager takes only {@code ke3} out of the {@link AuthResult} and previously dropped the
+   * rest, so a completed authentication left a live session key and a live export key behind.
+   *
+   * <p>The export key is the one that matters: it derives from {@code randomizedPwd}, so it is a
+   * long-term client secret of the same class as the one the registration flow destroys when it
+   * drops it. This was the same defect on the other side of the protocol, and it was missed on
+   * the first pass — a reviewer found it by capturing the result and checking after the call.
+   */
+  @Test
+  void authenticate_clearsTheSessionAndExportKeysItDoesNotReturn() {
+    byte[] password = password();
+    RegistrationRecord record = registerDirectly(password);
+    Server server = serverHolder[0];
+
+    when(accessor.authStart(eq(SERVER_ID), any())).thenAnswer(inv -> {
+      com.codeheadsystems.hofmann.model.opaque.AuthStartRequest req = inv.getArgument(1);
+      ServerKE2Result ke2Result = server.generateKE2(null, record, CREDENTIAL_ID, req.ke1(), null);
+      when(accessor.authFinish(eq(SERVER_ID), any())).thenAnswer(finInv -> {
+        com.codeheadsystems.hofmann.model.opaque.AuthFinishRequest finReq = finInv.getArgument(1);
+        byte[] sessionKey = server.serverFinish(ke2Result.serverAuthState(), finReq.ke3());
+        return new AuthFinishResponse(B64.encodeToString(sessionKey), "test-jwt-token");
+      });
+      return new AuthStartResponse("session-token", ke2Result.ke2());
+    });
+
+    manager.authenticate(SERVER_ID, CREDENTIAL_ID, password);
+
+    assertThat(recordingClient.authResults).hasSize(1);
+    assertThat(recordingClient.authResults.get(0).exportKey())
+        .as("the export key is derived from randomizedPwd and has nowhere to go through this API")
+        .containsOnly((byte) 0);
+    assertThat(recordingClient.authResults.get(0).sessionKey())
+        .as("the session key the client computed locally; the caller gets the server's copy")
+        .containsOnly((byte) 0);
   }
 
   /**
@@ -266,6 +311,7 @@ class HofmannOpaqueClientManagerZeroizationTest {
   private static class RecordingClient extends Client {
     private final List<ClientRegistrationState> registrationStates = new ArrayList<>();
     private final List<ClientAuthState> authStates = new ArrayList<>();
+    private final List<AuthResult> authResults = new ArrayList<>();
     /** Copies of the password as it arrived, taken before the flow can touch anything. */
     private final List<byte[]> registrationPasswords = new ArrayList<>();
 
@@ -286,6 +332,14 @@ class HofmannOpaqueClientManagerZeroizationTest {
       ClientAuthState state = super.generateKE1(password);
       authStates.add(state);
       return state;
+    }
+
+    @Override
+    public AuthResult generateKE3(ClientAuthState state, byte[] clientIdentity,
+                                  byte[] serverIdentity, KE2 ke2) {
+      AuthResult result = super.generateKE3(state, clientIdentity, serverIdentity, ke2);
+      authResults.add(result);
+      return result;
     }
   }
 }

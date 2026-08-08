@@ -173,12 +173,21 @@ public class OpaqueCredentials {
         "CredentialResponsePad".getBytes(StandardCharsets.US_ASCII)
     );
     byte[] pad = suite.hkdfExpand(record.maskingKey(), padInfo, config.maskedResponseSize());
+    try {
+      // plaintext = server_public_key || envelope_nonce || auth_tag
+      byte[] plaintext = ByteUtils.concat(serverPublicKey, record.envelope().serialize());
+      byte[] maskedResponse = ByteUtils.xor(pad, plaintext);
+      Arrays.fill(plaintext, (byte) 0);
 
-    // plaintext = server_public_key || envelope_nonce || auth_tag
-    byte[] plaintext = ByteUtils.concat(serverPublicKey, record.envelope().serialize());
-    byte[] maskedResponse = ByteUtils.xor(pad, plaintext);
-
-    return new CredentialResponse(evaluatedElement, maskingNonce, maskedResponse);
+      return new CredentialResponse(evaluatedElement, maskingNonce, maskedResponse);
+    } finally {
+      // Cleared for symmetry with the client's recoverCredentials rather than because the server
+      // gains much: it holds oprfSeed and the stored maskingKey regardless, so pad tells an
+      // attacker with server heap access nothing they cannot already derive. The reason to do it
+      // anyway is that the same two variable names are cleared thirty lines away, and a reader
+      // should not have to work out which side is deliberate.
+      Arrays.fill(pad, (byte) 0);
+    }
   }
 
   /**
@@ -244,11 +253,21 @@ public class OpaqueCredentials {
   /**
    * Derives randomized password from OPRF output.
    *
+   * <p><strong>The returned array is password-equivalent and the caller owns it.</strong>
+   * Everything the envelope protects — the envelope keys, the masking key, the client's long-term
+   * private key — derives from this value, so holding it is equivalent to holding the password;
+   * no guessing step follows. Clear it when you are done. Both callers in this class do, in a
+   * {@code finally}.
+   *
+   * <p>The intermediates are cleared here, but see {@link
+   * com.codeheadsystems.rfc.opaque.model.ClientAuthState} on why that shortens a window rather
+   * than removing the material from the heap.
+   *
    * @param password         the password
    * @param blind            the blind
    * @param evaluatedElement the evaluated element
    * @param config           the config
-   * @return the byte [ ]
+   * @return the randomized password; password-equivalent, and the caller's to clear
    */
   public static byte[] deriveRandomizedPwd(byte[] password, BigInteger blind,
                                            byte[] evaluatedElement, OpaqueConfig config) {
