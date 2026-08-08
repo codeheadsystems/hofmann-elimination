@@ -11,9 +11,9 @@ P2 item is closed.** What remains is P3 and the findings raised while closing th
 
 | Section | Open |
 |---|---:|
-| New findings | 5 |
+| New findings | 6 |
 | **P3 Low** | 4 |
-| **Total** | **9** |
+| **Total** | **10** |
 
 Recount with `grep -c '^- \[ \]' TODO.md` after editing.
 
@@ -152,6 +152,22 @@ two are documented in code with no action planned.
       the method; closing it means the store answering in constant time, which is a
       store-implementation concern this library does not control.
 
+- [ ] **The dependency scan is configured but inert: no `NVD_API_KEY` secret** — the
+      `dependency-scan` job runs on every push, goes green in about ten seconds, and scans
+      nothing. OWASP Dependency-Check cannot reach the NVD feed without a key and fails rather
+      than degrading, so the job skips the scan and emits a warning annotation instead. Confirmed
+      on the run for PR #93: `Scan dependencies for known vulnerabilities: skipped`.
+
+      Deliberate — the job is `continue-on-error`, and a hard failure there would be
+      indistinguishable from a real finding, which would make red meaningless. But it does mean
+      the gate this work added is currently doing nothing. Closing it is one action by someone
+      with repository admin: request a key at
+      https://nvd.nist.gov/developers/request-an-api-key and add it as the secret `NVD_API_KEY`.
+
+      Until then the only dependency coverage is `cargo audit`, `npm audit` and the
+      Dependabot alerts from `dependency-submission` — which is what the situation was before,
+      minus the version floors.
+
 - [ ] **CVSS-unscored advisories pass the dependency gate** — `dependencyCheckAggregate` fails on
       `failBuildOnCVSS = 4.0`, but an advisory with no CVSS score at all is estimated rather than
       scored, and the logback `HardenedObjectInputStream` issue that motivated this work estimates
@@ -183,12 +199,20 @@ two are documented in code with no action planned.
       `hofmann` issuer would cross-accept tokens), and `revoke(jti)` is never called from
       any endpoint, so there is no logout — a stolen JWT lives its full 3600 s TTL.
 
-- [ ] **CORS and header parity** — `CorsFilter.java:30-40` omits `Vary: Origin` on both
-      non-matching early returns (only the matching path sets it at `:39`) and sets no
-      `Access-Control-Max-Age`; a shared cache can serve one origin's response to another.
-      Dropwizard writes HSTS unconditionally including on plaintext, while Spring writes it
-      only on requests it considers secure — behind a TLS-terminating proxy, effectively
-      never. Neither framework sets `Referrer-Policy` or `Content-Security-Policy`.
+- [ ] **CORS and header parity** — **[re-verified 2026-08-08]**. `CorsFilter` omits
+      `Vary: Origin` on both non-matching early returns (only the matching path sets it) and sets
+      no `Access-Control-Max-Age`; a shared cache can serve one origin's response to another.
+      `SecurityHeadersFilter` sets neither `Referrer-Policy` nor `Content-Security-Policy`, and
+      neither does the Spring side.
+
+      **HSTS now has three behaviours, and the newest one is the correct one.** Dropwizard's
+      `SecurityHeadersFilter` still writes it unconditionally, including over plaintext, which
+      RFC 6797 §7.2 says a browser ignores. Spring writes it only when it considers the request
+      secure — behind a TLS-terminating proxy, effectively never.
+      `ApiDocsSecurityHeadersFilter`, added while closing the API-docs finding, writes it on
+      `request.isSecure() || (trustForwardedHeaders && X-Forwarded-Proto == https)`, which is
+      right in both deployments and does not let an untrusted client forge an HSTS pin. Closing
+      this item means moving the other two onto that condition, not inventing a fourth.
 
 - [ ] **Demo and test-server hygiene** — `hofmann-demo/.swp` is tracked by git (vim swap
       file with an editing buffer, username, and hostname; no secrets); add `*.swp` to
