@@ -16,7 +16,7 @@ import com.codeheadsystems.rfc.opaque.model.ClientRegistrationState;
 import com.codeheadsystems.rfc.opaque.model.Envelope;
 import com.codeheadsystems.rfc.opaque.model.KE1;
 import com.codeheadsystems.rfc.opaque.model.RegistrationRecord;
-import com.codeheadsystems.rfc.opaque.config.OpaqueTestConfigs;
+import com.codeheadsystems.rfc.opaque.testfixtures.OpaqueTestConfigs;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.stream.Stream;

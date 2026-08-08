@@ -3,7 +3,7 @@ package com.codeheadsystems.rfc.opaque.config;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.codeheadsystems.rfc.common.RandomProvider;
-import com.codeheadsystems.rfc.opaque.config.OpaqueTestConfigs;
+import com.codeheadsystems.rfc.opaque.testfixtures.OpaqueTestConfigs;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 

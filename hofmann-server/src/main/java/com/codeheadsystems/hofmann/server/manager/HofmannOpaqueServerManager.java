@@ -60,6 +60,7 @@ import org.slf4j.LoggerFactory;
 public class HofmannOpaqueServerManager {
 
   private static final Logger log = LoggerFactory.getLogger(HofmannOpaqueServerManager.class);
+
   private static final Base64.Encoder B64 = Base64.getEncoder();
 
   /**
@@ -122,6 +123,13 @@ public class HofmannOpaqueServerManager {
   private final RecoveryTokenStore recoveryTokenStore;
   private final RecoveryChallengeStore recoveryChallengeStore;
   private final RateLimiter recoveryRateLimiter;
+
+  /**
+   * Key versions already warned about. Bounded by the number of versions the deployment has used,
+   * which is operator-controlled; see {@link #warnOnceAboutMissingKeyVersion}.
+   */
+  private final java.util.Set<Integer> warnedMissingKeyVersions =
+      java.util.concurrent.ConcurrentHashMap.newKeySet();
 
   /**
    * Instantiates a new Hofmann opaque server manager with default rate limiters
@@ -855,19 +863,27 @@ public class HofmannOpaqueServerManager {
     Server server;
     RegistrationRecord record;
     int keyVersion;
-    if (versioned.isPresent() && keyDetail.serverForVersion(versioned.get().keyVersion()) != null) {
+    // Resolved once and held. The guard used to be a separate invocation from the value —
+    // `serverForVersion(...) != null` in the condition, `serverForVersion(...)` again in the body —
+    // so a supplier handing out a mutable previousServers map could satisfy the guard and then
+    // return null, producing an NPE below instead of the fake-KE2 fallback. OpaqueServerKeyDetail
+    // is a record that does not defensively copy that map, and the supplier interface exists to
+    // let a deployment manage keys dynamically, so it is invited rather than merely possible.
+    // Both in-repo suppliers use immutable maps, which is why this was latent.
+    Server versionedServer = versioned
+        .map(vc -> keyDetail.serverForVersion(vc.keyVersion()))
+        .orElse(null);
+    if (versionedServer != null) {
       VersionedCredential vc = versioned.get();
       keyVersion = vc.keyVersion();
-      server = keyDetail.serverForVersion(keyVersion);
+      server = versionedServer;
       record = vc.record();
     } else {
-      if (versioned.isPresent()) {
-        log.warn("No server key for version {} — credential cannot be authenticated",
-            versioned.get().keyVersion());
-      }
+      versioned.ifPresent(vc -> warnOnceAboutMissingKeyVersion(vc.keyVersion()));
       // A null record means "answer with a fake". Both the unregistered case and the credential
       // that exists but cannot be authenticated under any known key version take this path, so
-      // neither is distinguishable from the other or from a real one.
+      // neither is distinguishable from the other or from a real one — subject to the logging
+      // caveat on warnOnceAboutMissingKeyVersion, which is why that method exists.
       keyVersion = keyDetail.currentVersion();
       server = keyDetail.currentServer();
       record = null;
@@ -876,10 +892,51 @@ public class HofmannOpaqueServerManager {
         server.generateKE2ForRecordOrFake(null, record, credentialIdentifier, ke1, null);
 
     String sessionToken = UUID.randomUUID().toString();
+    // NOTE: keep this method's remaining work identical across branches. See
+    // warnOnceAboutMissingKeyVersion for what a per-request log statement costs here.
     pendingSessionStore.store(sessionToken, ke2Result.serverAuthState(),
         req.credentialIdentifierBase64(), keyVersion);
 
     return new AuthStartResponse(sessionToken, ke2Result.ke2());
+  }
+
+  /**
+   * Warns at most once per key version that a credential is stranded on a key that is gone.
+   *
+   * <p><strong>Once, because logging on one branch of three is a timing oracle.</strong> The
+   * warning used to run per request, inside the region an attacker times. A reviewer measured it
+   * against logback at INFO with a file appender — an ordinary production configuration, not a
+   * contrived one — and the stranded branch was 31.2&micro;s slower than the unregistered branch:
+   * AUC 0.64, about 1,400 probes per identifier to distinguish at 5&sigma;. The minimum shifted too,
+   * so it was a floor shift rather than a tail artefact.
+   *
+   * <p>That is seven times cheaper than the 200-probe oracle {@code generateKE2ForRecordOrFake}
+   * was written to close, and it distinguishes exactly the population that work claimed to cover:
+   * "this account exists but is stranded on a dropped key version" against "this account does not
+   * exist". It reads as no signal on a bare test classpath, where the logger is a NOP and the call
+   * costs 1.5&micro;s — which is why it survived the change that was supposed to fix this branch,
+   * and why the commit that made it asserted a property it had not measured.
+   *
+   * <p>A stranded key version is a deployment condition, not a per-request one: the operator needs
+   * to know it happened, not how many times. Logging once per version means an attacker sees the
+   * cost on at most one probe ever, and it also closes the log-amplification vector — before this,
+   * anyone who knew one stranded identifier could drive unbounded WARN-level output at an
+   * unauthenticated endpoint.
+   *
+   * <p>The set is bounded by the number of distinct key versions the deployment has ever used,
+   * which is small and operator-controlled rather than attacker-controlled. That is the property
+   * that makes an unbounded-looking set safe here; it would not be safe keyed on the credential
+   * identifier.
+   *
+   * @param keyVersion the version that has no server
+   */
+  private void warnOnceAboutMissingKeyVersion(int keyVersion) {
+    if (warnedMissingKeyVersions.add(keyVersion)) {
+      log.warn("No server key for version {} — credentials registered under it cannot be "
+          + "authenticated and will receive a fake KE2. This is logged once per version: the "
+          + "warning sits on one branch of authStart, and emitting it per request makes that "
+          + "branch measurably slower than the others.", keyVersion);
+    }
   }
 
   /**

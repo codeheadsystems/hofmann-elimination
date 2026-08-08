@@ -23,7 +23,7 @@ import com.codeheadsystems.rfc.opaque.model.AuthResult;
 import com.codeheadsystems.rfc.opaque.model.ClientAuthState;
 import com.codeheadsystems.rfc.opaque.model.ClientRegistrationState;
 import com.codeheadsystems.rfc.opaque.model.KE1;
-import com.codeheadsystems.rfc.opaque.config.OpaqueTestConfigs;
+import com.codeheadsystems.rfc.opaque.testfixtures.OpaqueTestConfigs;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;

@@ -289,7 +289,13 @@ public class Server {
    * @param serverIdentity       the server identity
    * @param clientIdentity       the client identity
    * @return the server ke 2 result
+   * @deprecated use {@link #generateKE2ForRecordOrFake} with a null record. Deprecating this in
+   *     prose alone produced no compiler warning, so a consumer following the old shape — which
+   *     the integration guide still showed — reproduced the enumeration oracle with nothing to
+   *     tell them. Kept rather than removed because downstream consumers legitimately call it
+   *     today.
    */
+  @Deprecated(since = "3.1.0", forRemoval = true)
   public ServerKE2Result generateFakeKE2(KE1 ke1,
                                          byte[] credentialIdentifier,
                                          byte[] serverIdentity,
@@ -323,9 +329,23 @@ public class Server {
    * endpoint that is already rate limited and already performs several scalar multiplications.
    * That is the trade this makes, stated so it can be disagreed with.
    *
-   * <p>This equalises the work; it does not make it constant-time in the strict sense. The
-   * branch is still a branch, the two records differ in content, and a JIT that speculates or a
-   * store lookup whose cost depends on a hit are both outside what this can control. It closes a
+   * <p>This equalises the work; it does not make it constant-time in the strict sense, and two
+   * caveats are worth more than the parenthetical they used to get.
+   *
+   * <p><strong>The credential store lookup is not addressed here and will dominate on a
+   * persistent store.</strong> Against {@code InMemoryCredentialStore} a hit and a miss are
+   * indistinguishable — measured at AUC 0.5015 at the manager level. Against the JDBC- or
+   * Redis-backed {@code CredentialStore} the interface exists for and the documentation
+   * recommends for production, a miss versus a hit is a larger and far more reliable signal than
+   * the ~130&micro;s this closes. In that deployment this change is necessary and nowhere near
+   * sufficient; the store has to answer in constant time too.
+   *
+   * <p>And anything else the caller does on only one branch reopens it. A single per-request log
+   * statement on the unregistered path measured 31.2&micro;s against a production logback
+   * configuration — a cheaper oracle than the one this method closes. See
+   * {@code HofmannOpaqueServerManager.warnOnceAboutMissingKeyVersion}.
+   *
+   * <p>The branch is also still a branch, and the two records differ in content. It closes a
    * gross, remotely measurable offset rather than a microarchitectural one.
    *
    * @param serverIdentity       the server identity

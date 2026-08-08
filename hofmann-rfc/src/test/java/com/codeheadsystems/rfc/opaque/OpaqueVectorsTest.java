@@ -15,7 +15,7 @@ import com.codeheadsystems.rfc.opaque.model.RegistrationRecord;
 import com.codeheadsystems.rfc.opaque.model.RegistrationResponse;
 import com.codeheadsystems.rfc.opaque.model.ServerAuthState;
 import com.codeheadsystems.rfc.opaque.model.ServerKE2Result;
-import com.codeheadsystems.rfc.opaque.config.OpaqueTestConfigs;
+import com.codeheadsystems.rfc.opaque.testfixtures.OpaqueTestConfigs;
 import java.math.BigInteger;
 import java.util.Arrays;
 import org.bouncycastle.util.encoders.Hex;

@@ -1,4 +1,7 @@
-package com.codeheadsystems.rfc.opaque.config;
+package com.codeheadsystems.rfc.opaque.testfixtures;
+
+import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
+import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
 
 import com.codeheadsystems.rfc.common.RandomProvider;
 import java.nio.charset.StandardCharsets;
@@ -22,6 +25,11 @@ import java.nio.charset.StandardCharsets;
  * {@code allowIdentityKsf} on the server, {@code allowWeakServerKsf} on the client — so this is
  * defence in depth rather than the only guard. It closes the gap for a caller who builds an
  * {@code OpaqueConfig} directly and never passes through either.
+ *
+ * <p>In its own package rather than beside {@code OpaqueConfig}: a class in
+ * {@code ...opaque.config} shipping from the fixtures jar would split that package across two
+ * artifacts. Harmless on a classpath, and an error the day a {@code module-info.java} is added —
+ * which is the fix recorded in TODO.md for the routes this move does not close.
  *
  * <p>The CFRG context {@code "OPAQUE-POC"} is the one RFC 9807's test vectors use, which is the
  * other reason these belong beside the tests: the value is meaningful for vector reproduction and

@@ -36,12 +36,19 @@ public record OpaqueConfig(
       new RandomProvider()
   );
 
-  // The forTesting() factories that used to live here are now
-  // com.codeheadsystems.rfc.opaque.config.OpaqueTestConfigs, in src/testFixtures. They build a
-  // config with the identity KSF — no password stretching at all — and being public on this class
-  // put them one autocomplete away from a production caller, behind nothing but a javadoc line.
-  // Test fixtures are published under a separate classifier and are not on a consumer's compile
-  // classpath unless asked for by name, so the boundary is now enforced by the build.
+  // The forTesting() factories that used to live here are now OpaqueTestConfigs, in
+  // src/testFixtures. They build a config with the identity KSF — no password stretching at all —
+  // and being public on this class put them one autocomplete away from a production caller,
+  // behind nothing but a javadoc line. Test fixtures publish under a separate classifier and are
+  // not on a consumer's compile classpath unless asked for by name.
+  //
+  // What that moved is the convenience, not the capability: IdentityKsf below is still public, and
+  // has to be — both framework integrations construct it directly for their documented
+  // dev/test branch. So an identity-KSF config still rebuilds in one expression on this API. The
+  // guards that actually stop it reaching production are allowIdentityKsf on the server and
+  // allowWeakServerKsf on the client, which is what OpaqueTestConfigs' own javadoc says. An
+  // earlier version of this comment claimed the build now enforced the boundary; it enforces the
+  // absence of the shortcut.
 
   /**
    * Creates a configuration with Argon2id KSF, P256-SHA256 suite, and given context.
@@ -74,12 +81,18 @@ public record OpaqueConfig(
   /**
    * Returns a new config identical to this one but using the given {@link RandomProvider}.
    *
-   * <p>Public deliberately, for the same reason as
-   * {@link com.codeheadsystems.rfc.oprf.rfc9497.OprfCipherSuite#withRandom(java.security.SecureRandom)}:
-   * this is how a deployment installs an HSM-backed or policy-constrained randomness source, not
-   * a hook for fixing nonces. A caller who supplies a stub provider has done that deliberately,
-   * and no visibility change here would stop them — the same stub can be handed to the
-   * constructor.
+   * <p>Public deliberately: this is how a deployment installs an HSM-backed or policy-constrained
+   * randomness source into OPAQUE, not a hook for fixing nonces. A caller who supplies a stub
+   * provider has done that deliberately, and no visibility change here would stop them — the same
+   * stub can be handed to the constructor.
+   *
+   * <p>It is also the fix for a real defect rather than a hypothetical capability. Both framework
+   * integrations installed the deployment's {@link RandomProvider} on the identity-KSF branch and
+   * then returned {@link #withArgon2id} on the Argon2id branch, which builds its own
+   * {@code new RandomProvider()} internally — so on the production path the injected source was
+   * silently dropped and every masking nonce, server AKE key seed, server nonce, envelope nonce
+   * and client nonce came from the platform default. Both now chain this method; see
+   * {@code InjectedSecureRandomReachesOpaqueTest}.
    *
    * @param randomProvider the random provider
    * @return the opaque config

@@ -138,15 +138,23 @@ byte[] serverSessionKey = server.serverFinish(ke2Result.serverAuthState(), ke3);
 
 ### User Enumeration Protection
 
-The server provides a fake KE2 for unregistered users that is computationally indistinguishable from a real response:
+Answer both cases through one call, passing `null` for the record when the credential is not registered:
 
 ```java
-ServerKE2Result fakeKe2 = server.generateFakeKE2(
-    ke1, credentialIdentifier, serverIdentity, clientIdentity
+// record == null → a fake KE2, and the same work either way
+ServerKE2Result ke2 = server.generateKE2ForRecordOrFake(
+    serverIdentity, record, credentialIdentifier, ke1, clientIdentity
 );
 ```
 
-The fake masking key and client public key are derived deterministically from the OPRF seed and credential identifier, ensuring consistent responses to the same input across server restarts.
+The fake masking key and client public key are derived deterministically from the OPRF seed and credential identifier, so the same input gets the same response across server restarts.
+
+**Do not call `generateFakeKE2` on only the unregistered branch.** That is what this guide used to show, and it reproduces a user-enumeration oracle: building the fake record costs two HKDF expansions and a full `deriveAkeKeyPair` — a hash-to-scalar loop and a generator scalar multiplication — that the registered branch does not pay. Measured at a 17–20% one-directional offset, distinguishable in roughly 200 probes per identifier. RFC 9807 §10.6 asks for a response that does not reveal whether the account exists; a response body that is indistinguishable does not help when the latency is not. `generateKE2ForRecordOrFake` builds the fake record unconditionally and discards it when unused, so both branches pay. `generateFakeKE2` is deprecated and remains only for callers that already depend on it.
+
+**Two things this does not cover, and one of them will dominate in production.**
+
+- **The credential store lookup.** A hit and a miss are indistinguishable against the in-memory store, but on the JDBC- or Redis-backed `CredentialStore` recommended for production they are not — and that signal is larger and more reliable than the one above. Constant-time behaviour has to reach the store, not just the protocol.
+- **Anything else you do on one branch only.** A single per-request log statement on the unregistered path measured 31.2 µs against an ordinary logback configuration, which is a *cheaper* oracle than the one this API closes. If you must log a branch-specific condition, log it once per condition rather than once per request.
 
 ## Key Classes
 
