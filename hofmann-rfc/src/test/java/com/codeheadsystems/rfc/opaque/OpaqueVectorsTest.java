@@ -15,6 +15,7 @@ import com.codeheadsystems.rfc.opaque.model.RegistrationRecord;
 import com.codeheadsystems.rfc.opaque.model.RegistrationResponse;
 import com.codeheadsystems.rfc.opaque.model.ServerAuthState;
 import com.codeheadsystems.rfc.opaque.model.ServerKE2Result;
+import com.codeheadsystems.rfc.opaque.config.OpaqueTestConfigs;
 import java.math.BigInteger;
 import java.util.Arrays;
 import org.bouncycastle.util.encoders.Hex;
@@ -71,7 +72,7 @@ class OpaqueVectorsTest {
   // Expected intermediate values for Vector 1
   private static final byte[] EXPECTED_RANDOMIZED_PWD = hex("06be0a1a51d56557a3adad57ba29c5510565dcd8b5078fa319151b9382258fb0");
 
-  private static final OpaqueConfig CONFIG = OpaqueConfig.forTesting();
+  private static final OpaqueConfig CONFIG = OpaqueTestConfigs.forTesting();
 
   // ─── Vector 1: No explicit identities ─────────────────────────────────────
   private static final byte[] V3_SERVER_PRIVATE_KEY = hex("34fbe7e830be1fe8d2187c97414e3826040cbe49b893b64229bab5e85a5888c7");

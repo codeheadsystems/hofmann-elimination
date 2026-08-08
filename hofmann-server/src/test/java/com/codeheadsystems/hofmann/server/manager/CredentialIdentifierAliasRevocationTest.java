@@ -23,6 +23,7 @@ import com.codeheadsystems.rfc.opaque.model.AuthResult;
 import com.codeheadsystems.rfc.opaque.model.ClientAuthState;
 import com.codeheadsystems.rfc.opaque.model.ClientRegistrationState;
 import com.codeheadsystems.rfc.opaque.model.KE1;
+import com.codeheadsystems.rfc.opaque.config.OpaqueTestConfigs;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -51,7 +52,7 @@ class CredentialIdentifierAliasRevocationTest {
   private static final byte[] JWT_SECRET = "test-secret-must-be-at-least-32-bytes!".getBytes();
   private static final byte[] ALICE = "alice@example.com".getBytes(StandardCharsets.UTF_8);
   private static final byte[] PASSWORD = "correct-horse-battery".getBytes(StandardCharsets.UTF_8);
-  private static final OpaqueConfig CONFIG = OpaqueConfig.forTesting();
+  private static final OpaqueConfig CONFIG = OpaqueTestConfigs.forTesting();
   private static final Base64.Encoder B64 = Base64.getEncoder();
 
   private static final String CANONICAL = B64.encodeToString(ALICE);

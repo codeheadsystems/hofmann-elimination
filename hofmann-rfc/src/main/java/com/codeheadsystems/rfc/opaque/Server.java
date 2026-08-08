@@ -383,18 +383,18 @@ public class Server {
    * @param serverNonce          the server nonce
    * @return the server ke 2 result
    */
-  public ServerKE2Result generateKE2Deterministic(byte[] serverIdentity,
-                                                  RegistrationRecord record,
-                                                  byte[] credentialIdentifier,
-                                                  KE1 ke1,
-                                                  byte[] clientIdentity,
-                                                  byte[] maskingNonce,
-                                                  byte[] serverAkeKeySeed,
-                                                  byte[] serverNonce) {
+  ServerKE2Result generateKE2Deterministic(byte[] serverIdentity,
+                                           RegistrationRecord record,
+                                           byte[] credentialIdentifier,
+                                           KE1 ke1,
+                                           byte[] clientIdentity,
+                                           byte[] maskingNonce,
+                                           byte[] serverAkeKeySeed,
+                                           byte[] serverNonce) {
     return OpaqueAke.generateKE2Deterministic(
-        config, serverIdentity, serverPrivateKey, serverPublicKey,
-        record, credentialIdentifier, oprfSeed, ke1, clientIdentity,
-        maskingNonce, serverAkeKeySeed, serverNonce);
+                                              config, serverIdentity, serverPrivateKey, serverPublicKey,
+                                              record, credentialIdentifier, oprfSeed, ke1, clientIdentity,
+                                              maskingNonce, serverAkeKeySeed, serverNonce);
   }
 
   /**
@@ -411,20 +411,20 @@ public class Server {
    * @param serverNonce          the server nonce
    * @return the server ke 2 result
    */
-  public ServerKE2Result generateFakeKE2Deterministic(KE1 ke1,
-                                                      byte[] credentialIdentifier,
-                                                      byte[] serverIdentity,
-                                                      byte[] clientIdentity,
-                                                      byte[] fakeClientPublicKey,
-                                                      byte[] fakeMaskingKey,
-                                                      byte[] maskingNonce,
-                                                      byte[] serverAkeKeySeed,
-                                                      byte[] serverNonce) {
+  ServerKE2Result generateFakeKE2Deterministic(KE1 ke1,
+                                               byte[] credentialIdentifier,
+                                               byte[] serverIdentity,
+                                               byte[] clientIdentity,
+                                               byte[] fakeClientPublicKey,
+                                               byte[] fakeMaskingKey,
+                                               byte[] maskingNonce,
+                                               byte[] serverAkeKeySeed,
+                                               byte[] serverNonce) {
     Envelope fakeEnvelope = new Envelope(new byte[OpaqueConfig.Nn], new byte[config.Nm()]);
     RegistrationRecord fakeRecord = new RegistrationRecord(fakeClientPublicKey, fakeMaskingKey, fakeEnvelope);
     return OpaqueAke.generateKE2Deterministic(
-        config, serverIdentity, serverPrivateKey, serverPublicKey,
-        fakeRecord, credentialIdentifier, oprfSeed, ke1, clientIdentity,
-        maskingNonce, serverAkeKeySeed, serverNonce);
+                                              config, serverIdentity, serverPrivateKey, serverPublicKey,
+                                              fakeRecord, credentialIdentifier, oprfSeed, ke1, clientIdentity,
+                                              maskingNonce, serverAkeKeySeed, serverNonce);
   }
 }

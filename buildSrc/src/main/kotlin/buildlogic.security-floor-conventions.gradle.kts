@@ -1,6 +1,25 @@
 /*
  * Minimum versions for transitive dependencies with published advisories.
  *
+ * *** Read this before assuming it protects downstream applications. ***
+ *
+ * Declared on `api`, so the floor reaches both `apiElements` and `runtimeElements` and therefore
+ * both compile and runtime classpaths of a Gradle consumer. It was on `implementation` first,
+ * which reaches runtime only — a Gradle consumer compiled against the vulnerable version.
+ *
+ * A *Maven* consumer gets no protection from this at all, and no change here can give it any.
+ * The published POM does carry a <dependencyManagement> section, but Maven does not inherit
+ * dependencyManagement from a transitive dependency — only from its own POM, its parents, and
+ * imported BOMs — so the section is inert for exactly the audience that matters. Verified against
+ * a real Maven 3.9.11 consumer resolving from mavenLocal: jetty-security 12.1.9, logback-core
+ * 1.5.33. The same test against the pre-existing `api`-declared jackson constraints in
+ * hofmann-springboot resolved 3.1.4 where the POM said 3.2.1, so this is Maven's behaviour rather
+ * than something wrong with these entries.
+ *
+ * So the honest scope is: this build, and Gradle consumers. Protecting a Maven consumer needs
+ * either depth-1 direct dependencies (nearest-wins) or a published BOM they import, and neither
+ * is in scope here.
+ *
  * These are all pulled in by Dropwizard and Spring Boot rather than declared here, so bumping the
  * framework version is not an option that is always available — a patched Jetty usually ships
  * well before the Dropwizard release that picks it up. A constraint raises the resolved version
@@ -23,7 +42,8 @@
  */
 
 plugins {
-    java
+    // java-library rather than java, so the `api` configuration exists to declare against.
+    `java-library`
 }
 
 dependencies {
@@ -34,43 +54,43 @@ dependencies {
         // it is not exposed directly. The floor exists because the bundle installs into other
         // people's Dropwizard applications, and their authentication configuration is not ours
         // to assume.
-        implementation("org.eclipse.jetty:jetty-security:12.1.10") {
+        api("org.eclipse.jetty:jetty-security:12.1.10") {
             because("digest authentication bypass via ISO-8859-1 lossy encoding, fixed in 12.1.10")
         }
         // GHSA — Jetty cross-request leakage for trailers on HTTP/1.1 keep-alive connections.
         // Rated medium. Trailers leaking across requests on a shared connection is exactly the
         // class of bug that matters for an authentication endpoint, where the request body
         // carries the OPRF evaluation and the response carries a session token.
-        implementation("org.eclipse.jetty:jetty-server:12.1.10") {
+        api("org.eclipse.jetty:jetty-server:12.1.10") {
             because("cross-request trailer leakage on keep-alive connections, fixed in 12.1.10")
         }
         // Moved with the two above so the family stays on one version.
-        implementation("org.eclipse.jetty:jetty-http:12.1.10") {
+        api("org.eclipse.jetty:jetty-http:12.1.10") {
             because("keeps the Jetty family on one version alongside the two advisories above")
         }
-        implementation("org.eclipse.jetty:jetty-io:12.1.10") {
+        api("org.eclipse.jetty:jetty-io:12.1.10") {
             because("keeps the Jetty family on one version alongside the two advisories above")
         }
-        implementation("org.eclipse.jetty:jetty-util:12.1.10") {
+        api("org.eclipse.jetty:jetty-util:12.1.10") {
             because("keeps the Jetty family on one version alongside the two advisories above")
         }
-        implementation("org.eclipse.jetty:jetty-session:12.1.10") {
+        api("org.eclipse.jetty:jetty-session:12.1.10") {
             because("keeps the Jetty family on one version alongside the two advisories above")
         }
-        implementation("org.eclipse.jetty.ee10:jetty-ee10-servlet:12.1.10") {
+        api("org.eclipse.jetty.ee10:jetty-ee10-servlet:12.1.10") {
             because("keeps the Jetty family on one version alongside the two advisories above")
         }
         // GHSA — logback object injection through HardenedObjectInputStream. Rated low, and it
         // needs a deserialization path this project does not open: nothing here enables the
         // socket receiver or deserializes a logging event. Floored anyway because it costs a
         // patch version.
-        implementation("ch.qos.logback:logback-core:1.5.34") {
+        api("ch.qos.logback:logback-core:1.5.34") {
             because("object injection through HardenedObjectInputStream, fixed in 1.5.34")
         }
         // logback-classic is not named in that advisory, but it links against core's internals
         // and the two are released together. Leaving classic on 1.5.33 against core 1.5.34 is
         // the untested combination, which is a worse trade than one extra patch bump.
-        implementation("ch.qos.logback:logback-classic:1.5.34") {
+        api("ch.qos.logback:logback-classic:1.5.34") {
             because("keeps logback-classic in step with the floored logback-core")
         }
     }

@@ -82,13 +82,6 @@ jobs:
         run: npm ci
         working-directory: hofmann-typescript
 
-      # Fails the job on a high or critical advisory in anything this package ships or builds
-      # with. --audit-level=high rather than moderate: a gate that fires on every transitive dev
-      # dependency gets ignored, and an ignored gate is the same as no gate.
-      - name: Audit npm dependencies
-        run: npm audit --audit-level=high
-        working-directory: hofmann-typescript
-
       - name: Typecheck
         run: npm run typecheck
         working-directory: hofmann-typescript
@@ -99,6 +92,15 @@ jobs:
 
       - name: Test
         run: npm test
+        working-directory: hofmann-typescript
+
+      # Runs last, deliberately. Placed before typecheck/build/test it would mean an advisory in
+      # vite or vitest hides whether the client actually works — the functional signal is the one
+      # you cannot reconstruct from the logs. --audit-level=high rather than moderate for the same
+      # reason the Gradle gate skips test configurations: a check that fires on every transitive
+      # dev dependency gets ignored, and an ignored gate is the same as no gate.
+      - name: Audit npm dependencies
+        run: npm audit --audit-level=high
         working-directory: hofmann-typescript
 
   rust:
@@ -125,6 +127,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            ~/.cargo/bin
             hofmann-rust/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('hofmann-rust/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
@@ -140,13 +143,16 @@ jobs:
       - name: Test
         run: cargo test --locked
 
-      # RustSec's advisory database, checked against Cargo.lock. Installed from crates.io rather
-      # than via a third-party action: this repo pins its actions by commit SHA precisely to avoid
-      # trusting a mutable tag, and adding an unpinnable action would undo that. The trade is that
-      # cargo-audit itself is not version-pinned — for an advisory scanner that is arguably right,
-      # since the value is in having the newest checks, but it is a trade rather than a free win.
+      # RustSec's advisory database, checked against Cargo.lock. The version is pinned, which it
+      # was not at first: `cargo install cargo-audit --locked` pins cargo-audit's own lockfile
+      # *after* resolving "latest", so the binary itself floated. In a workflow that SHA-pins every
+      # action specifically to avoid mutable tags, compiling ~200 crates fetched at HEAD-of-crates
+      # .io next to a checkout of this repo was the softest target in the file. The argument I gave
+      # for leaving it unpinned — that an advisory scanner should be newest — was also wrong: the
+      # advisories come from the RustSec database at runtime, not from the binary, so a pinned
+      # scanner is not a stale scanner.
       - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
+        run: cargo install cargo-audit --version 0.22.2 --locked
 
       - name: Audit Rust dependencies
         run: cargo audit --deny warnings
@@ -175,37 +181,57 @@ jobs:
         uses: gradle/actions/setup-gradle@417ae3ccd767c252f5661f1ace9f835f9654f2b5 # v3.1.0
 
       # The NVD database is large and slow to build; caching it keeps this job to minutes rather
-      # than tens of minutes. The key rolls weekly so the cache cannot go stale enough to miss a
-      # recent advisory, and restore-keys still gives a warm start on the week's first run.
+      # than tens of minutes. The key is dated to the ISO week, so the cache is rebuilt once a week
+      # and cannot go stale enough to miss a recent advisory, while restore-keys gives a warm start
+      # on the week's first run. It was keyed on github.run_id first, which is unique per run —
+      # never a hit, and a fresh multi-hundred-megabyte save every time, which would have evicted
+      # the gradle, npm and cargo caches out of the repository's cache budget.
+      - name: Compute the weekly cache key
+        id: nvd-week
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+
       - name: Cache the NVD database
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.gradle/dependency-check-data
-          key: ${{ runner.os }}-nvd-${{ github.run_id }}
+          key: ${{ runner.os }}-nvd-${{ steps.nvd-week.outputs.week }}
           restore-keys: ${{ runner.os }}-nvd-
 
-      # NVD_API_KEY is not required, but without it the NVD API rate-limits hard enough that the
-      # first run can take the better part of an hour. Get one at
-      # https://nvd.nist.gov/developers/request-an-api-key and add it as a repository secret.
-      # This does not skip when the secret is absent: a scan that silently does nothing is the
-      # failure mode this job exists to replace.
-      - name: Warn when no NVD API key is configured
+      # NVD_API_KEY is REQUIRED. An earlier version of this job warned and carried on, on the
+      # belief that without a key the scan runs rate-limited. It does not: dependency-check ships
+      # nvd.api.key as an empty string rather than absent, which passes its own null check and goes
+      # out as an empty apiKey header — and NVD answers that with 404 where it answers a missing
+      # header with 200. The task then fails with "Invalid API Key, length of 0". So the choice is
+      # between failing here with an explanation and failing twenty seconds later without one.
+      # Get a key at https://nvd.nist.gov/developers/request-an-api-key.
+      - name: Require an NVD API key
         if: ${{ env.NVD_API_KEY == '' }}
         run: |
-          echo "::warning::NVD_API_KEY is not set. The scan will still run but will be heavily"
-          echo "::warning::rate-limited by the NVD API. Add the secret to speed it up."
+          echo "::error::NVD_API_KEY is not set. OWASP Dependency-Check cannot reach the NVD"
+          echo "::error::feed without one — it fails rather than degrading. Request a key at"
+          echo "::error::https://nvd.nist.gov/developers/request-an-api-key and add it as the"
+          echo "::error::repository secret NVD_API_KEY."
+          exit 1
 
+      # --no-parallel is required, not tidiness. gradle.properties sets org.gradle.parallel=true,
+      # and dependencyCheckAggregate resolves other projects' configurations at execution time,
+      # which Gradle 9 refuses under parallel execution ("attempted without an exclusive lock").
+      # Without this the job fails in about ten seconds having scanned nothing — a permanently red
+      # job, which decays into an ignored one, which is exactly what this was meant to replace.
       - name: Scan dependencies for known vulnerabilities
-        run: ./gradlew dependencyCheckAggregate
+        run: ./gradlew --no-parallel dependencyCheckAggregate
 
-      # Uploaded on failure so the CVE list is readable without re-running the scan locally,
-      # which would mean rebuilding the NVD database on a developer machine.
+      # Uploaded on failure so the CVE list is readable without re-running the scan locally, which
+      # would mean rebuilding the NVD database on a developer machine. The path is the plugin's
+      # actual output directory — reporting.baseDirectory/dependency-check — not the one directory
+      # up that this first pointed at, where upload-artifact would have found nothing and, with its
+      # default if-no-files-found: warn, said so only in passing.
       - name: Upload the report
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dependency-check-report
-          path: build/reports/dependency-check-report.*
+          path: build/reports/dependency-check/dependency-check-report.*
 
   dependency-submission:
 

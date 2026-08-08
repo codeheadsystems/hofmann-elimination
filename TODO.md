@@ -4,17 +4,16 @@ Open work from the **August 2026** security review (six-reviewer fan-out across 
 `hofmann-server`, `hofmann-client`, both framework integrations, and the Rust/TypeScript ports),
 plus the RFC 9497 VOPRF/POPRF deferrals and one finding raised while closing the rest.
 
-**Every P0, P1, verification follow-up, RFC 9497 deferral, documentation and test-coverage item
-is closed.** What remains is P2, P3 and the findings raised while closing the rest.
+**Every P0, P1, verification follow-up, RFC 9497 deferral, documentation, test-coverage and
+P2 item is closed.** What remains is P3 and the findings raised while closing the rest.
 
 ## Status
 
 | Section | Open |
 |---|---:|
-| New findings | 1 |
-| **P2 Medium** | 6 |
+| New findings | 3 |
 | **P3 Low** | 4 |
-| **Total** | **11** |
+| **Total** | **7** |
 
 Recount with `grep -c '^- \[ \]' TODO.md` after editing.
 
@@ -102,63 +101,33 @@ two are documented in code with no action planned.
 
       Closing this means serialising builds per directory, or giving each agent its own checkout.
 
----
+- [ ] **The Spring Security escape hatch documented on `HofmannSecurityConfig` does not work** —
+      **[reproduced]**. `HofmannSecurityConfig.java:51-66` tells a consumer they can supply their
+      own `SecurityFilterChain` and the library's will back off, via
+      `@ConditionalOnMissingBean(SecurityFilterChain.class)`. Declaring one the ordinary way — a
+      `@Bean` on the `@SpringBootApplication` class — does **not** make it back off: the
+      application fails to start with `UnreachableFilterChainException`, scoped or unscoped,
+      unless the consumer also adds `@Order` below `LOWEST_PRECEDENCE - 5`, which the docs do not
+      mention.
 
-## P2: Medium
+      `AutoConfigurationRegistrationTest:94` passes and does not catch this, because
+      `ApplicationContextRunner.withUserConfiguration` registers beans differently from a real
+      application. That makes the test worse than absent — it is evidence for a claim it does not
+      actually check.
 
-- [ ] **Fake-KE2 path is measurably slower than the real path** — measured
-      `real=743.7µs fake=872.7µs`, a **17.4%** one-directional offset
-      (`HofmannOpaqueServerManager.java:544-560` → `Server.java:135-161`).
-      `createFakeRecord` runs two extra `hkdfExpand` calls plus a full `deriveAkeKeyPair`
-      (hash-to-scalar loop + generator scalar multiplication) *before* the same
-      `generateKE2` the real path runs. Satisfies RFC 9807 §10.6's literal construction but
-      not its goal. This is the residual enumeration exposure once the free oracles above
-      are closed. Cache the fake record outside the timed path, or do equivalent work on
-      both branches.
+      Pre-existing; found while closing the API-docs finding. Either fix the ordering so the
+      documented approach works, or document the `@Order` requirement and give the test a real
+      application context.
 
-- [ ] **Move the deterministic test-vector APIs off the public production surface**
-      `Client.java:103-149`, `Server.java:178-221`, `OprfCipherSuite.withRandom`
-      (`:99-100`, `:358-361`), `OpaqueConfig.withRandomConfig` (`:104-106`), and the
-      `forTesting()` factories are all public with nothing but a Javadoc "(for testing)"
-      between them and a production caller. Failure modes if misused, in severity order:
-      server reuse of `(maskingNonce, serverAkeKeySeed, serverNonce)` → **replayable
-      authentication without the password**; reuse of `serverAkeKeySeed` alone → **total
-      loss of forward secrecy with no functional symptom**; client blind reuse →
-      **cross-account password-equality oracle**; client AKE seed reuse → session
-      linkability. Silent in every case but the first. Move to a test-support artifact, or
-      make package-private with a test-only accessor.
+- [ ] **CVSS-unscored advisories pass the dependency gate** — `dependencyCheckAggregate` fails on
+      `failBuildOnCVSS = 4.0`, but an advisory with no CVSS score at all is estimated rather than
+      scored, and the logback `HardenedObjectInputStream` issue that motivated this work estimates
+      to roughly 3.9 — below any threshold that is not zero. Dependabot caught it because it
+      reports at every severity. So the gate and the reporter genuinely do different jobs and
+      both are needed; the gate is not a replacement.
 
-- [ ] **Zero password-equivalent material in the credential/envelope path**
-      `OpaqueAke` is meticulous; its siblings are not. `randomizedPwd` — from which the
-      envelope keys, masking key, and client long-term private key all derive — is created
-      in `OpaqueCredentials.deriveRandomizedPwd` (`:110`) and never zeroed, in either
-      `finalizeRegistrationWithNonce` or `recoverCredentials` (`:193-212`, `:224-230`).
-      Same for `oprfOutput`, `stretchedOutput`, `maskingKey`, `pad`, `plaintext`,
-      `authKey`, and the `deriveAkeKeyPair` seed (`OpaqueEnvelope.java:33-101`). A heap
-      dump or swap page yields `randomizedPwd` directly, which is password-equivalent.
-
-- [ ] **`[was marked DONE]` Actually invoke the state zeroization** — a grep across every
-      `src/main` tree finds **zero** `try`-with-resources blocks and zero `close()` calls on
-      `ClientAuthState` / `ClientRegistrationState`. The library's own client creates the
-      state, uses it, and drops it (`HofmannOpaqueClientManager.java:128, 162, 203`). The
-      `AutoCloseable` mitigation exists but nothing triggers it, so it is not a mitigation.
-      The password `byte[]` is held by reference rather than copied, and `authenticate()`
-      deliberately re-uses it afterwards for `changePassword` (`:176`), so zeroing at the
-      obvious point needs care. Either wire it up or withdraw the claim from the docs.
-
-- [ ] **Dropwizard `/api-docs` is unconditional and outside the filter chain** —
-      `HofmannBundle.java:274-277` registers an `AssetServlet` at `/api-docs/*` on every
-      consumer's application. Because it is a servlet, the `SecurityHeadersFilter`,
-      `CorsFilter`, and size-limit filter registered via `environment.jersey().register()`
-      (`:279-281`) do not apply. Swagger UI with no `X-Frame-Options` and no CSP, no opt-out,
-      and it collides with a consumer's own `/api-docs` mapping.
-
-- [ ] **`[was marked DONE]` Add dependency vulnerability scanning** — the OWASP
-      Dependency-Check plugin is referenced **nowhere**: not in any `*.gradle.kts`, not in
-      `buildSrc/src/main/kotlin/*`, not in `gradle/libs.versions.toml`. CI runs
-      `gradle/actions/dependency-submission`, which feeds Dependabot alerts — advisory and
-      post-hoc, not a build gate. There is also no `cargo audit` in the Rust job and no
-      `npm audit` in the TypeScript job.
+      Closing this means either reporting unscored findings separately without failing, or
+      pairing the gate with a job that diffs open Dependabot alerts against a known-accepted list.
 
 ---
 

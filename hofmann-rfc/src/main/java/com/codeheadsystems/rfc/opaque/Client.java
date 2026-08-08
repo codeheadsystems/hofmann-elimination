@@ -91,7 +91,19 @@ public class Client {
         config.context(), config);
   }
 
-  // ─── Deterministic API (for testing) ──────────────────────────────────────
+  // ─── Deterministic API (test vectors only; package-private on purpose) ─────
+  //
+  // These were public with nothing but a "(for testing)" javadoc between them and a production
+  // caller, and the failure modes are silent. Reusing a blind across accounts turns the server
+  // into a cross-account password-equality oracle: the same password under the same blind
+  // produces the same blinded element, so an observer learns which accounts share a password
+  // without learning any of them. Reusing the client AKE seed makes sessions linkable. Neither
+  // produces a functional symptom — the protocol keeps working.
+  //
+  // Package-private rather than moved to a test-support artifact because the only callers are
+  // OpaqueVectorsTest and OpaqueCrossImplVectorsTest, both in this package, so this costs nothing
+  // and no test had to be rewritten to accommodate it. If a caller outside this package ever
+  // needs them, that is the point to build the test artifact — not to widen these back.
 
   /**
    * Creates a registration request with a fixed blinding factor (for test vectors).
@@ -100,8 +112,8 @@ public class Client {
    * @param blind    the blind
    * @return the client registration state
    */
-  public ClientRegistrationState createRegistrationRequestDeterministic(byte[] password,
-                                                                        BigInteger blind) {
+  ClientRegistrationState createRegistrationRequestDeterministic(byte[] password,
+                                                                 BigInteger blind) {
     return OpaqueCredentials.createRegistrationRequestWithBlind(password, blind, config);
   }
 
@@ -115,11 +127,11 @@ public class Client {
    * @param envelopeNonce  the envelope nonce
    * @return the registration record
    */
-  public RegistrationRecord finalizeRegistrationDeterministic(ClientRegistrationState state,
-                                                              RegistrationResponse response,
-                                                              byte[] serverIdentity,
-                                                              byte[] clientIdentity,
-                                                              byte[] envelopeNonce) {
+  RegistrationRecord finalizeRegistrationDeterministic(ClientRegistrationState state,
+                                                       RegistrationResponse response,
+                                                       byte[] serverIdentity,
+                                                       byte[] clientIdentity,
+                                                       byte[] envelopeNonce) {
     return OpaqueCredentials.finalizeRegistrationWithNonce(state, response, serverIdentity, clientIdentity,
         config, envelopeNonce);
   }
@@ -133,10 +145,10 @@ public class Client {
    * @param clientAkeKeySeed the client ake key seed
    * @return the client auth state
    */
-  public ClientAuthState generateKE1Deterministic(byte[] password,
-                                                  BigInteger blind,
-                                                  byte[] clientNonce,
-                                                  byte[] clientAkeKeySeed) {
+  ClientAuthState generateKE1Deterministic(byte[] password,
+                                           BigInteger blind,
+                                           byte[] clientNonce,
+                                           byte[] clientAkeKeySeed) {
     byte[] blindedElement = OpaqueOprf.blind(config.cipherSuite(), password, blind);
     CredentialRequest credReq = new CredentialRequest(blindedElement);
 

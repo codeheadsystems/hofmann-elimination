@@ -36,36 +36,12 @@ public record OpaqueConfig(
       new RandomProvider()
   );
 
-  /**
-   * Creates a test configuration with Identity KSF, P256-SHA256 suite, and the CFRG test context.
-   *
-   * @return the opaque config
-   */
-  public static OpaqueConfig forTesting() {
-    return new OpaqueConfig(
-        OpaqueCipherSuite.P256_SHA256,
-        0, 0, 0,
-        new byte[]{0x4f, 0x50, 0x41, 0x51, 0x55, 0x45, 0x2d, 0x50, 0x4f, 0x43}, // "OPAQUE-POC"
-        new IdentityKsf(),
-        new RandomProvider()
-    );
-  }
-
-  /**
-   * Creates a test configuration for a given cipher suite with Identity KSF.
-   *
-   * @param suite the suite
-   * @return the opaque config
-   */
-  public static OpaqueConfig forTesting(OpaqueCipherSuite suite) {
-    return new OpaqueConfig(
-        suite,
-        0, 0, 0,
-        new byte[]{0x4f, 0x50, 0x41, 0x51, 0x55, 0x45, 0x2d, 0x50, 0x4f, 0x43},
-        new IdentityKsf(),
-        new RandomProvider()
-    );
-  }
+  // The forTesting() factories that used to live here are now
+  // com.codeheadsystems.rfc.opaque.config.OpaqueTestConfigs, in src/testFixtures. They build a
+  // config with the identity KSF — no password stretching at all — and being public on this class
+  // put them one autocomplete away from a production caller, behind nothing but a javadoc line.
+  // Test fixtures are published under a separate classifier and are not on a consumer's compile
+  // classpath unless asked for by name, so the boundary is now enforced by the build.
 
   /**
    * Creates a configuration with Argon2id KSF, P256-SHA256 suite, and given context.
@@ -97,6 +73,13 @@ public record OpaqueConfig(
 
   /**
    * Returns a new config identical to this one but using the given {@link RandomProvider}.
+   *
+   * <p>Public deliberately, for the same reason as
+   * {@link com.codeheadsystems.rfc.oprf.rfc9497.OprfCipherSuite#withRandom(java.security.SecureRandom)}:
+   * this is how a deployment installs an HSM-backed or policy-constrained randomness source, not
+   * a hook for fixing nonces. A caller who supplies a stub provider has done that deliberately,
+   * and no visibility change here would stop them — the same stub can be handed to the
+   * constructor.
    *
    * @param randomProvider the random provider
    * @return the opaque config

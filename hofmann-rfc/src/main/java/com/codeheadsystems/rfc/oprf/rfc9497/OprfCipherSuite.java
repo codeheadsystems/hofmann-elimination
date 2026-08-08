@@ -100,8 +100,20 @@ public class OprfCipherSuite {
 
   /**
    * Returns a new {@code OprfCipherSuite} identical to this one but using the given
-   * {@link SecureRandom} for all scalar and random byte generation. Use this to inject
-   * a custom or deterministic random source (e.g. in tests or DI frameworks).
+   * {@link SecureRandom} for all scalar and random byte generation.
+   *
+   * <p><strong>This is a production injection point, not a test hook, and it stays public.</strong>
+   * A security review grouped it with the deterministic test-vector APIs that have since been
+   * made package-private; that grouping does not hold. All three framework integrations call it
+   * to install the deployment's own {@link SecureRandom} — {@code HofmannBundle},
+   * {@code HofmannAutoConfiguration} and {@code VerifiableKeyConfig} — which is how an operator
+   * uses an HSM-backed or otherwise policy-constrained source instead of the platform default.
+   * Restricting it would remove a real capability to close nothing: a caller who wants a
+   * predictable random source can pass one to any of those constructors regardless.
+   *
+   * <p>The residual is inherent to accepting a {@link SecureRandom} at all — nothing can
+   * distinguish a hardware source from a fixed-output stub — and it is the caller's to get right.
+   * That is a different situation from a method whose entire purpose is to fix a nonce.
    *
    * @param random the {@link SecureRandom} to use
    * @return a new suite with the provided random source

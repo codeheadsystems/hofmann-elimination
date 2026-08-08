@@ -42,6 +42,9 @@ dependencies {
     implementation(libs.bundles.core)
     implementation(libs.bundles.jackson)
 
+    // OpaqueTestConfigs (identity KSF, CFRG context) lives in hofmann-rfc's test fixtures rather
+    // than on its production API, so it has to be asked for by name. That is the point.
+    testImplementation(testFixtures(project(":hofmann-rfc")))
     testImplementation(libs.jakarta.rs.api)
     testImplementation(libs.jakarta.servlet.api)
     testImplementation(libs.bundles.test)
