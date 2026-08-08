@@ -135,6 +135,15 @@ public class HofmannSecurityConfig {
    * application has none of its own, and Spring Security 6.2+ rejects two any-request chains
    * outright — but a catch-all registered early is the wrong shape to leave in place for whoever
    * changes the condition next.
+   *
+   * <p><strong>If this value ever stops being inert, its test has to change with it.</strong>
+   * {@code AutoConfigurationRegistrationTest.catchAllChainIsOrderedLast} asserts the value of this
+   * constant, not the order of the chains actually registered — so it cannot notice the
+   * {@code @Order} annotation being removed from the {@code @Bean} below, which is the failure its
+   * own javadoc claims to guard against. That is acceptable only while the chain cannot coexist
+   * with a consumer's. The moment it can, this constant becomes the thing standing between a
+   * catch-all and a narrower chain it would shadow, and the test must assert the registered order
+   * instead.
    */
   public static final int HOFMANN_CHAIN_ORDER = Ordered.LOWEST_PRECEDENCE - 5;
 
