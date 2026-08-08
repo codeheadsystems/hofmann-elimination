@@ -178,18 +178,24 @@ public class HofmannOpaqueClientManager {
                        final String recoveryToken) {
     log.debug("register(serverId={}, recovery={})", serverId, recoveryToken != null);
 
-    // Step 1 — blind the password and obtain the OPRF-evaluated element from the server
-    ClientRegistrationState regState = clientFor(serverId).createRegistrationRequest(password);
-    RegistrationStartResponse startResp = accessor.registrationStart(serverId,
-        new RegistrationStartRequest(credentialIdentifier, regState.request()), recoveryToken);
+    // try-with-resources so the state's copy of the password is zeroed on every exit, including
+    // the network failure in step 1 — which is the common one, and the one that would otherwise
+    // leave the password on the heap for as long as the process lives. The state copies rather
+    // than aliases, so the caller's own array is untouched and still theirs to clear.
+    try (ClientRegistrationState regState =
+             clientFor(serverId).createRegistrationRequest(password)) {
+      // Step 1 — blind the password and obtain the OPRF-evaluated element from the server
+      RegistrationStartResponse startResp = accessor.registrationStart(serverId,
+          new RegistrationStartRequest(credentialIdentifier, regState.request()), recoveryToken);
 
-    // Step 2 — finalize locally: unblind, derive the envelope, and build the registration record
-    RegistrationRecord record = clientFor(serverId).finalizeRegistration(
-        regState, startResp.registrationResponse(), null, null);
+      // Step 2 — finalize locally: unblind, derive the envelope, and build the registration record
+      RegistrationRecord record = clientFor(serverId).finalizeRegistration(
+          regState, startResp.registrationResponse(), null, null);
 
-    // Step 3 — upload the completed registration record to the server
-    accessor.registrationFinish(serverId,
-        new RegistrationFinishRequest(credentialIdentifier, record), recoveryToken);
+      // Step 3 — upload the completed registration record to the server
+      accessor.registrationFinish(serverId,
+          new RegistrationFinishRequest(credentialIdentifier, record), recoveryToken);
+    }
   }
 
   /**
@@ -212,17 +218,22 @@ public class HofmannOpaqueClientManager {
                                          final byte[] password) {
     log.debug("authenticate(serverId={})", serverId);
 
-    // Step 1 — generate KE1 and send it to the server
-    ClientAuthState authState = clientFor(serverId).generateKE1(password);
-    AuthStartResponse startResp = accessor.authStart(serverId,
-        new AuthStartRequest(credentialIdentifier, authState.ke1()));
+    final AuthFinishResponse response;
+    // Closed before step 4, not around it: the key-rotation path re-enters the flow with the
+    // caller's password, and the state's copy has no further use once KE3 is computed. The bad
+    // server MAC in step 2 throws, and this is what zeroes the copy on that path.
+    try (ClientAuthState authState = clientFor(serverId).generateKE1(password)) {
+      // Step 1 — generate KE1 and send it to the server
+      AuthStartResponse startResp = accessor.authStart(serverId,
+          new AuthStartRequest(credentialIdentifier, authState.ke1()));
 
-    // Step 2 — reconstruct KE2 and compute KE3 (throws SecurityException on bad server MAC)
-    AuthResult authResult = clientFor(serverId).generateKE3(authState, null, null, startResp.ke2());
+      // Step 2 — reconstruct KE2 and compute KE3 (throws SecurityException on bad server MAC)
+      AuthResult authResult = clientFor(serverId).generateKE3(authState, null, null, startResp.ke2());
 
-    // Step 3 — send KE3 to the server; throws SecurityException on 401
-    AuthFinishResponse response = accessor.authFinish(serverId,
-        new AuthFinishRequest(startResp.sessionToken(), authResult.ke3()));
+      // Step 3 — send KE3 to the server; throws SecurityException on 401
+      response = accessor.authFinish(serverId,
+          new AuthFinishRequest(startResp.sessionToken(), authResult.ke3()));
+    }
 
     // Step 4 — if key rotation required, silently re-register with the same password
     if (Boolean.TRUE.equals(response.keyRotationRequired())) {
@@ -253,18 +264,20 @@ public class HofmannOpaqueClientManager {
                               final String bearerToken) {
     log.debug("changePassword(serverId={})", serverId);
 
-    // Step 1 — blind the new password and obtain the OPRF-evaluated element from the server
-    ClientRegistrationState regState = clientFor(serverId).createRegistrationRequest(newPassword);
-    RegistrationStartResponse startResp = accessor.changePasswordStart(serverId,
-        new RegistrationStartRequest(credentialIdentifier, regState.request()), bearerToken);
+    try (ClientRegistrationState regState =
+             clientFor(serverId).createRegistrationRequest(newPassword)) {
+      // Step 1 — blind the new password and obtain the OPRF-evaluated element from the server
+      RegistrationStartResponse startResp = accessor.changePasswordStart(serverId,
+          new RegistrationStartRequest(credentialIdentifier, regState.request()), bearerToken);
 
-    // Step 2 — finalize locally: unblind, derive the envelope, and build the registration record
-    RegistrationRecord record = clientFor(serverId).finalizeRegistration(
-        regState, startResp.registrationResponse(), null, null);
+      // Step 2 — finalize locally: unblind, derive the envelope, and build the registration record
+      RegistrationRecord record = clientFor(serverId).finalizeRegistration(
+          regState, startResp.registrationResponse(), null, null);
 
-    // Step 3 — upload the new registration record to the server
-    accessor.changePasswordFinish(serverId,
-        new RegistrationFinishRequest(credentialIdentifier, record), bearerToken);
+      // Step 3 — upload the new registration record to the server
+      accessor.changePasswordFinish(serverId,
+          new RegistrationFinishRequest(credentialIdentifier, record), bearerToken);
+    }
   }
 
   /**

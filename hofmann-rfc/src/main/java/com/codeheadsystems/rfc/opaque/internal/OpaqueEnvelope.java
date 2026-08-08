@@ -8,6 +8,7 @@ import com.codeheadsystems.rfc.opaque.model.Envelope;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Arrays;
 
 /**
  * OPAQUE credential envelope operations: Store and Recover.
@@ -43,18 +44,25 @@ public class OpaqueEnvelope {
     // RFC 9807 §4.1.2: Nseed = 32 (= Nn), suite-independent constant
     byte[] seed = expand(suite, randomizedPwd,
         ByteUtils.concat(envelopeNonce, "PrivateKey".getBytes(StandardCharsets.US_ASCII)), OpaqueConfig.Nn);
+    try {
+      OpaqueCipherSuite.AkeKeyPair keyPair = suite.deriveAkeKeyPair(seed);
+      byte[] clientPublicKey = keyPair.publicKeyBytes();
 
-    OpaqueCipherSuite.AkeKeyPair keyPair = suite.deriveAkeKeyPair(seed);
-    byte[] clientPublicKey = keyPair.publicKeyBytes();
+      CleartextCredentials cleartext = CleartextCredentials.create(
+          serverPublicKey, clientPublicKey, serverIdentity, clientIdentity);
 
-    CleartextCredentials cleartext = CleartextCredentials.create(
-        serverPublicKey, clientPublicKey, serverIdentity, clientIdentity);
+      byte[] authInput = ByteUtils.concat(envelopeNonce, cleartext.serialize());
+      byte[] authTag = suite.hmac(authKey, authInput);
 
-    byte[] authInput = ByteUtils.concat(envelopeNonce, cleartext.serialize());
-    byte[] authTag = suite.hmac(authKey, authInput);
-
-    Envelope envelope = new Envelope(envelopeNonce, authTag);
-    return new StoreResult(envelope, clientPublicKey, maskingKey, exportKey);
+      Envelope envelope = new Envelope(envelopeNonce, authTag);
+      return new StoreResult(envelope, clientPublicKey, maskingKey, exportKey);
+    } finally {
+      // seed is the client's long-term AKE private key in pre-image form, and authKey forges
+      // envelope tags. maskingKey and exportKey are returned, so they belong to the caller.
+      // keyPair.privateKey() is a BigInteger and cannot be zeroed at the Java level.
+      Arrays.fill(authKey, (byte) 0);
+      Arrays.fill(seed, (byte) 0);
+    }
   }
 
   /**
@@ -81,23 +89,33 @@ public class OpaqueEnvelope {
     // RFC 9807 §4.1.2: Nseed = 32 (= Nn), suite-independent constant
     byte[] seed = expand(suite, randomizedPwd,
         ByteUtils.concat(nonce, "PrivateKey".getBytes(StandardCharsets.US_ASCII)), OpaqueConfig.Nn);
+    try {
+      OpaqueCipherSuite.AkeKeyPair keyPair = suite.deriveAkeKeyPair(seed);
+      BigInteger clientSk = keyPair.privateKey();
+      byte[] clientPublicKey = keyPair.publicKeyBytes();
 
-    OpaqueCipherSuite.AkeKeyPair keyPair = suite.deriveAkeKeyPair(seed);
-    BigInteger clientSk = keyPair.privateKey();
-    byte[] clientPublicKey = keyPair.publicKeyBytes();
+      CleartextCredentials cleartext = CleartextCredentials.create(
+          serverPublicKey, clientPublicKey, serverIdentity, clientIdentity);
 
-    CleartextCredentials cleartext = CleartextCredentials.create(
-        serverPublicKey, clientPublicKey, serverIdentity, clientIdentity);
+      byte[] authInput = ByteUtils.concat(nonce, cleartext.serialize());
+      byte[] expectedTag = suite.hmac(authKey, authInput);
 
-    byte[] authInput = ByteUtils.concat(nonce, cleartext.serialize());
-    byte[] expectedTag = suite.hmac(authKey, authInput);
+      // Security: constant-time comparison prevents timing side-channel attacks on MAC verification
+      boolean matches = MessageDigest.isEqual(expectedTag, envelope.authTag());
+      Arrays.fill(expectedTag, (byte) 0);
+      if (!matches) {
+        // The wrong-password path: nothing here reaches a caller who could zero it, so the
+        // export key has to be zeroed before the throw. This is the branch a password-guessing
+        // client takes repeatedly, so it is the one most likely to leave residue on the heap.
+        Arrays.fill(exportKey, (byte) 0);
+        throw new SecurityException("Authentication failed");
+      }
 
-    // Security: constant-time comparison prevents timing side-channel attacks on MAC verification
-    if (!MessageDigest.isEqual(expectedTag, envelope.authTag())) {
-      throw new SecurityException("Authentication failed");
+      return new RecoverResult(clientSk, clientPublicKey, cleartext, exportKey);
+    } finally {
+      Arrays.fill(authKey, (byte) 0);
+      Arrays.fill(seed, (byte) 0);
     }
-
-    return new RecoverResult(clientSk, clientPublicKey, cleartext, exportKey);
   }
 
   private static byte[] expand(OpaqueCipherSuite suite, byte[] prk, byte[] info, int len) {
