@@ -48,6 +48,7 @@ import io.dropwizard.core.setup.Environment;
 import io.dropwizard.servlets.assets.AssetServlet;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
+import jakarta.servlet.DispatcherType;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
@@ -58,6 +59,7 @@ import java.io.InputStream;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.Map;
@@ -289,11 +291,7 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
 
   @Override
   public void run(C configuration, Environment environment) {
-    // Serve OpenAPI specs and Swagger UI at /api-docs/
-    environment.servlets()
-        .addServlet("api-docs", new AssetServlet(
-            "/META-INF/resources/api-docs", "/api-docs", "index.html", StandardCharsets.UTF_8))
-        .addMapping("/api-docs", "/api-docs/*");
+    registerApiDocs(configuration, environment);
 
     environment.jersey().register(new SecurityHeadersFilter());
     environment.jersey().register(new CorsFilter(new HashSet<>(configuration.getCorsAllowedOrigins())));
@@ -437,6 +435,78 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
         suite, keyHex, configuration.getOprfProcessorId() + "-poprf", "poprfMasterKeyHex");
     log.info("POPRF (mode 0x02) enabled");
     return new PoprfServerManager(suite, () -> detail);
+  }
+
+  /**
+   * Media type for assets whose extension the servlet container has no mapping for.
+   *
+   * <p>{@link AssetServlet}'s four-argument constructor defaults to {@code text/html}, which is
+   * the wrong default for a directory of mixed documents: Jetty knows {@code .html} but not
+   * {@code .yaml}, so {@code opaque-api.yaml} was going out as {@code text/html} and browsers
+   * rendered the OpenAPI spec as a web page rather than showing or downloading it. Verified by
+   * request, not inferred — it returned {@code Content-Type: text/html;charset=utf-8}.
+   *
+   * <p>Falling back to {@code application/octet-stream} means an unrecognised extension is
+   * downloaded rather than executed as markup. {@code .html} is unaffected, because that mapping
+   * comes from the container rather than from this default.
+   */
+  private static final String DEFAULT_ASSET_MEDIA_TYPE = "application/octet-stream";
+
+  /**
+   * Registers the OpenAPI specs and Swagger UI, if the consumer asked for them.
+   *
+   * <p>This used to run unconditionally. A bundle installs into somebody else's application, so
+   * that meant claiming {@code /api-docs} and {@code /api-docs/*} on every consumer's server
+   * whether or not they wanted docs served — and a consumer with their own mapping there had a
+   * collision they did not create. Both the switch and the path are now theirs.
+   *
+   * <p>The other half of the problem is that an {@code AssetServlet} is not a JAX-RS resource, so
+   * none of the filters registered through {@code environment.jersey()} below apply to it — not
+   * {@link SecurityHeadersFilter}, not {@link CorsFilter}, not the body-size limit. The headers
+   * are restored by registering {@link ApiDocsSecurityHeadersFilter} in the servlet chain. The
+   * size limit is not, and does not need to be: the asset servlet answers GET and HEAD and never
+   * reads a request body, so there is no payload for a limit to bound.
+   *
+   * @param configuration the configuration
+   * @param environment   the environment
+   */
+  private void registerApiDocs(C configuration, Environment environment) {
+    if (!configuration.isServeApiDocs()) {
+      return;
+    }
+    String base = normalizeApiDocsPath(configuration.getApiDocsPath());
+    String wildcard = base + "/*";
+    environment.servlets()
+        .addServlet("api-docs", new AssetServlet(
+            "/META-INF/resources/api-docs", base, "index.html",
+            DEFAULT_ASSET_MEDIA_TYPE, StandardCharsets.UTF_8))
+        .addMapping(base, wildcard);
+    environment.servlets()
+        .addFilter("api-docs-security-headers", new ApiDocsSecurityHeadersFilter())
+        .addMappingForUrlPatterns(EnumSet.of(DispatcherType.REQUEST), true, base, wildcard);
+    log.info("Serving API docs at {} (security headers applied via servlet filter)", base);
+  }
+
+  /**
+   * Normalises a configured docs path to a leading slash and no trailing slash.
+   *
+   * <p>A servlet mapping is matched literally, so {@code "api-docs"} or {@code "/api-docs/"}
+   * would not fail loudly — the docs would just not be reachable at the path the operator wrote
+   * in their config, which is the kind of thing nobody notices until they need the docs.
+   *
+   * @param path the configured path
+   * @return the normalised path
+   */
+  static String normalizeApiDocsPath(String path) {
+    String trimmed = path == null ? "" : path.trim();
+    while (trimmed.endsWith("/")) {
+      trimmed = trimmed.substring(0, trimmed.length() - 1);
+    }
+    if (trimmed.isEmpty()) {
+      throw new IllegalArgumentException(
+          "apiDocsPath must name a path prefix; serving docs at the root would shadow the API");
+    }
+    return trimmed.startsWith("/") ? trimmed : "/" + trimmed;
   }
 
   private void registerSizeLimitFilter(C configuration, Environment environment) {
