@@ -60,6 +60,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The base-mode OPRF client API forced the caller's secret into a `String`.**
+  `OprfClientManager.hashingContext` and `HofmannOprfClientManager.performHash` now take `byte[]`,
+  and that is the entry point to prefer; the `String` overloads remain and delegate.
+
+  A `String` holding a secret cannot be erased — it is immutable, so the value stays on the heap
+  until the collector reclaims it, and any interning or substring on the way has already made
+  copies nobody holds a reference to. Every other secret in this library is a `byte[]` for that
+  reason, including OPAQUE's password and the verifiable modes' inputs; base mode was the last
+  place the API forced a caller to give that up. The `String` overloads are kept rather than
+  deprecated because a caller who already holds one has taken the damage before the call, and
+  refusing it would only move the conversion.
+
+  Half a fix would have been to accept `byte[]` and copy it somewhere the caller cannot reach, so
+  `ClientHashingContext`, `VoprfClientContext` and `PoprfClientContext` are now `AutoCloseable` and
+  zero their copy of the input on close. `HofmannOprfClientManager.performHash` closes the context
+  in a `try`-with-resources, which matters most on the failing path: the caller never receives the
+  context, so if that method does not clear it nobody can. The verifiable contexts already took
+  `byte[]` and already copied — what they lacked was any way to clear the copy, and fixing base
+  mode alone would have left two modes out of three holding an unerasable secret.
+
+  What this does not do: `blindingFactor` and `blinds` are `BigInteger` and cannot be zeroed at the
+  Java level. A blind together with its blinded element still recovers the input's OPRF output, so
+  closing a context shortens a window rather than emptying it — the same caveat, for the same
+  reason, that `ClientAuthState` carries on the OPAQUE side.
 - **`authStart` leaked account existence through the credential store's answer time**, on every
   deployment using a persistent store — which is every production deployment. `authStart` now runs
   the lookup and everything after it under a 25 ms constant-time floor, capped at 128 concurrent
@@ -249,6 +273,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is not an ancestor of `main`.
 
 ### Breaking changes
+
+- **The OPRF client contexts are `AutoCloseable` and copy their input.** `ClientHashingContext`,
+  `VoprfClientContext` and `PoprfClientContext` gained `close()`, and `ClientHashingContext` now
+  copies the `input` array in its canonical constructor rather than aliasing the caller's — the
+  other two already did. See *Fixed* for why. Four things can break, and an earlier draft of this
+  entry claimed none could:
+
+  - **A `null` literal no longer compiles.** `hashingContext(null)` and `performHash(null, id)` are
+    now ambiguous between the `byte[]` and `String` overloads. Cast at the call site.
+  - **`equals` changed.** Records compare `byte[]` components by reference, so two
+    `ClientHashingContext` built from the *same* array used to be equal and now are not. Anything
+    keying a collection on a context, or asserting equality in a test, is affected.
+  - **Mutating the array you passed no longer changes a context you already built**, which is the
+    point of the copy but is a visible difference for a caller that relied on it.
+  - **`ClientHashingContext` rejects a null input at construction** rather than failing later
+    inside `hashToGroup`.
+
+  Behaviour of the protocol itself is unchanged — the RFC 9497 vectors and the Java↔TypeScript
+  cross-implementation tests pass untouched.
+
+  **`close()` is not guarded, and a closed context answers wrongly rather than failing.** Both
+  `eliminationRequest` and `hashResult` read the input, so using a context after closing it
+  finalizes over zeroes and returns a well-formed value derived from the wrong input, with no
+  exception. The verifiable modes hide it better: the blinded elements are stored rather than
+  recomputed, so the server evaluates correctly and **the DLEQ proof still verifies** — only the
+  final hash is wrong. Scope the `try`-with-resources to the whole exchange; an asynchronous round
+  trip is the shape to watch. A record cannot carry a mutable "closed" flag, so refusing
+  use-after-close needs these types to stop being records; tracked in TODO.md. The same applies to
+  OPAQUE's `ClientAuthState`, which has had `close()` and this hazard since it was introduced and
+  now documents it.
 
 - **The Spring Boot default security chain bean is renamed** from `securityFilterChain` to
   `hofmannSecurityFilterChain`. Nothing needs to change unless you referenced it *by name* — a

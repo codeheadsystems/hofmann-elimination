@@ -51,6 +51,19 @@ public record ClientAuthState(BigInteger blind, byte[] password, KE1 ke1, BigInt
     password = password.clone();
   }
 
+  /**
+   * Zeroes this record's copy of the password.
+   *
+   * <p><strong>Close after the exchange, never during one — a closed state does not fail, it
+   * answers wrongly.</strong> {@code generateKE3} reads {@code password} to re-derive the OPRF
+   * output, so against a closed state it derives from a run of zeroes: {@code recoverCredentials}
+   * then fails its envelope MAC and throws {@code SecurityException("Authentication failed")},
+   * which is indistinguishable from a wrong password. The user is told their password is wrong
+   * when the real fault is a lifetime bug in the caller.
+   *
+   * <p>Not guarded, for the same reason as the OPRF contexts: a record cannot carry a mutable
+   * "closed" flag. Tracked in TODO.md alongside them, since one fix would cover both.
+   */
   @Override
   public void close() {
     Arrays.fill(password, (byte) 0);

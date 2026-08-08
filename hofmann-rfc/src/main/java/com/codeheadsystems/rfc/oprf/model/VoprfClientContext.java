@@ -1,6 +1,7 @@
 package com.codeheadsystems.rfc.oprf.model;
 
 import java.math.BigInteger;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
@@ -25,7 +26,42 @@ import java.util.Objects;
 public record VoprfClientContext(String requestId,
                                  List<byte[]> inputs,
                                  List<BigInteger> blinds,
-                                 List<byte[]> blindedElements) {
+                                 List<byte[]> blindedElements)
+    implements AutoCloseable {
+
+  /**
+   * Zeroes this context's copies of the inputs.
+   *
+   * <p>The constructor copies every input so the context cannot be mutated through a reference the
+   * caller kept; the consequence was a copy of the client's plaintext OPRF input that the caller
+   * had no way to erase. This closes that, and pairs with {@link ClientHashingContext#close()} so
+   * the property does not depend on which mode you picked.
+   *
+   * <p>Only the inputs. {@code blindedElements} goes to the server, so it is not secret;
+   * {@code blinds} are {@link BigInteger} and cannot be zeroed at the Java level, which matters —
+   * a blind together with its blinded element still recovers the input's OPRF output, so closing
+   * this shortens a window rather than emptying the context.
+   *
+   * <p>Anything handed out by {@link #inputs()} is the caller's own copy and is not touched here.
+   *
+   * <p><strong>Close after the exchange, never during one, and note that this mode hides the
+   * mistake better than base mode does.</strong> {@code eliminationRequest} returns the blinded
+   * elements this context already holds rather than recomputing them, so against a closed context
+   * the server still receives correct elements, evaluates them correctly, and returns a proof that
+   * <em>verifies</em>. Only {@code Finalize} reads the zeroed inputs, so the single observable
+   * consequence is a wrong hash — no exception, and the proof check that exists to catch a
+   * misbehaving server says nothing, because the server did not misbehave.
+   *
+   * <p>That is the same shape this record's own class comment warns about for list misalignment:
+   * it does not fail loudly, it produces plausible-looking output derived from the wrong thing.
+   * Not currently guarded — a record cannot carry a mutable "closed" flag — and tracked in TODO.md.
+   */
+  @Override
+  public void close() {
+    for (byte[] input : inputs) {
+      Arrays.fill(input, (byte) 0);
+    }
+  }
 
   /**
    * Rejects a context whose lists are not aligned.

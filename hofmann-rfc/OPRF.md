@@ -148,16 +148,38 @@ Batch proofs are sound at any size. The servers cap a request at 64 elements by 
 OprfCipherSuite suite = OprfCipherSuite.builder().withSuite(CurveHashSuite.P256_SHA256).build();
 
 OprfClientManager client = new OprfClientManager(suite);
-ClientHashingContext ctx = client.hashingContext("my-sensitive-input");
-BlindedRequest request = client.eliminationRequest(ctx);
 
-// server side
-OprfServerManager server = new OprfServerManager(suite, () ->
-    new ServerProcessorDetail(serverPrivateKey, "key-v1"));
-EvaluatedResponse response = server.process(request);
+byte[] secret = "my-sensitive-input".getBytes(StandardCharsets.UTF_8);
 
-HashResult result = client.hashResult(response, ctx);
+// The context copies the input, so `secret` is yours to clear as soon as this returns;
+// try-with-resources clears the context's own copy.
+try (ClientHashingContext ctx = client.hashingContext(secret)) {
+  BlindedRequest request = client.eliminationRequest(ctx);
+
+  // server side
+  OprfServerManager server = new OprfServerManager(suite, () ->
+      new ServerProcessorDetail(serverPrivateKey, "key-v1"));
+  EvaluatedResponse response = server.process(request);
+
+  HashResult result = client.hashResult(response, ctx);
+}
 ```
+
+**Pass the input as `byte[]`, not `String`.** A `String` holding a secret cannot be erased — it is
+immutable, so the value stays on the heap until the collector reclaims it, and any interning or
+substring on the way has already made copies nobody holds a reference to. The `String` overloads
+remain for callers who already have one in hand, where the damage is done before the call and
+refusing it would only move the conversion. Every client context implements `AutoCloseable` and
+zeroes its copy of the input on close; the blinding scalars are `BigInteger` and cannot be cleared
+at all, which is why closing shortens a window rather than emptying the context.
+
+**Scope the `try`-with-resources to the whole exchange.** `close()` is not guarded, and a closed
+context does not fail — it answers wrongly. Both `eliminationRequest` and `hashResult` read the
+input, so using a closed context finalizes over zeroes and returns a well-formed hash derived from
+the wrong value, with no exception. In the verifiable modes it hides better still: the blinded
+elements are stored rather than recomputed, so the server evaluates correctly and **the proof
+verifies**; only the hash is wrong. An asynchronous round trip, where the response arrives after
+the block has exited, is the shape to watch for.
 
 ### VOPRF
 
@@ -172,9 +194,12 @@ key.validateConsistency(suite);   // startup check
 VoprfServerManager server = new VoprfServerManager(suite, () -> key);
 VoprfClientManager client = new VoprfClientManager(suite, key.publicKey());  // authenticated pkS
 
-VoprfClientContext ctx = client.hashingContext("my-sensitive-input");
-HashResult result = client.hashResult(server.process(client.eliminationRequest(ctx)), ctx);
-// throws SecurityException if the proof does not verify
+byte[] secret = "my-sensitive-input".getBytes(StandardCharsets.UTF_8);
+
+try (VoprfClientContext ctx = client.hashingContext(List.of(secret))) {
+  HashResult result = client.hashResult(server.process(client.eliminationRequest(ctx)), ctx);
+  // throws SecurityException if the proof does not verify
+}
 ```
 
 ### POPRF
@@ -192,8 +217,11 @@ VerifiableProcessorDetail key =
 PoprfServerManager server = new PoprfServerManager(suite, () -> key);
 PoprfClientManager client = new PoprfClientManager(suite, key.publicKey());
 
-PoprfClientContext ctx = client.hashingContext("my-sensitive-input", info);
-HashResult result = client.hashResult(server.process(client.eliminationRequest(ctx)), ctx);
+byte[] secret = "my-sensitive-input".getBytes(StandardCharsets.UTF_8);
+
+try (PoprfClientContext ctx = client.hashingContext(List.of(secret), info)) {
+  HashResult result = client.hashResult(server.process(client.eliminationRequest(ctx)), ctx);
+}
 ```
 
 ### Batching

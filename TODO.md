@@ -11,8 +11,8 @@ P2 item is closed.** What remains is P3 and the findings raised while closing th
 
 | Section | Open |
 |---|---:|
-| New findings | 3 |
-| **P3 Low** | 4 |
+| New findings | 4 |
+| **P3 Low** | 3 |
 | **Total** | **7** |
 
 Recount with `grep -c '^- \[ \]' TODO.md` after editing.
@@ -109,6 +109,35 @@ on.
 
 ## New findings
 
+- [ ] **A closed `AutoCloseable` context answers wrongly instead of failing** — **[reproduced]**.
+      `ClientHashingContext`, `VoprfClientContext`, `PoprfClientContext` and OPAQUE's
+      `ClientAuthState` all zero their copy of the caller's secret on `close()`, and none of them
+      refuses use afterwards. Every one of them is read after construction — `eliminationRequest`
+      and `hashResult` on the OPRF side, `generateKE3` on the OPAQUE one — so a context used after
+      closing derives from a run of zeroes and returns a well-formed value computed from the wrong
+      input. No exception, nothing downstream notices.
+
+      **The verifiable modes hide it best, which is why this is worth an entry rather than a
+      comment.** `eliminationRequest` returns the blinded elements the context already holds rather
+      than recomputing them, so against a closed context the server receives correct elements,
+      evaluates them correctly, and returns a proof that *verifies*. The DLEQ check that exists to
+      catch a misbehaving server is silent, because the server did not misbehave. Only the final
+      hash is wrong. On OPAQUE the failure at least surfaces, but as
+      `SecurityException("Authentication failed")` — indistinguishable from a wrong password, so
+      the user is told their password is bad when the fault is a lifetime bug in the caller.
+
+      Pre-existing on `ClientAuthState`, which has shipped `close()` since it was introduced;
+      inherited by the OPRF contexts when they gained `close()` alongside the `byte[]` API. All
+      four now document it. Nothing in-tree hits it — `performHash` scopes its
+      try-with-resources to the whole exchange — and an asynchronous round trip is the shape that
+      would.
+
+      Closing it means a guard, and a guard means these types stop being records: a record cannot
+      carry a mutable `closed` flag, and content-sniffing for an all-zero input would refuse a
+      legal OPRF input to detect an illegal call. So it is a deliberate shape change across four
+      public types, which is more than the `String`-secret finding that surfaced it warranted.
+      One fix covers all four.
+
 - [ ] **`sleepUntil`'s settling phase degenerates when a branch arrives with less than the settle
       window left** — raised while closing the persistent-store enumeration oracle, and a property
       of that fix rather than of the code it replaced. `sleepUntil` ends every floor with one
@@ -180,11 +209,6 @@ on.
 ---
 
 ## P3: Low
-
-- [ ] **OPRF client API takes the secret as a `String`** —
-      `OprfClientManager.java:109` and `HofmannOprfClientManager.java:107` offer no
-      `byte[]` overload, so the caller's secret is interned in a non-zeroable `String`. The
-      OPAQUE side uses `byte[]` throughout.
 
 - [ ] **JWT hardening — PARTIAL.** The minimum secret length is done:
       `JwtManager.MIN_SIGNING_KEY_BYTES = 32` is enforced at construction for both the signing
