@@ -1,10 +1,8 @@
 package com.codeheadsystems.rfc.opaque;
 
 import com.codeheadsystems.rfc.common.ByteUtils;
-import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
-import com.codeheadsystems.rfc.opaque.internal.OpaqueAke;
-import com.codeheadsystems.rfc.opaque.internal.OpaqueCredentials;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
+import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
 import com.codeheadsystems.rfc.opaque.model.Envelope;
 import com.codeheadsystems.rfc.opaque.model.KE1;
 import com.codeheadsystems.rfc.opaque.model.KE3;

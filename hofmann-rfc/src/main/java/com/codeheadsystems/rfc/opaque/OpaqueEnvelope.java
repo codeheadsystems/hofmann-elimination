@@ -1,4 +1,4 @@
-package com.codeheadsystems.rfc.opaque.internal;
+package com.codeheadsystems.rfc.opaque;
 
 import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
@@ -14,7 +14,7 @@ import java.util.Arrays;
  * OPAQUE credential envelope operations: Store and Recover.
  * The envelope protects the client's long-term private key using a randomized password.
  */
-public class OpaqueEnvelope {
+final class OpaqueEnvelope {
 
   private OpaqueEnvelope() {
   }
@@ -31,9 +31,9 @@ public class OpaqueEnvelope {
    * @param envelopeNonce   Nn-byte nonce
    * @return the store result
    */
-  public static StoreResult store(OpaqueConfig config, byte[] randomizedPwd, byte[] serverPublicKey,
-                                  byte[] serverIdentity, byte[] clientIdentity,
-                                  byte[] envelopeNonce) {
+  static StoreResult store(OpaqueConfig config, byte[] randomizedPwd, byte[] serverPublicKey,
+                           byte[] serverIdentity, byte[] clientIdentity,
+                           byte[] envelopeNonce) {
     OpaqueCipherSuite suite = config.cipherSuite();
     byte[] maskingKey = null;
     byte[] authKey = null;
@@ -93,9 +93,9 @@ public class OpaqueEnvelope {
    * @return the recover result
    * @throws SecurityException if the auth_tag does not match
    */
-  public static RecoverResult recover(OpaqueConfig config, byte[] randomizedPwd, byte[] serverPublicKey,
-                                      Envelope envelope, byte[] serverIdentity,
-                                      byte[] clientIdentity) {
+  static RecoverResult recover(OpaqueConfig config, byte[] randomizedPwd, byte[] serverPublicKey,
+                               Envelope envelope, byte[] serverIdentity,
+                               byte[] clientIdentity) {
     OpaqueCipherSuite suite = config.cipherSuite();
     byte[] nonce = envelope.envelopeNonce();
     byte[] authKey = null;
@@ -160,13 +160,13 @@ public class OpaqueEnvelope {
   /**
    * Result of the Store operation.
    */
-  public record StoreResult(Envelope envelope, byte[] clientPublicKey, byte[] maskingKey, byte[] exportKey) {
+  record StoreResult(Envelope envelope, byte[] clientPublicKey, byte[] maskingKey, byte[] exportKey) {
   }
 
   /**
    * Result of the Recover operation.
    */
-  public record RecoverResult(BigInteger clientPrivateKey, byte[] clientPublicKey,
-                              CleartextCredentials cleartextCredentials, byte[] exportKey) {
+  record RecoverResult(BigInteger clientPrivateKey, byte[] clientPublicKey,
+                       CleartextCredentials cleartextCredentials, byte[] exportKey) {
   }
 }

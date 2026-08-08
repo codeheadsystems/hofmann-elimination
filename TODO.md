@@ -11,9 +11,9 @@ P2 item is closed.** What remains is P3 and the findings raised while closing th
 
 | Section | Open |
 |---|---:|
-| New findings | 4 |
+| New findings | 3 |
 | **P3 Low** | 4 |
-| **Total** | **8** |
+| **Total** | **7** |
 
 Recount with `grep -c '^- \[ \]' TODO.md` after editing.
 
@@ -108,30 +108,6 @@ on.
 ---
 
 ## New findings
-
-- [ ] **The `...opaque.internal` package re-exposes every capability just made package-private** —
-      **[reproduced]**. `Client` and `Server`'s five `*Deterministic` methods are package-private,
-      but the same capabilities are public one package over and reachable with no reflection:
-      `OpaqueCredentials.createRegistrationRequestWithBlind` and `finalizeRegistrationWithNonce`
-      are `public static` with identical bodies, `OpaqueAke.generateKE2Deterministic` is the exact
-      call the removed wrapper made, and `OpaqueAke.generateKE2` takes `maskingNonce` and
-      `serverAkeKeySeed` as ordinary parameters — so it is invisible to
-      `DeterministicApiVisibilityTest`'s name filter by construction. The `ClientAuthState` /
-      `ClientRegistrationState` canonical constructors are public, which makes reassembling a
-      fixed-blind KE1 a three-liner.
-
-      A reviewer reconstructed all five capabilities from `package com.example.consumer` using
-      public API only, including a full replay. Separately, package-private is defeated by a split
-      package: there is no `module-info.java` and no sealed-jar manifest, so a class placed in
-      `com.codeheadsystems.rfc.opaque` in another module compiles against the package-private
-      methods.
-
-      The narrower change is still worth having — it removes the hazard from the two classes a
-      caller actually types — but it is not a boundary and the code no longer claims to be one.
-      Closing it means either making the `internal` entry points package-private with a bridge, or
-      shipping a `module-info.java` that does not export `...opaque.internal`. The latter also
-      closes the split-package route. `OpaqueTestConfigs` was moved to its own package so a
-      `module-info` is not blocked by a package split across the main and fixtures jars.
 
 - [ ] **`generateKE2ForRecordOrFake` does not close the enumeration oracle on a persistent
       `CredentialStore`** — the timing equalisation covers the protocol work, and against

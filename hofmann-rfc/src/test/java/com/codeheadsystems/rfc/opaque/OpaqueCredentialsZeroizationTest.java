@@ -1,4 +1,4 @@
-package com.codeheadsystems.rfc.opaque.internal;
+package com.codeheadsystems.rfc.opaque;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

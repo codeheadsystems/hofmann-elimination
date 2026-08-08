@@ -1,10 +1,10 @@
-package com.codeheadsystems.rfc.opaque.internal;
+package com.codeheadsystems.rfc.opaque;
 
 import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.ellipticcurve.rfc9380.GroupSpec;
+import com.codeheadsystems.rfc.opaque.OpaqueEnvelope.RecoverResult;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
-import com.codeheadsystems.rfc.opaque.internal.OpaqueEnvelope.RecoverResult;
 import com.codeheadsystems.rfc.opaque.model.AuthResult;
 import com.codeheadsystems.rfc.opaque.model.ClientAuthState;
 import com.codeheadsystems.rfc.opaque.model.CredentialRequest;
@@ -23,7 +23,7 @@ import java.util.Arrays;
 /**
  * OPAQUE-3DH Authenticated Key Exchange implementation.
  */
-public class OpaqueAke {
+final class OpaqueAke {
 
   private OpaqueAke() {
   }
@@ -43,9 +43,9 @@ public class OpaqueAke {
    * @param serverAkePublicKey the server ake public key
    * @return the byte [ ]
    */
-  public static byte[] buildPreamble(byte[] context, byte[] clientIdentity, KE1 ke1,
-                                     byte[] serverIdentity, CredentialResponse credentialResponse,
-                                     byte[] serverNonce, byte[] serverAkePublicKey) {
+  static byte[] buildPreamble(byte[] context, byte[] clientIdentity, KE1 ke1,
+                              byte[] serverIdentity, CredentialResponse credentialResponse,
+                              byte[] serverNonce, byte[] serverAkePublicKey) {
     byte[] prefix = "OPAQUEv1-".getBytes(StandardCharsets.US_ASCII);
     return ByteUtils.concat(
         prefix,
@@ -98,11 +98,11 @@ public class OpaqueAke {
    * @param serverAkeKeySeed     provided server ephemeral AKE seed (null = random)
    * @return ServerKE2Result containing serverAuthState and ke2
    */
-  public static ServerKE2Result generateKE2(OpaqueConfig config, byte[] serverIdentity,
-                                            BigInteger serverPrivateKey, byte[] serverPublicKey,
-                                            RegistrationRecord record, byte[] credentialIdentifier,
-                                            byte[] oprfSeed, KE1 ke1, byte[] clientIdentity,
-                                            byte[] maskingNonce, byte[] serverAkeKeySeed) {
+  static ServerKE2Result generateKE2(OpaqueConfig config, byte[] serverIdentity,
+                                     BigInteger serverPrivateKey, byte[] serverPublicKey,
+                                     RegistrationRecord record, byte[] credentialIdentifier,
+                                     byte[] oprfSeed, KE1 ke1, byte[] clientIdentity,
+                                     byte[] maskingNonce, byte[] serverAkeKeySeed) {
     byte[] resolvedSeed = (serverAkeKeySeed != null) ? serverAkeKeySeed
         : config.randomProvider().randomBytes(OpaqueConfig.Nn);
     byte[] serverNonce = config.randomProvider().randomBytes(OpaqueConfig.Nn);
@@ -127,12 +127,12 @@ public class OpaqueAke {
    * @param serverNonce          the server nonce
    * @return the server ke 2 result
    */
-  public static ServerKE2Result generateKE2Deterministic(OpaqueConfig config, byte[] serverIdentity,
-                                                         BigInteger serverPrivateKey, byte[] serverPublicKey,
-                                                         RegistrationRecord record, byte[] credentialIdentifier,
-                                                         byte[] oprfSeed, KE1 ke1, byte[] clientIdentity,
-                                                         byte[] maskingNonce, byte[] serverAkeKeySeed,
-                                                         byte[] serverNonce) {
+  static ServerKE2Result generateKE2Deterministic(OpaqueConfig config, byte[] serverIdentity,
+                                                  BigInteger serverPrivateKey, byte[] serverPublicKey,
+                                                  RegistrationRecord record, byte[] credentialIdentifier,
+                                                  byte[] oprfSeed, KE1 ke1, byte[] clientIdentity,
+                                                  byte[] maskingNonce, byte[] serverAkeKeySeed,
+                                                  byte[] serverNonce) {
     OpaqueCipherSuite suite = config.cipherSuite();
 
     byte[] sId = (serverIdentity != null) ? serverIdentity : serverPublicKey;
@@ -190,9 +190,9 @@ public class OpaqueAke {
    * @param config         OPAQUE configuration
    * @return AuthResult
    */
-  public static AuthResult generateKE3(ClientAuthState state, byte[] clientIdentity,
-                                       byte[] serverIdentity, KE2 ke2, byte[] context,
-                                       OpaqueConfig config) {
+  static AuthResult generateKE3(ClientAuthState state, byte[] clientIdentity,
+                                byte[] serverIdentity, KE2 ke2, byte[] context,
+                                OpaqueConfig config) {
     OpaqueCipherSuite suite = config.cipherSuite();
 
     RecoverResult recovered = OpaqueCredentials.recoverCredentials(

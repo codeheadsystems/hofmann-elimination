@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
-import com.codeheadsystems.rfc.opaque.internal.OpaqueCredentials;
 import com.codeheadsystems.rfc.opaque.model.AuthResult;
 import com.codeheadsystems.rfc.opaque.model.ClientAuthState;
 import com.codeheadsystems.rfc.opaque.model.ClientRegistrationState;

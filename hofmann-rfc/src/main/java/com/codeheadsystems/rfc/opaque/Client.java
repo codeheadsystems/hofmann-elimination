@@ -1,10 +1,7 @@
 package com.codeheadsystems.rfc.opaque;
 
-import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
-import com.codeheadsystems.rfc.opaque.internal.OpaqueAke;
-import com.codeheadsystems.rfc.opaque.internal.OpaqueCredentials;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
-import com.codeheadsystems.rfc.opaque.internal.OpaqueOprf;
+import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
 import com.codeheadsystems.rfc.opaque.model.AuthResult;
 import com.codeheadsystems.rfc.opaque.model.ClientAuthState;
 import com.codeheadsystems.rfc.opaque.model.ClientRegistrationState;
@@ -110,14 +107,47 @@ public class Client {
   //
   // See Server for the server-side seeds, which are worse still.
   //
-  // *** What this does and does not close. *** It removes these from the two classes a caller
-  // actually types, which is worth doing — but it is not a boundary. The same capabilities remain
-  // public in com.codeheadsystems.rfc.opaque.internal: OpaqueCredentials.createRegistrationRequest-
-  // WithBlind and finalizeRegistrationWithNonce are public static with identical bodies, and
-  // OpaqueAke.generateKE2 takes maskingNonce and serverAkeKeySeed as ordinary parameters. A
-  // reviewer reconstructed every one of these five capabilities from outside the package using
-  // public API and no reflection. Closing it properly needs a module-info that does not export
-  // the internal package; recorded in TODO.md rather than claimed here.
+  // *** What this does and does not close. *** For most of the time this comment has existed it
+  // was not a boundary and said so: the same capabilities were public one package over in
+  // com.codeheadsystems.rfc.opaque.internal — createRegistrationRequestWithBlind and
+  // finalizeRegistrationWithNonce with identical bodies, and OpaqueAke.generateKE2 taking
+  // maskingNonce and serverAkeKeySeed as ordinary parameters, which a name filter cannot see. A
+  // reviewer reconstructed all five capabilities from another package using public API and no
+  // reflection, replay included.
+  //
+  // That package is gone. OpaqueOprf, OpaqueCredentials, OpaqueEnvelope and OpaqueAke now live
+  // here, package-private and final, so there is no second door and no bridge to keep in step
+  // with this one. PackageBoundaryTest pins the whole public surface of this package by
+  // signature rather than by name, so a new public method is a deliberate act with a failing
+  // test attached — which is what the name filter could not give.
+  //
+  // The split-package route is closed too: the jar seals com/codeheadsystems/rfc/opaque/, so a
+  // class compiled into this package from another jar fails to load with a sealing violation
+  // rather than reaching these methods. See hofmann-rfc/build.gradle.kts.
+  //
+  // *** The residuals, which are inherent rather than deferred. ***
+  //
+  // The larger one is the injectable random source, and an earlier draft of this comment claimed
+  // the opposite — that the server-side capabilities were "not reconstructable at all". They are.
+  // OprfCipherSuite.Builder.withRandom and OpaqueConfig.withRandomConfig are production API, every
+  // nonce and seed in the protocol is drawn through them, and a SecureRandom subclass whose
+  // nextBytes writes a constant fixes the blind, the envelope nonce, the masking nonce, the server
+  // AKE seed and the server nonce simultaneously — no reflection, no test-named method, from any
+  // package. A reviewer replayed a complete authentication that way against this very tree, and
+  // rebuilt a server's long-term key from a rigged suite RNG for good measure. That residual is
+  // accepted and its reasoning is written down on OprfCipherSuite.withRandom: withRandom is how an
+  // operator installs an HSM-backed source, and nothing can distinguish one from a stub.
+  //
+  // Which is why the argument for removing these methods was never "the capability becomes
+  // unreachable". It is about what a caller reaches *by accident*. Passing a constant to a
+  // parameter that asks for one is what pasting an RFC test vector into production code looks
+  // like; writing a SecureRandom that ignores its output buffer is not something anyone does
+  // without meaning to.
+  //
+  // The smaller one: a consumer can hand-build a fixed-blind KE1, because ClientAuthState's
+  // canonical constructor is public (the record is returned from generateKE1) and
+  // blind · H(password) is computable from GroupSpec, which this library publishes on purpose as
+  // its RFC 9497 implementation. That is reimplementing the client from primitives.
 
   /**
    * Creates a registration request with a fixed blinding factor (for test vectors).
