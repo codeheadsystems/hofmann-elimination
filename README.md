@@ -54,6 +54,18 @@ See [hofmann-elimination-example](https://github.com/codeheadsystems/hofmann-eli
 ./gradlew clean build test
 ```
 
+**Run only one Gradle build at a time in a given checkout.** Gradle does not serialise `build/`
+outputs across concurrent invocations on one directory: one build's `clean` deletes
+`build/classes/java/test/**` while another's worker is loading from it, and two builds writing the
+same test-result store truncate it. The failure does not say any of that — it surfaces as an
+`EOFException`, or a `NoSuchFileException` on `in-progress-results-generic.bin`, or a
+`NoClassDefFoundError` naming a different arbitrary class each run, which reads as a flaky test.
+
+To build in parallel, use a separate `git worktree` per build; the contention is per directory, so
+separate checkouts do not interact. If you hit it, `./gradlew clean build` recovers —
+`--rerun-tasks` does not, because a truncated result store makes the next run fail in under a
+second before any test executes. Deleting `<module>/build/test-results/<task>/binary` clears that.
+
 #### TypeScript
 
 ```

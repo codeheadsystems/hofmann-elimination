@@ -69,6 +69,44 @@ two are documented in code with no action planned.
 
 ---
 
+## Concurrent builds — decided, not fixed in code (2026-08-08)
+
+`:test` aborts when more than one `./gradlew` runs in the same project directory. Gradle does not
+serialise `build/` outputs across concurrent invocations: one build's `clean` deletes
+`build/classes/java/test/**` while another's worker loads from it, and two builds writing the same
+Kryo result store truncate it. The failing read is in Gradle's own report generator
+(`GenericHtmlTestReportGenerator` → `SerializableTestResultStore` → `KryoException: Buffer
+underflow`), not in anything this project wrote.
+
+**Decision: run one build per checkout, and use a separate `git worktree` to build in parallel.**
+Documented in README.md under Building. A `flock` in `gradlew` was built and measured — it works
+(critical-section overlap +10.9s without it, −0.5s with it) — and then reverted: `gradlew` is a
+generated file, so the edit needs a guard task to survive `./gradlew wrapper`, and that is a lot of
+machinery in shipped tooling for a condition that a separate checkout avoids entirely.
+
+**The residual is that the failure does not announce itself.** It appears as an `EOFException`, a
+`NoSuchFileException` on `in-progress-results-generic.bin`, or a `NoClassDefFoundError` naming a
+different arbitrary class each run — which reads as a flaky test. It has already produced one
+confidently wrong conclusion in this repo. If it recurs, check for a second build before
+investigating anything else. `clean build` recovers; `--rerun-tasks` does not, until
+`<module>/build/test-results/<task>/binary` is deleted.
+
+**Two things that are now known rather than assumed:**
+
+- Toggling `org.gradle.parallel` changes nothing — the concurrency is across builds, not within
+  one.
+- **An interrupted build does not cause this.** Three hard `SIGKILL`s to the whole process group
+  mid-test, daemon included, left the next run passing every time with no corruption. Gradle
+  recovers from an interrupted write on its own. An earlier version of this file claimed otherwise
+  as an open finding; that was inference, not observation, and it is withdrawn.
+
+**Do not measure this while another agent is building.** An earlier A/B here concluded a build task
+made the flake three times more likely; a reviewer observed a second agent running `clean build` in
+the same directory during *both* arms, so that comparison is confounded and should not be relied
+on.
+
+---
+
 ## New findings
 
 - [ ] **The Spring Security escape hatch documented on `HofmannSecurityConfig` does not work** —
