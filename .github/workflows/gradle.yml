@@ -151,8 +151,24 @@ jobs:
       # for leaving it unpinned — that an advisory scanner should be newest — was also wrong: the
       # advisories come from the RustSec database at runtime, not from the binary, so a pinned
       # scanner is not a stale scanner.
+      #
+      # Conditional because the two changes above interact: caching ~/.cargo/bin means the binary
+      # is restored on every run after the first, and `cargo install` refuses to overwrite an
+      # existing binary without --force ("binary `cargo-audit` already exists in destination").
+      # Shipping the cache path and the pin together made the job fail on every run but the first.
+      #
+      # Checking the version rather than mere presence is what makes the pin still mean something:
+      # bumping CARGO_AUDIT_VERSION reinstalls rather than silently keeping whatever the cache
+      # holds. --force on the install path so a version change overwrites the cached binary.
       - name: Install cargo-audit
-        run: cargo install cargo-audit --version 0.22.2 --locked
+        env:
+          CARGO_AUDIT_VERSION: '0.22.2'
+        run: |
+          if cargo audit --version 2>/dev/null | grep -qFw "$CARGO_AUDIT_VERSION"; then
+            echo "cargo-audit $CARGO_AUDIT_VERSION restored from cache"
+          else
+            cargo install cargo-audit --version "$CARGO_AUDIT_VERSION" --locked --force
+          fi
 
       - name: Audit Rust dependencies
         run: cargo audit --deny warnings
