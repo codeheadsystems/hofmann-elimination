@@ -6,6 +6,11 @@ plugins {
     // Apply the java Plugin to add support for Java.
     java
     idea
+
+    // Minimum versions for transitive dependencies with published advisories. Applied here so
+    // every module gets them, since the vulnerable artifacts arrive through the frameworks
+    // rather than being declared anywhere.
+    id("buildlogic.security-floor-conventions")
 }
 
 repositories {

@@ -82,6 +82,13 @@ jobs:
         run: npm ci
         working-directory: hofmann-typescript
 
+      # Fails the job on a high or critical advisory in anything this package ships or builds
+      # with. --audit-level=high rather than moderate: a gate that fires on every transitive dev
+      # dependency gets ignored, and an ignored gate is the same as no gate.
+      - name: Audit npm dependencies
+        run: npm audit --audit-level=high
+        working-directory: hofmann-typescript
+
       - name: Typecheck
         run: npm run typecheck
         working-directory: hofmann-typescript
@@ -132,6 +139,73 @@ jobs:
 
       - name: Test
         run: cargo test --locked
+
+      # RustSec's advisory database, checked against Cargo.lock. Installed from crates.io rather
+      # than via a third-party action: this repo pins its actions by commit SHA precisely to avoid
+      # trusting a mutable tag, and adding an unpinnable action would undo that. The trade is that
+      # cargo-audit itself is not version-pinned — for an advisory scanner that is arguably right,
+      # since the value is in having the newest checks, but it is a trade rather than a free win.
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit Rust dependencies
+        run: cargo audit --deny warnings
+
+  dependency-scan:
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    # Lifted to the job so the steps below can test it. The `secrets` context is not available in
+    # a step-level `if` — only `env` is — so checking `secrets.NVD_API_KEY` directly there would
+    # not have worked, and would have failed as a silently-skipped warning rather than loudly.
+    env:
+      NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Set up JDK 21
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@417ae3ccd767c252f5661f1ace9f835f9654f2b5 # v3.1.0
+
+      # The NVD database is large and slow to build; caching it keeps this job to minutes rather
+      # than tens of minutes. The key rolls weekly so the cache cannot go stale enough to miss a
+      # recent advisory, and restore-keys still gives a warm start on the week's first run.
+      - name: Cache the NVD database
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.gradle/dependency-check-data
+          key: ${{ runner.os }}-nvd-${{ github.run_id }}
+          restore-keys: ${{ runner.os }}-nvd-
+
+      # NVD_API_KEY is not required, but without it the NVD API rate-limits hard enough that the
+      # first run can take the better part of an hour. Get one at
+      # https://nvd.nist.gov/developers/request-an-api-key and add it as a repository secret.
+      # This does not skip when the secret is absent: a scan that silently does nothing is the
+      # failure mode this job exists to replace.
+      - name: Warn when no NVD API key is configured
+        if: ${{ env.NVD_API_KEY == '' }}
+        run: |
+          echo "::warning::NVD_API_KEY is not set. The scan will still run but will be heavily"
+          echo "::warning::rate-limited by the NVD API. Add the secret to speed it up."
+
+      - name: Scan dependencies for known vulnerabilities
+        run: ./gradlew dependencyCheckAggregate
+
+      # Uploaded on failure so the CVE list is readable without re-running the scan locally,
+      # which would mean rebuilding the NVD database on a developer machine.
+      - name: Upload the report
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dependency-check-report
+          path: build/reports/dependency-check-report.*
 
   dependency-submission:
 
