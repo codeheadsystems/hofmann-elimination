@@ -1,10 +1,10 @@
-package com.codeheadsystems.rfc.opaque.internal;
+package com.codeheadsystems.rfc.opaque;
 
 import com.codeheadsystems.rfc.common.ByteUtils;
+import com.codeheadsystems.rfc.opaque.OpaqueEnvelope.RecoverResult;
+import com.codeheadsystems.rfc.opaque.OpaqueEnvelope.StoreResult;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
 import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
-import com.codeheadsystems.rfc.opaque.internal.OpaqueEnvelope.RecoverResult;
-import com.codeheadsystems.rfc.opaque.internal.OpaqueEnvelope.StoreResult;
 import com.codeheadsystems.rfc.opaque.model.ClientRegistrationState;
 import com.codeheadsystems.rfc.opaque.model.CredentialRequest;
 import com.codeheadsystems.rfc.opaque.model.CredentialResponse;
@@ -19,7 +19,7 @@ import java.util.Arrays;
 /**
  * Handles the credential request/response lifecycle for OPAQUE registration and authentication.
  */
-public class OpaqueCredentials {
+final class OpaqueCredentials {
 
   private OpaqueCredentials() {
   }
@@ -31,7 +31,7 @@ public class OpaqueCredentials {
    * @param config   the config
    * @return the client registration state
    */
-  public static ClientRegistrationState createRegistrationRequest(byte[] password, OpaqueConfig config) {
+  static ClientRegistrationState createRegistrationRequest(byte[] password, OpaqueConfig config) {
     BigInteger blind = config.cipherSuite().oprfSuite().randomScalar();
     return createRegistrationRequestWithBlind(password, blind, config);
   }
@@ -44,9 +44,9 @@ public class OpaqueCredentials {
    * @param config   the config
    * @return the client registration state
    */
-  public static ClientRegistrationState createRegistrationRequestWithBlind(byte[] password,
-                                                                           BigInteger blind,
-                                                                           OpaqueConfig config) {
+  static ClientRegistrationState createRegistrationRequestWithBlind(byte[] password,
+                                                                    BigInteger blind,
+                                                                    OpaqueConfig config) {
     byte[] blindedElement = OpaqueOprf.blind(config.cipherSuite(), password, blind);
     RegistrationRequest request = new RegistrationRequest(blindedElement);
     return new ClientRegistrationState(blind, password, request);
@@ -62,11 +62,11 @@ public class OpaqueCredentials {
    * @param oprfSeed             the oprf seed
    * @return the registration response
    */
-  public static RegistrationResponse createRegistrationResponse(OpaqueConfig config,
-                                                                RegistrationRequest request,
-                                                                byte[] serverPublicKey,
-                                                                byte[] credentialIdentifier,
-                                                                byte[] oprfSeed) {
+  static RegistrationResponse createRegistrationResponse(OpaqueConfig config,
+                                                         RegistrationRequest request,
+                                                         byte[] serverPublicKey,
+                                                         byte[] credentialIdentifier,
+                                                         byte[] oprfSeed) {
     BigInteger oprfKey = OpaqueOprf.deriveOprfKey(config.cipherSuite(), oprfSeed, credentialIdentifier);
     byte[] evaluatedElement = OpaqueOprf.blindEvaluate(config.cipherSuite(), oprfKey, request.blindedElement());
     return new RegistrationResponse(evaluatedElement, serverPublicKey);
@@ -82,11 +82,11 @@ public class OpaqueCredentials {
    * @param config         the config
    * @return the registration record
    */
-  public static RegistrationRecord finalizeRegistration(ClientRegistrationState state,
-                                                        RegistrationResponse response,
-                                                        byte[] serverIdentity,
-                                                        byte[] clientIdentity,
-                                                        OpaqueConfig config) {
+  static RegistrationRecord finalizeRegistration(ClientRegistrationState state,
+                                                 RegistrationResponse response,
+                                                 byte[] serverIdentity,
+                                                 byte[] clientIdentity,
+                                                 OpaqueConfig config) {
     return finalizeRegistrationWithNonce(state, response, serverIdentity, clientIdentity,
         config, config.randomProvider().randomBytes(OpaqueConfig.Nn));
   }
@@ -102,12 +102,12 @@ public class OpaqueCredentials {
    * @param envelopeNonce  the envelope nonce
    * @return the registration record
    */
-  public static RegistrationRecord finalizeRegistrationWithNonce(ClientRegistrationState state,
-                                                                 RegistrationResponse response,
-                                                                 byte[] serverIdentity,
-                                                                 byte[] clientIdentity,
-                                                                 OpaqueConfig config,
-                                                                 byte[] envelopeNonce) {
+  static RegistrationRecord finalizeRegistrationWithNonce(ClientRegistrationState state,
+                                                          RegistrationResponse response,
+                                                          byte[] serverIdentity,
+                                                          byte[] clientIdentity,
+                                                          OpaqueConfig config,
+                                                          byte[] envelopeNonce) {
     byte[] randomizedPwd = deriveRandomizedPwd(state.password(), state.blind(),
         response.evaluatedElement(), config);
     try {
@@ -134,12 +134,12 @@ public class OpaqueCredentials {
    * @param oprfSeed             the oprf seed
    * @return the credential response
    */
-  public static CredentialResponse createCredentialResponse(OpaqueConfig config,
-                                                            CredentialRequest request,
-                                                            byte[] serverPublicKey,
-                                                            RegistrationRecord record,
-                                                            byte[] credentialIdentifier,
-                                                            byte[] oprfSeed) {
+  static CredentialResponse createCredentialResponse(OpaqueConfig config,
+                                                     CredentialRequest request,
+                                                     byte[] serverPublicKey,
+                                                     RegistrationRecord record,
+                                                     byte[] credentialIdentifier,
+                                                     byte[] oprfSeed) {
     return createCredentialResponseWithNonce(config, request, serverPublicKey, record,
         credentialIdentifier, oprfSeed, config.randomProvider().randomBytes(OpaqueConfig.Nn));
   }
@@ -156,13 +156,13 @@ public class OpaqueCredentials {
    * @param maskingNonce         the masking nonce
    * @return the credential response
    */
-  public static CredentialResponse createCredentialResponseWithNonce(OpaqueConfig config,
-                                                                     CredentialRequest request,
-                                                                     byte[] serverPublicKey,
-                                                                     RegistrationRecord record,
-                                                                     byte[] credentialIdentifier,
-                                                                     byte[] oprfSeed,
-                                                                     byte[] maskingNonce) {
+  static CredentialResponse createCredentialResponseWithNonce(OpaqueConfig config,
+                                                              CredentialRequest request,
+                                                              byte[] serverPublicKey,
+                                                              RegistrationRecord record,
+                                                              byte[] credentialIdentifier,
+                                                              byte[] oprfSeed,
+                                                              byte[] maskingNonce) {
     OpaqueCipherSuite suite = config.cipherSuite();
     BigInteger oprfKey = OpaqueOprf.deriveOprfKey(suite, oprfSeed, credentialIdentifier);
     byte[] evaluatedElement = OpaqueOprf.blindEvaluate(suite, oprfKey, request.blindedElement());
@@ -201,11 +201,11 @@ public class OpaqueCredentials {
    * @param config         the config
    * @return the recover result
    */
-  public static RecoverResult recoverCredentials(byte[] password, BigInteger blind,
-                                                 CredentialResponse response,
-                                                 byte[] serverIdentity,
-                                                 byte[] clientIdentity,
-                                                 OpaqueConfig config) {
+  static RecoverResult recoverCredentials(byte[] password, BigInteger blind,
+                                          CredentialResponse response,
+                                          byte[] serverIdentity,
+                                          byte[] clientIdentity,
+                                          OpaqueConfig config) {
     OpaqueCipherSuite suite = config.cipherSuite();
     byte[] randomizedPwd = deriveRandomizedPwd(password, blind, response.evaluatedElement(), config);
     byte[] maskingKey = null;
@@ -269,8 +269,8 @@ public class OpaqueCredentials {
    * @param config           the config
    * @return the randomized password; password-equivalent, and the caller's to clear
    */
-  public static byte[] deriveRandomizedPwd(byte[] password, BigInteger blind,
-                                           byte[] evaluatedElement, OpaqueConfig config) {
+  static byte[] deriveRandomizedPwd(byte[] password, BigInteger blind,
+                                    byte[] evaluatedElement, OpaqueConfig config) {
     byte[] oprfOutput = OpaqueOprf.finalize(config.cipherSuite(), password, blind, evaluatedElement);
     byte[] stretchedOutput = config.ksf().stretch(oprfOutput, config);
     byte[] ikm = ByteUtils.concat(oprfOutput, stretchedOutput);

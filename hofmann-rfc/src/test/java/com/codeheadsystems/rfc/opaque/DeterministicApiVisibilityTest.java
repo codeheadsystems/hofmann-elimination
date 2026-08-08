@@ -42,9 +42,12 @@ import org.junit.jupiter.params.provider.MethodSource;
  * deliberate act with a failing test attached, rather than something that happens because an IDE
  * offered to make a method public to satisfy a caller in another package.
  *
- * <p><strong>This does not assert a boundary, and the commit that added it overclaimed one.</strong>
- * The same capabilities remain public in {@code ...opaque.internal}. See {@link Client}'s
- * comment on the deterministic section, and the TODO.md entry for closing it.
+ * <p><strong>On its own this asserts a habit, not a boundary</strong> — it did overclaim one once,
+ * while the same five capabilities were public in {@code ...opaque.internal}. The boundary is
+ * {@link PackageBoundaryTest}, which pins the whole public surface of this package by signature,
+ * plus the jar sealing checked by {@code :hofmann-rfc:verifyOpaquePackageSealed}. This test is
+ * kept alongside it because it is the one that says <em>why</em> each of these five parameters
+ * matters, and that reasoning is what someone about to widen one needs to read.
  */
 class DeterministicApiVisibilityTest {
 
@@ -83,8 +86,9 @@ class DeterministicApiVisibilityTest {
    *
    * <p>Note the filter is name-based, so it sees only methods called {@code *Deterministic}.
    * {@code OpaqueAke.generateKE2} takes {@code maskingNonce} and {@code serverAkeKeySeed} as
-   * parameters and is invisible to it by construction — which is part of why the section comment
-   * on {@link Client} says this is not a boundary.
+   * parameters and is invisible to it by construction. That blind spot is why
+   * {@link PackageBoundaryTest} compares signatures over the whole package rather than names over
+   * two classes; it is not repaired here, because a name filter cannot repair it.
    */
   @Test
   void theDeterministicMethodsStillExistUnderThatName() {

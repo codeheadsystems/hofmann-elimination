@@ -165,7 +165,9 @@ The fake masking key and client public key are derived deterministically from th
 | `OpaqueConfig` | Protocol configuration (cipher suite, KSF, context) |
 | `OpaqueCipherSuite` | Wrapper around `OprfCipherSuite`: size constants (`Npk`, `Nsk`, `Nh`, `Nm`, `Nn`) and the low-level primitives `hkdfExtract`, `hkdfExpand`, `hkdfExpandLabel`, `hmac`, `hash`, `deriveAkeKeyPair` |
 
-### Internal Classes (not part of public API)
+### Internal Classes (not reachable from outside the package)
+
+All four are package-private and `final`, in `com.codeheadsystems.rfc.opaque` alongside `Client` and `Server`.
 
 | Class | Role |
 |---|---|
@@ -173,6 +175,50 @@ The fake masking key and client public key are derived deterministically from th
 | `OpaqueCredentials` | Credential request/response lifecycle; credential masking/unmasking |
 | `OpaqueEnvelope` | Envelope store (registration) and recover (authentication) |
 | `OpaqueAke` | OPAQUE-3DH key exchange: preamble, 3DH (via `GroupSpec.scalarMultiply`), key derivation, MAC computation |
+
+They used to be public, in a `...opaque.internal` sub-package. That arrangement documented an
+intent it did not enforce: every capability deliberately kept off `Client` and `Server` — a
+caller-supplied blind, envelope nonce, masking nonce and server AKE seed — was public one package
+over, and a reviewer rebuilt all of them, replay included, from another package using public API
+and no reflection. Folding the package in is what makes those methods actually unreachable, and it
+is why there is no bridge class to keep in step with anything.
+
+Two things hold the boundary in place, because a comment does not:
+
+- **`PackageBoundaryTest`** enumerates every class compiled into `com.codeheadsystems.rfc.opaque`
+  and pins the full public surface *by signature*. Signatures rather than names on purpose:
+  `OpaqueAke.generateKE2` took the masking nonce and the server AKE seed as ordinary parameters,
+  so the older name-based check could not have seen it however carefully it was written.
+- **Jar sealing.** Package-private is a compile-time rule keyed on the package *name*, so a class
+  declared into `com.codeheadsystems.rfc.opaque` from another jar compiles against these methods
+  and calls them. The published jar seals `com/codeheadsystems/rfc/opaque/`, and a sealed package
+  must come from one code source, so that class fails to load — verified both ways, and asserted
+  on the artifact by `:hofmann-rfc:verifyOpaquePackageSealed`.
+
+Sealing rather than a `module-info.java`, which was the other candidate: a `module-info` takes
+effect only on the module path, and this library is consumed from the class path, where it is
+inert. Sealing applies in both.
+
+**What remains reachable, inherently.** None of this makes the *behaviours* unreachable, and it was
+never the claim — the claim is about what a caller reaches by accident.
+
+- **The injectable random source reaches all of them at once.** `OprfCipherSuite.Builder.withRandom`
+  and `OpaqueConfig.withRandomConfig` are production API — `withRandom` is how an operator installs
+  an HSM-backed or policy-constrained source — and every nonce and seed in the protocol is drawn
+  through them. A `SecureRandom` subclass whose `nextBytes` writes a constant fixes the blind, the
+  envelope nonce, the masking nonce, the server AKE seed and the server nonce together, from any
+  package, with no reflection; a reviewer replayed a full authentication that way, and recovered a
+  server's long-term key from a rigged suite RNG. This is an accepted residual whose reasoning lives
+  on `OprfCipherSuite.withRandom`: nothing can tell a hardware source from a fixed-output stub, and
+  a caller who supplies a broken one has broken any crypto library, not this one.
+- **A fixed-blind KE1 can be assembled by hand**, since `ClientAuthState`'s canonical constructor is
+  public (the record is returned from `generateKE1`) and `blind · H(password)` is computable from
+  `GroupSpec`, published deliberately as the RFC 9497 implementation. That is reimplementing the
+  client from primitives.
+
+The difference that justifies the change is accident surface, not reachability. Passing a constant
+to a parameter that asks for one is what pasting an RFC test vector into production code looks like.
+Writing a `SecureRandom` that ignores its output buffer is not something anyone does by mistake.
 
 ## Wire Format
 

@@ -1,4 +1,4 @@
-package com.codeheadsystems.rfc.opaque.internal;
+package com.codeheadsystems.rfc.opaque;
 
 import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.opaque.config.OpaqueCipherSuite;
@@ -9,7 +9,7 @@ import java.nio.charset.StandardCharsets;
  * OPRF operations used by OPAQUE.
  * All methods are suite-parameterized to support multiple cipher suites.
  */
-public class OpaqueOprf {
+final class OpaqueOprf {
 
   private OpaqueOprf() {
   }
@@ -22,7 +22,7 @@ public class OpaqueOprf {
    * @param blind    a randomly-chosen scalar (caller provides for deterministic testing)
    * @return blindedElement as a serialized group element
    */
-  public static byte[] blind(OpaqueCipherSuite suite, byte[] password, BigInteger blind) {
+  static byte[] blind(OpaqueCipherSuite suite, byte[] password, BigInteger blind) {
     byte[] H = suite.oprfSuite().groupSpec().hashToGroup(password, suite.oprfSuite().hashToGroupDst());
     if (isIdentity(H)) {
       throw new IllegalArgumentException("HashToGroup produced the identity element");
@@ -45,7 +45,7 @@ public class OpaqueOprf {
    * @param blindedElement serialized group element from client
    * @return evaluatedElement as a serialized group element
    */
-  public static byte[] blindEvaluate(OpaqueCipherSuite suite, BigInteger oprfKey, byte[] blindedElement) {
+  static byte[] blindEvaluate(OpaqueCipherSuite suite, BigInteger oprfKey, byte[] blindedElement) {
     // RFC 9497 §3.3.2: reject the identity element (all-zero ristretto255 encoding) supplied
     // by the client, mirroring the client-side check in blind().
     if (ByteUtils.isAllZero(blindedElement)) {
@@ -63,7 +63,7 @@ public class OpaqueOprf {
    * @param evaluatedElement serialized group element from server
    * @return Nh-byte OPRF output
    */
-  public static byte[] finalize(OpaqueCipherSuite suite, byte[] password, BigInteger blind, byte[] evaluatedElement) {
+  static byte[] finalize(OpaqueCipherSuite suite, byte[] password, BigInteger blind, byte[] evaluatedElement) {
     return suite.oprfSuite().finalize(password, blind, evaluatedElement);
   }
 
@@ -75,7 +75,7 @@ public class OpaqueOprf {
    * @param credentialIdentifier credential identifier bytes
    * @return OPRF private key scalar
    */
-  public static BigInteger deriveOprfKey(OpaqueCipherSuite suite, byte[] oprfSeed, byte[] credentialIdentifier) {
+  static BigInteger deriveOprfKey(OpaqueCipherSuite suite, byte[] oprfSeed, byte[] credentialIdentifier) {
     byte[] info = ByteUtils.concat(
         credentialIdentifier,
         "OprfKey".getBytes(StandardCharsets.US_ASCII)

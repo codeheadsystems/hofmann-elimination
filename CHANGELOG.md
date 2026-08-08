@@ -243,6 +243,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   issue, per RFC 8725 §3.5. A deployment running a short `jwtSecretHex` will fail to start rather
   than sign with a brute-forceable key. A custom `Supplier<JwtKeyDetail>` must now also be
   callable at construction time, not only at first token issue.
+- **The package `com.codeheadsystems.rfc.opaque.internal` is gone.** `OpaqueOprf`,
+  `OpaqueCredentials`, `OpaqueEnvelope` and `OpaqueAke` moved into
+  `com.codeheadsystems.rfc.opaque` and are now package-private and `final`. No production code
+  outside `Client` and `Server` referenced them — only three of this module's own tests did, and
+  they moved with it — and the package was labelled internal in its own name and in `OPAQUE.md`,
+  so a consumer importing it was already outside the supported API. But it was public, so this is
+  a visible removal rather than an internal one.
+
+  The label was the whole problem. Every capability deliberately kept off `Client` and `Server`
+  the release before — a caller-supplied OPRF blind, envelope nonce, masking nonce and server AKE
+  seed — was `public static` one package over with the same bodies, and
+  `OpaqueAke.generateKE2` took the masking nonce and the server AKE seed as ordinary parameters,
+  which no name-based check could have caught. A reviewer reconstructed all five from another
+  package using public API and no reflection, including a full authentication replay. Folding the
+  package in is what closes that route; a bridge would have left a second entry point to keep in
+  step with the first.
+
+  Two mechanisms hold it, since the previous attempt was held by a comment. `PackageBoundaryTest`
+  enumerates the compiled package and pins its public methods, constructors *and fields* by
+  signature, so a new public member fails a test rather than passing a filter. Fields are in that
+  list because a reviewer added a `public static final BigInteger RFC_TEST_BLIND` to `Client`
+  against a draft that read only methods, and the build stayed green — a published blind constant
+  being the single worst thing that can appear on this API. And the jar now seals
+  `com/codeheadsystems/rfc/opaque/`: package-private is keyed on the package *name*, so a class
+  declared into that package from another jar compiled against these methods and called them —
+  reproduced, and reproduced as refused with the seal in place, since a sealed package must load
+  from a single code source. `:hofmann-rfc:verifyOpaquePackageSealed` runs as part of `check` and
+  asserts this by *loading* — it puts a second code source for the package in front of the built
+  jar and requires the refusal — rather than by reading the manifest string, which would pass
+  against a manifest that is present but not enforced.
+
+  Sealing rather than a `module-info.java`, which was the alternative on the table: a
+  `module-info` is inert on the class path, which is how this library is consumed, so it would
+  have left the ordinary consumer where they started. Sealing applies to both paths. **If you
+  shade or relocate `hofmann-rfc` into a merged jar, keep the manifest section** — a fat-jar
+  plugin that drops it silently reopens the split-package route, and one that keeps it while
+  splitting the package across code sources will fail at class load.
+
+  **This does not make the behaviours unreachable, and does not claim to.** A caller who hands the
+  library a rigged `SecureRandom` — through `OprfCipherSuite.Builder.withRandom` or
+  `OpaqueConfig.withRandomConfig`, both production API, `withRandom` being how an operator installs
+  an HSM-backed source — fixes the blind, the envelope nonce, the masking nonce, the server AKE
+  seed and the server nonce all at once, from any package, with no reflection. A reviewer replayed
+  a full authentication that way against the fixed tree, and recovered a server's long-term key
+  from a rigged suite RNG. That residual is accepted, with its reasoning on
+  `OprfCipherSuite.withRandom`: nothing can distinguish a hardware source from a fixed-output stub.
+  A fixed-blind KE1 can likewise be hand-assembled from the public `GroupSpec` and
+  `ClientAuthState`'s public canonical constructor.
+
+  What changes is the accident surface. Passing a constant to a parameter that asks for one is what
+  pasting an RFC test vector into production code looks like, and it is a one-liner from a method
+  named for testing. Writing a `SecureRandom` whose `nextBytes` ignores its buffer is not something
+  anyone does without meaning to.
 - **`SessionData` no longer carries the OPAQUE session key.** Nothing read it back, and the
   record's generated `toString()` rendered it in full. Third-party `SessionStore` implementations
   that construct `SessionData` need the argument removed;
