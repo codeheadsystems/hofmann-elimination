@@ -11,9 +11,9 @@ P2 item is closed.** What remains is P3 and the findings raised while closing th
 
 | Section | Open |
 |---|---:|
-| New findings | 5 |
+| New findings | 4 |
 | **P3 Low** | 4 |
-| **Total** | **9** |
+| **Total** | **8** |
 
 Recount with `grep -c '^- \[ \]' TODO.md` after editing.
 
@@ -108,25 +108,6 @@ on.
 ---
 
 ## New findings
-
-- [ ] **A consumer's own auto-configuration still collides with `HofmannSecurityConfig`, decided
-      by alphabetical class name** — **[reproduced]**. The escape hatch now works for every
-      ordinary shape: a `@Bean` on the `@SpringBootApplication` class, a separate
-      `@Configuration`, a `securityMatcher`-scoped chain, an explicit `@Order`, two user chains, a
-      component-scanned configuration, and one behind `@ConditionalOnProperty`. It does not work
-      when the consumer contributes the chain from their *own* `@AutoConfiguration`: that fails
-      with `UnreachableFilterChainException` unless they declare
-      `@AutoConfiguration(before = HofmannSecurityConfig.class)`.
-
-      Which one wins is decided by **class name**, because `AutoConfigurationSorter` sorts
-      alphabetically before applying before/after ordering. A reviewer demonstrated the same
-      auto-configuration booting or failing depending only on its package: `com.aaa.…` boots,
-      `com.example.autocfg.…` does not.
-
-      Pre-existing rather than introduced by the fix, and narrow — it needs a library built on this
-      library. Documented on `HofmannSecurityConfig`. Closing it means either detecting the
-      collision and failing with a message that names the fix, or dropping the unscoped default
-      chain in favour of a scoped one, which is a larger design change.
 
 - [ ] **The `...opaque.internal` package re-exposes every capability just made package-private** —
       **[reproduced]**. `Client` and `Server`'s five `*Deterministic` methods are package-private,

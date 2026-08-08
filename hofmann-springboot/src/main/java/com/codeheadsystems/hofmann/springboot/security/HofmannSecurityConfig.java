@@ -3,8 +3,11 @@ package com.codeheadsystems.hofmann.springboot.security;
 import com.codeheadsystems.hofmann.server.manager.JwtManager;
 import com.codeheadsystems.hofmann.springboot.config.HofmannAutoConfiguration;
 import jakarta.servlet.DispatcherType;
+import java.util.Arrays;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
+import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
+import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -59,10 +62,9 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  * {@code @SpringBootTest} coverage: {@code SecurityChainBackOffTest} for a consumer that scans
  * this package, {@code NonScanningConsumerBackOffTest} for one that does not.
  *
- * <p>One residual this does not fix: a consumer whose own <em>auto-configuration</em> contributes
- * the chain still collides, and which one wins is decided by alphabetical class name, because
- * {@code AutoConfigurationSorter} sorts that way before applying before/after ordering. Such a
- * consumer should declare {@code @AutoConfiguration(before = HofmannSecurityConfig.class)}.
+ * <p>A consumer whose own <em>auto-configuration</em> contributes the chain is covered too, but
+ * not by the condition — see {@link #hofmannSecurityChainWithdrawal()}. That case used to be
+ * decided by alphabetical class name and now is not.
  *
  * <p><strong>This chain is only registered when the application defines no
  * {@link SecurityFilterChain} of its own.</strong> It is unscoped by design — it applies to every
@@ -127,6 +129,9 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @EnableWebSecurity
 public class HofmannSecurityConfig {
 
+  private static final org.slf4j.Logger LOG =
+      org.slf4j.LoggerFactory.getLogger(HofmannSecurityConfig.class);
+
   /**
    * Order for the default chain: last, matching Spring Boot's own default.
    * <p>
@@ -153,6 +158,55 @@ public class HofmannSecurityConfig {
    * @param jwtManager the jwt manager
    * @return the jwt authentication filter
    */
+  /** Bean name of the chain below; the post-processor has to name it to withdraw it. */
+  static final String CHAIN_BEAN_NAME = "securityFilterChain";
+
+  /**
+   * Withdraws this library's chain if any other {@link SecurityFilterChain} is defined, whatever
+   * defined it.
+   *
+   * <p>{@code @ConditionalOnMissingBean} below handles the common case and is kept because it is
+   * what a Spring user expects to read and what shows up in the condition report. It cannot handle
+   * every case: a condition can only see beans that auto-configurations processed <em>before</em>
+   * it contributed, and {@code AutoConfigurationSorter} orders by class name before applying
+   * before/after. So a consumer whose own {@code @AutoConfiguration} contributes a chain won or
+   * lost on the alphabet — the same consumer auto-configuration booted from {@code com.aaa} and
+   * failed from {@code zzz}, which is not a contract anyone can rely on.
+   *
+   * <p>Ordering cannot fix that. {@code @AutoConfigureOrder} already defaults to
+   * {@code LOWEST_PRECEDENCE}, so there is no value that places this after an arbitrary consumer's
+   * auto-configuration — tried, and it changed nothing.
+   *
+   * <p>A {@link BeanFactoryPostProcessor} can, because it runs after every bean definition is
+   * registered and every condition has been evaluated. At that point the set of chains is final
+   * regardless of the order they arrived in, so "stand down if anyone else defined one" becomes a
+   * decidable question rather than a race. Declared {@code static} so it can be instantiated
+   * without forcing early construction of this configuration class.
+   *
+   * @return the post-processor
+   */
+  @Bean
+  static BeanFactoryPostProcessor hofmannSecurityChainWithdrawal() {
+    return beanFactory -> {
+      // allowEagerInit=false: types come from @Bean method signatures, and instantiating beans
+      // this early to answer a type query is exactly what a post-processor must not do. Same
+      // limitation @ConditionalOnMissingBean has, so this is no less accurate than the condition
+      // it backs up.
+      String[] chains = beanFactory.getBeanNamesForType(SecurityFilterChain.class, true, false);
+      boolean somebodyElseHasOne =
+          Arrays.stream(chains).anyMatch(name -> !CHAIN_BEAN_NAME.equals(name));
+      if (somebodyElseHasOne
+          && beanFactory instanceof BeanDefinitionRegistry registry
+          && registry.containsBeanDefinition(CHAIN_BEAN_NAME)) {
+        LOG.info("An application-defined SecurityFilterChain is present ({}); withdrawing the "
+            + "Hofmann default chain. The JWT filter remains available to wire into your own.",
+            String.join(", ", Arrays.stream(chains)
+                .filter(name -> !CHAIN_BEAN_NAME.equals(name)).toList()));
+        registry.removeBeanDefinition(CHAIN_BEAN_NAME);
+      }
+    };
+  }
+
   @Bean
   public JwtAuthenticationFilter jwtAuthenticationFilter(JwtManager jwtManager) {
     return new JwtAuthenticationFilter(jwtManager);
