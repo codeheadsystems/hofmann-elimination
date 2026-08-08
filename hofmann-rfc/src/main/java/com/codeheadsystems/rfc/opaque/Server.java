@@ -330,13 +330,20 @@ public class Server {
    * <p>This equalises the work; it does not make it constant-time in the strict sense, and two
    * caveats are worth more than the parenthetical they used to get.
    *
-   * <p><strong>The credential store lookup is not addressed here and will dominate on a
-   * persistent store.</strong> Against {@code InMemoryCredentialStore} a hit and a miss are
-   * indistinguishable — measured at AUC 0.5015 at the manager level. Against the JDBC- or
-   * Redis-backed {@code CredentialStore} the interface exists for and the documentation
+   * <p><strong>The credential store lookup is not addressed here, and on a persistent store it
+   * dominates what is.</strong> Against {@code InMemoryCredentialStore} a hit and a miss are
+   * indistinguishable — measured at AUC 0.5015 at the manager level, which is also why this
+   * residual survived a round of measurement: the in-memory store cannot exhibit it. Against the
+   * JDBC- or Redis-backed {@code CredentialStore} the interface exists for and the documentation
    * recommends for production, a miss versus a hit is a larger and far more reliable signal than
-   * the ~130&micro;s this closes. In that deployment this change is necessary and nowhere near
-   * sufficient; the store has to answer in constant time too.
+   * the ~130&micro;s this closes.
+   *
+   * <p>It is addressed one layer up, where the lookup actually happens: {@code
+   * HofmannOpaqueServerManager.authStart} runs the lookup and everything after it under a 25 ms
+   * constant-time floor, so the store's answer time is absorbed without the store needing to be
+   * constant-time itself. A caller driving this method directly, without that manager, gets the
+   * protocol equalisation and nothing else — if you have built your own endpoint on top of this,
+   * the floor is yours to add.
    *
    * <p>And anything else the caller does on only one branch reopens it. A single per-request log
    * statement on the unregistered path measured 31.2&micro;s against a production logback

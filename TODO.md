@@ -11,8 +11,8 @@ P2 item is closed.** What remains is P3 and the findings raised while closing th
 
 | Section | Open |
 |---|---:|
-| New findings | 3 |
-| **P3 Low** | 4 |
+| New findings | 4 |
+| **P3 Low** | 3 |
 | **Total** | **7** |
 
 Recount with `grep -c '^- \[ \]' TODO.md` after editing.
@@ -109,14 +109,76 @@ on.
 
 ## New findings
 
-- [ ] **`generateKE2ForRecordOrFake` does not close the enumeration oracle on a persistent
-      `CredentialStore`** — the timing equalisation covers the protocol work, and against
-      `InMemoryCredentialStore` registered and unregistered are indistinguishable (AUC 0.5015 over
-      18,000 interleaved samples). But the JDBC- or Redis-backed store the documentation
-      recommends for production answers a hit and a miss at measurably different speeds, and that
-      signal is larger and more reliable than the ~130 µs the equalisation closed. Documented on
-      the method; closing it means the store answering in constant time, which is a
-      store-implementation concern this library does not control.
+- [ ] **A closed `AutoCloseable` context answers wrongly instead of failing** — **[reproduced]**.
+      `ClientHashingContext`, `VoprfClientContext`, `PoprfClientContext` and OPAQUE's
+      `ClientAuthState` all zero their copy of the caller's secret on `close()`, and none of them
+      refuses use afterwards. Every one of them is read after construction — `eliminationRequest`
+      and `hashResult` on the OPRF side, `generateKE3` on the OPAQUE one — so a context used after
+      closing derives from a run of zeroes and returns a well-formed value computed from the wrong
+      input. No exception, nothing downstream notices.
+
+      **The verifiable modes hide it best, which is why this is worth an entry rather than a
+      comment.** `eliminationRequest` returns the blinded elements the context already holds rather
+      than recomputing them, so against a closed context the server receives correct elements,
+      evaluates them correctly, and returns a proof that *verifies*. The DLEQ check that exists to
+      catch a misbehaving server is silent, because the server did not misbehave. Only the final
+      hash is wrong. On OPAQUE the failure at least surfaces, but as
+      `SecurityException("Authentication failed")` — indistinguishable from a wrong password, so
+      the user is told their password is bad when the fault is a lifetime bug in the caller.
+
+      Pre-existing on `ClientAuthState`, which has shipped `close()` since it was introduced;
+      inherited by the OPRF contexts when they gained `close()` alongside the `byte[]` API. All
+      four now document it. Nothing in-tree hits it — `performHash` scopes its
+      try-with-resources to the whole exchange — and an asynchronous round trip is the shape that
+      would.
+
+      Closing it means a guard, and a guard means these types stop being records: a record cannot
+      carry a mutable `closed` flag, and content-sniffing for an all-zero input would refuse a
+      legal OPRF input to detect an illegal call. So it is a deliberate shape change across four
+      public types, which is more than the `String`-secret finding that surfaced it warranted.
+      One fix covers all four.
+
+- [ ] **`sleepUntil`'s settling phase degenerates when a branch arrives with less than the settle
+      window left** — raised while closing the persistent-store enumeration oracle, and a property
+      of that fix rather than of the code it replaced. `sleepUntil` ends every floor with one
+      coarse sleep followed by fixed-size steps, which is what makes the floor work across the
+      range that matters. But the shape is identical across branches only while the branch has more
+      than `FLOOR_SETTLE_NANOS` left: past that `coarse` is non-positive, the coarse sleep is
+      skipped, and the step count goes branch-dependent again — about nine steps against twenty.
+      **That much is structural. It is readable in `sleepUntil` and needs no measurement.**
+
+      Measured at a 22 ms store gap under the 25 ms floor it shows as AUC 0.82–0.84. That number is
+      trustworthy in the sense that matters: noise suppresses AUC toward 0.5, so a detected 0.82 is
+      real and possibly understated.
+
+      **The comparative claim is not established, and an earlier version of this entry overstated
+      it.** It read "worse than no floor", on one measurement of 0.47 for the single long sleep in
+      the same band. That is a null result taken on a shared development box that is poor at fine
+      timing — the same harness put that comparator at AUC 0.35 one millisecond away, at 21 ms, so
+      the baseline is erratic rather than clean. "This leaks badly in that band" stands; "it is
+      worse there than what it replaced" is one run against a noisy baseline and should be
+      re-measured before anyone repeats it.
+
+      The band sits inside what `AUTH_START_MIN_NANOS` already documents as broken — past ~22 ms
+      the floor does not work at all, because `authStart`'s own ~2 ms is spent inside it — so no
+      deployment on a sane store is exposed. It is open because nothing in the build notices:
+      `AuthStartStoreTimingTest` probes 10 ms and 45 ms and steps over the band entirely.
+
+      Closing it means either a settling phase that degrades gracefully when the branch arrives
+      late, or making the floor refuse to be configured below the work it has to cover — the latter
+      is probably the honest one, since a floor smaller than its own method's runtime is a
+      misconfiguration rather than a tuning choice. A boundary test would have to be conditioned on
+      the machine, which is why one was not added.
+
+      **Applies to every timing figure from this work, not just this entry.** They were all taken
+      on one ordinary shared development machine, and an earlier version of the code comments
+      described them as coming from two — that was wrong; the spread was run-to-run variance on one
+      box. Absolute offsets moved by an order of magnitude between runs of the same harness. The
+      consequence has a direction: noise widens both distributions and pulls AUC toward 0.5, so the
+      *null* results — "the floor closes the oracle at 1–15 ms store gaps" — are the optimistic
+      ones and want re-running on a quiet host with the governor pinned and cores isolated. The
+      positive results (the 3 ms one-probe distinguisher with the floor removed; this degeneracy)
+      survive noise, because noise does not manufacture separation.
 
 - [ ] **The dependency scan is configured but inert: no `NVD_API_KEY` secret** — the
       `dependency-scan` job runs on every push, goes green in about ten seconds, and scans
@@ -147,11 +209,6 @@ on.
 ---
 
 ## P3: Low
-
-- [ ] **OPRF client API takes the secret as a `String`** —
-      `OprfClientManager.java:109` and `HofmannOprfClientManager.java:107` offer no
-      `byte[]` overload, so the caller's secret is interned in a non-zeroable `String`. The
-      OPAQUE side uses `byte[]` throughout.
 
 - [ ] **JWT hardening — PARTIAL.** The minimum secret length is done:
       `JwtManager.MIN_SIGNING_KEY_BYTES = 32` is enforced at construction for both the signing

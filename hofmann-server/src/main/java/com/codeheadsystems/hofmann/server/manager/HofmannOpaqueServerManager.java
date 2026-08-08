@@ -89,6 +89,83 @@ public class HofmannOpaqueServerManager {
   private static final long REGISTRATION_FINISH_MIN_NANOS = 25L * 1_000_000L; // 25 ms
 
   /**
+   * Minimum wall-clock duration of {@link #authStart}, so that the credential store's answer time
+   * does not reveal whether the credential exists.
+   * <p>
+   * {@code Server.generateKE2ForRecordOrFake} equalises the <em>protocol</em> work across the
+   * registered and unregistered branches, and it does: against {@link
+   * com.codeheadsystems.hofmann.server.store.InMemoryCredentialStore} the two are indistinguishable
+   * at AUC 0.5015 over 18,000 interleaved samples. That measurement is also why the residual went
+   * unnoticed — the in-memory store answers a hit and a miss in the same few hundred nanoseconds,
+   * so it cannot show the thing that actually leaks.
+   * <p>
+   * The documented production store is JDBC- or Redis-backed, and there a hit and a miss differ by
+   * far more than the ~130&micro;s the protocol equalisation closed: an index probe that finds a
+   * row returns it, and one that does not returns early. {@link #REGISTRATION_FINISH_MIN_NANOS}
+   * puts a write at 0.2–5 ms and this is the same order; neither figure is measured in this repo,
+   * so treat both as the reason a floor exists rather than as a result. The protocol work being
+   * identical does not help when the lookup in front of it is not.
+   * <p>
+   * <strong>This is fixed here rather than in the store interface.</strong> The earlier note on
+   * this said closing it meant the store answering in constant time and was therefore out of this
+   * library's control. That is true of the store and false of the endpoint: a floor at the layer
+   * that calls the store absorbs the difference without the store's cooperation, which is exactly
+   * what {@link #REGISTRATION_FINISH_MIN_NANOS} already does for the same store on the write path.
+   * Requiring every {@code CredentialStore} implementor to build a constant-time database lookup
+   * would have been a contract almost none of them could satisfy.
+   * <p>
+   * 25 ms, matching the registration floor for the same store and the same hazard. The cost is
+   * 25 ms added to every login — against an endpoint already behind a rate limiter, already
+   * performing several scalar multiplications, and already waiting on a client-side KSF that
+   * dwarfs it. That is the trade, stated so it can be disagreed with.
+   * <p>
+   * <strong>Measured, on the range that motivates it.</strong> Driving {@code authStart} against a
+   * store built to answer a hit slower than a miss, 150–200 interleaved samples per branch with the
+   * order alternated, three repetitions. At store gaps of 1, 5, 10 and 15 ms the Mann-Whitney AUC
+   * lands between 0.47 and 0.58 and the median difference reaching the caller stays within about
+   * &plusmn;6&micro;s, with no direction that survives across repetitions. With the floor removed a
+   * 3 ms gap gives AUC 1.0000 and separates the branches by 4 ms: a one-probe distinguisher. That
+   * range — see {@link #REGISTRATION_FINISH_MIN_NANOS}'s 0.2–5 ms — is what this exists for.
+   * <p>
+   * <strong>Read the paragraph above as "no signal was detected here", not as "there is no
+   * signal", and re-measure before relying on it.</strong> Every figure in this class came from one
+   * ordinary shared development machine — an earlier version of this comment described them as
+   * coming from two, which was wrong; the spread was run-to-run variance on a single box, not
+   * agreement across environments. That machine is not suited to fine timing work: absolute offsets
+   * moved by an order of magnitude between runs of the same harness.
+   * <p>
+   * The bias that introduces runs one way and it is the unhelpful one. Noise widens both
+   * distributions, which pulls AUC toward 0.5 — so a noisy environment makes a leak <em>harder</em>
+   * to see and makes this constant look better than it may be. The null results above are therefore
+   * the weakest claims here, and the one thing worth doing before trusting them is re-running the
+   * harness on a quiet host with the governor pinned and the cores isolated. Findings in the other
+   * direction — the 3 ms one-probe distinguisher, and the degeneracy on
+   * {@link #FLOOR_SETTLE_NANOS} — survive noise, because noise does not manufacture separation.
+   * <p>
+   * <strong>Two residuals, both toward the edge of the floor, both stated because they were
+   * measured rather than reasoned about.</strong>
+   * <ul>
+   *   <li>At a 20 ms gap the signal is small but no longer clearly noise: AUC 0.37–0.48 across
+   *       repetitions, median difference &minus;9 to 0&micro;s, leaning consistently negative.
+   *       Distinguishing on that takes a great many probes against a rate-limited endpoint, but it
+   *       is not zero and should not be described as zero. Given the measurement caveat above,
+   *       treat 20 ms as where the floor starts failing rather than as a precise edge.
+   *   <li>Past roughly 22–23 ms the floor stops working, and — see {@link #FLOOR_SETTLE_NANOS} —
+   *       in that band it is <em>worse</em> than the single long sleep it replaced. The cause is
+   *       that {@code authStart}'s own work — the OPRF evaluation, the masking, the 3DH — is about
+   *       2 ms and is spent inside the floor like everything else, so the headroom left for a store
+   *       is not the whole 25 ms. Where exactly it crosses depends on how fast the machine runs
+   *       that 2 ms, which is why no test pins the boundary.
+   * </ul>
+   * An overloaded database or a cross-region Redis is the deployment where either matters. Raise
+   * this constant there, knowing it raises every login's latency with it.
+   * <p>
+   * The 31.2&micro;s logging oracle described on {@link #warnOnceAboutMissingKeyVersion} is far
+   * inside the floor and no longer measurable through it.
+   */
+  private static final long AUTH_START_MIN_NANOS = 25L * 1_000_000L; // 25 ms
+
+  /**
    * The single message every recovery-token failure reports.
    * <p>
    * Shared so that "no such token", "token names a different credential" and "another request
@@ -112,6 +189,77 @@ public class HofmannOpaqueServerManager {
 
   private final java.util.concurrent.Semaphore recoveryVerifySlots =
       new java.util.concurrent.Semaphore(MAX_CONCURRENT_RECOVERY_VERIFY);
+
+  /** See {@link #lastCeilingWarnNanos}; same seeding rule, same reason. */
+  private final java.util.concurrent.atomic.AtomicLong lastRecoveryCeilingWarnNanos =
+      new java.util.concurrent.atomic.AtomicLong(System.nanoTime() - CEILING_WARN_INTERVAL_NANOS);
+
+  /**
+   * Ceiling on requests simultaneously parked inside {@link #authStart}'s constant-time floor.
+   * <p>
+   * A floor that holds a request thread is a thread-exhaustion vector unless the number of threads
+   * it can hold is bounded — that is not a hypothesis, it is the finding that was raised against
+   * {@link #recoveryVerify} and fixed by {@link #MAX_CONCURRENT_RECOVERY_VERIFY}. Adding a floor
+   * here without the matching cap would reintroduce it on the higher-volume endpoint of the two.
+   * <p>
+   * <strong>128, sized above what the endpoint was measured to serve.</strong> An earlier value of
+   * 64 was justified here as "well beyond what the scalar multiplications underneath will support",
+   * and that was measured false: without the floor this endpoint sustained 2,500–4,700
+   * authentications per second across runs on one 16-core machine, while 64 slots against a 25 ms
+   * floor cap it at 2,560/s. The ceiling was at or below the work's own throughput, which made it
+   * the binding constraint rather than a backstop. 128 slots give 5,120/s, above every measurement
+   * taken, and still inside a default servlet pool with room for other endpoints.
+   * <p>
+   * <strong>Treat that margin as smaller than it looks.</strong> It is 8% over the fastest run
+   * observed, the runs varied by nearly 2x between themselves on the same hardware, and a busy
+   * machine <em>understates</em> throughput — so the true figure is likely at the top of that range
+   * or above it, and the real margin correspondingly thinner. It is also a fixed number against
+   * hardware that keeps getting faster. Expect this to become the binding constraint again, and
+   * measure on your own hardware rather than trusting the range above. If throughput matters more
+   * to you than the enumeration resistance the floor buys, this constant and
+   * {@link #AUTH_START_MIN_NANOS} are the two to move, in that order.
+   * <p>
+   * <strong>The residual is an availability trade, and it is real.</strong> Enough simultaneous
+   * connections to fill this ceiling deny <em>every</em> login for as long as the flood lasts,
+   * where before the floor existed they would have degraded it partially. That is deliberate: the
+   * alternative to a global ceiling is an unbounded one, and the measured consequence there is the
+   * whole application going down rather than one endpoint. Narrowing an outage from "everything" to
+   * "login" is the trade being made. The outer defence against reaching it at all is the
+   * origin-keyed rate limiter, which is off by default — a deployment exposed to this should turn
+   * it on.
+   * <p>
+   * Refusal here is not itself an enumeration oracle: the ceiling is global, so whether a request
+   * is admitted does not depend on the credential it names. It is also charged to no one — see
+   * {@link #authStart} on why the ceiling is checked before the rate limiter is consumed.
+   */
+  private static final int MAX_CONCURRENT_AUTH_START = 128;
+
+  private final java.util.concurrent.Semaphore authStartSlots =
+      new java.util.concurrent.Semaphore(MAX_CONCURRENT_AUTH_START);
+
+  /**
+   * Rate limiter for the "ceiling reached" warning: at most one line per interval.
+   * <p>
+   * The warning sits on an unauthenticated endpoint and fires once per refused request, which a
+   * reviewer drove to 4,400 WARN lines per second from a single host. That is the same
+   * log-amplification vector {@link #warnOnceAboutMissingKeyVersion} exists to close, argued two
+   * methods away in this file, and it applies harder here because this is the busier endpoint.
+   * Once per interval keeps the operator signal — a ceiling being hit at all is what they need to
+   * know — without letting the attacker choose the log volume.
+   */
+  private static final long CEILING_WARN_INTERVAL_NANOS = 10L * 1_000_000_000L; // 10 s
+
+  /**
+   * Seeded a full interval in the past, not {@code Long.MIN_VALUE}.
+   *
+   * <p>{@code MIN_VALUE} was the obvious sentinel and it silenced the warning permanently:
+   * {@code System.nanoTime() - Long.MIN_VALUE} overflows to a negative number, so the interval
+   * check never passed and the CAS that advances this was never reached. Measured at 67 million
+   * refusals producing zero log lines. Anchoring to {@code nanoTime()} keeps the arithmetic inside
+   * the range {@code nanoTime} differences are defined for.
+   */
+  private final java.util.concurrent.atomic.AtomicLong lastCeilingWarnNanos =
+      new java.util.concurrent.atomic.AtomicLong(System.nanoTime() - CEILING_WARN_INTERVAL_NANOS);
 
   private final Supplier<OpaqueServerKeyDetail> keyDetailSupplier;
   private final CredentialStore credentialStore;
@@ -712,9 +860,14 @@ public class HofmannOpaqueServerManager {
     // Refuse rather than queue when too many requests are already inside the floor: queueing
     // would consume the request threads this exists to protect.
     if (!recoveryVerifySlots.tryAcquire()) {
-      log.warn("recoveryVerify at its concurrency ceiling ({}); rejecting. Sustained occurrences "
-          + "indicate an attempt to exhaust request threads via the constant-time floor.",
-          MAX_CONCURRENT_RECOVERY_VERIFY);
+      // Rate-limited for the same reason as authStart's: an unauthenticated caller must not choose
+      // the log volume. Lower traffic here, but the argument does not depend on traffic.
+      if (shouldWarn(lastRecoveryCeilingWarnNanos)) {
+        log.warn("recoveryVerify at its concurrency ceiling ({}); rejecting, and logging this at "
+            + "most once every {}s. Sustained occurrences indicate an attempt to exhaust request "
+            + "threads via the constant-time floor.",
+            MAX_CONCURRENT_RECOVERY_VERIFY, CEILING_WARN_INTERVAL_NANOS / 1_000_000_000L);
+      }
       throw new RateLimitExceededException();
     }
     final long deadlineNanos = System.nanoTime() + RECOVERY_VERIFY_MIN_NANOS;
@@ -742,17 +895,104 @@ public class HofmannOpaqueServerManager {
     }
   }
 
-  /** Busy-free wait until {@code deadlineNanos} (from {@link System#nanoTime()}) has passed. */
+  /**
+   * Length of the identical settling phase every floor ends with, and the size of its steps.
+   *
+   * <p><strong>This is not an implementation detail; it is the difference between the floor
+   * working and the floor leaking.</strong> {@code Thread.sleep} does not exit exactly on time, and
+   * how late it exits depends on how it got there — on the length of the sleep, and on what the
+   * thread was doing beforehand. A floor sleeps for whatever the branch <em>left over</em>, so the
+   * slow branch sleeps less, and that difference in exit behaviour carries the branch straight
+   * through the floor built to hide it.
+   *
+   * <p>Two wrong answers were measured before this one, on a harness that reproduces the shape of
+   * {@code authStart} — block for the store gap, burn ~2 ms of work, floor to 25 ms — with the
+   * strategies and both branches fully interleaved so they see identical machine conditions.
+   * <p>
+   * Interleaving is not decoration here. Every measurement in this class was taken on one shared
+   * development machine that is poor at fine timing — see {@link #AUTH_START_MIN_NANOS} — so the
+   * absolute microsecond figures below move by an order of magnitude between runs and are worth
+   * nothing on their own. Flipping the strategies and the branches sample by sample is what makes
+   * the <em>comparison</em> survive that, and the comparison is all the choice below rests on. The
+   * first attempt at this fix was measured without interleaving, reported no signal, and was wrong.
+   * 250 samples per branch, three repetitions:
+   *
+   * <ul>
+   *   <li><strong>One long sleep</strong> (the original): AUC 0.34–0.53, median difference
+   *       &minus;144 to +39&micro;s between runs, direction not stable. A leak, but a noisy one —
+   *       the variance is wide enough to bury the offset.
+   *   <li><strong>Uniform 1 ms slices</strong> (the first attempt at a fix): AUC 0.48–0.74, median
+   *       difference stably <em>positive</em> and growing with the store gap. Worse than doing
+   *       nothing — not because the offset is larger in microseconds, which it is not, but because
+   *       it is consistent, and a consistent small offset is a distinguisher where a noisy larger
+   *       one is not. The final slice is the same length on both branches, which is what that
+   *       attempt reasoned about; the <em>number</em> of slices is not — 13 against 23 at a 10 ms
+   *       gap — and a thread that has just taken 23 consecutive timer wakeups is in a measurably
+   *       different state from one that took 13.
+   *   <li><strong>A fixed settling phase</strong> (this): AUC 0.42–0.55, median difference within
+   *       a few microseconds, direction not stable. One coarse sleep to
+   *       {@code deadline - FLOOR_SETTLE_NANOS}, then steps of {@code FLOOR_SETTLE_STEP_NANOS} —
+   *       the same shape on every branch. Better than the single sleep at every store gap from 1
+   *       to 21 ms, on three independent harnesses.
+   * </ul>
+   *
+   * <p><strong>The degeneracy, which is structural rather than statistical.</strong> "The same
+   * shape on every branch" holds only while the branch has more than {@code FLOOR_SETTLE_NANOS}
+   * left to burn. Past that {@code coarse} is non-positive, the coarse sleep is skipped, and the
+   * step count goes branch-dependent again — around nine steps against twenty — which is precisely
+   * the property this exists to remove. That much is readable in {@link #sleepUntil} and needs no
+   * measurement to establish.
+   * <p>
+   * Measured, it shows up at a 22 ms store gap under this 25 ms floor as AUC 0.82–0.84, against
+   * 0.47 for the single long sleep. Take the first number seriously and the comparison lightly: a
+   * noisy environment suppresses AUC toward 0.5, so a detected 0.82 is real and possibly
+   * understated, whereas 0.47 for the comparator is a null result on hardware unsuited to
+   * measuring it — and the same harness put that comparator at AUC 0.35 one millisecond away, at
+   * 21 ms. So "this strategy leaks badly in that band" is established; "it is worse there than what
+   * it replaced" is one measurement against an erratic baseline and is not.
+   * <p>
+   * Either way the band sits inside the region {@link #AUTH_START_MIN_NANOS} already declares
+   * broken — past ~22 ms the floor does not work — so the remedy is the same one stated there,
+   * raise the floor. It is recorded because nothing in the build notices, and tracked in TODO.md.
+   *
+   * <p>The cost is about ten timer wakeups per floored request rather than one (measured: min 4,
+   * median 10, max 14), and it does not scale with the floor: {@link #RECOVERY_VERIFY_MIN_NANOS}'s
+   * 250 ms floor pays the same median of 10 or 11, where uniform slicing would have paid 250.
+   */
+  private static final long FLOOR_SETTLE_NANOS = 2_000_000L; // 2 ms
+
+  /** Step size within the settling phase. See {@link #FLOOR_SETTLE_NANOS}. */
+  private static final long FLOOR_SETTLE_STEP_NANOS = 100_000L; // 100 us
+
+  /**
+   * Busy-free wait until {@code deadlineNanos} (from {@link System#nanoTime()}) has passed.
+   *
+   * <p>One coarse sleep, then a settling phase of fixed shape, so that the wait's own exit
+   * behaviour does not depend on how long it waited. See {@link #FLOOR_SETTLE_NANOS} — the shape
+   * is load-bearing and was measured, not guessed.
+   */
   private static void sleepUntil(final long deadlineNanos) {
+    long coarse = deadlineNanos - FLOOR_SETTLE_NANOS - System.nanoTime();
+    if (coarse > 0 && !sleepNanos(coarse)) {
+      return;
+    }
     long remaining = deadlineNanos - System.nanoTime();
     while (remaining > 0) {
-      try {
-        Thread.sleep(remaining / 1_000_000L, (int) (remaining % 1_000_000L));
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
+      if (!sleepNanos(Math.min(remaining, FLOOR_SETTLE_STEP_NANOS))) {
         return;
       }
       remaining = deadlineNanos - System.nanoTime();
+    }
+  }
+
+  /** Sleeps the given nanoseconds; returns false if interrupted, with the flag restored. */
+  private static boolean sleepNanos(final long nanos) {
+    try {
+      Thread.sleep(nanos / 1_000_000L, (int) (nanos % 1_000_000L));
+      return true;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return false;
     }
   }
 
@@ -837,16 +1077,101 @@ public class HofmannOpaqueServerManager {
    * When the credential identifier is unknown, a fake KE2 is returned to prevent
    * user enumeration (RFC 9807 §10.6).
    *
+   * <p>Enumeration resistance here is three things, not one, and the response body is only the
+   * first. The manufactured KE2 makes the <em>content</em> identical; {@code
+   * Server.generateKE2ForRecordOrFake} makes the <em>protocol work</em> identical; and the floor
+   * below absorbs the <em>credential store lookup</em>, which is what dominates on any store that
+   * is not in-memory. All three are needed — each of the first two was, at the time it landed,
+   * believed to have finished the job. The floor's own limits are stated on
+   * {@link #AUTH_START_MIN_NANOS} and are not small print: it absorbs a store gap cleanly up to
+   * around 15 ms, leaks a couple of microseconds by 20 ms, and stops working entirely past roughly
+   * 22–23 ms.
+   *
+   * <p>One thing sits outside the floor: a credential identifier that is not valid base64 is
+   * rejected by the request decode in about 0.06 ms rather than 25 ms. That is not an existence
+   * oracle — it depends on the bytes the caller sent and not on whether any account exists — but a
+   * caller can tell a malformed request from a well-formed one by timing, which is information they
+   * already have.
+   *
    * @param req the req
    * @return the auth start response
-   * @throws IllegalArgumentException if the request contains missing or invalid fields
-   * @throws IllegalStateException    if the session store has reached capacity
+   * @throws IllegalArgumentException                                              if the request
+   *                                                                               contains missing
+   *                                                                               or invalid fields
+   * @throws IllegalStateException                                                 if the session
+   *                                                                               store has reached
+   *                                                                               capacity
+   * @throws com.codeheadsystems.hofmann.server.ratelimit.RateLimitExceededException
+   *     if the credential's rate limit is exhausted, or if {@link #MAX_CONCURRENT_AUTH_START}
+   *     requests are already inside the floor
    */
   public AuthStartResponse authStart(AuthStartRequest req) {
     log.debug("authStart()");
-    if (!authRateLimiter.tryConsume(req.credentialIdentifierBase64())) {
+    // The ceiling is checked BEFORE the rate limiter is consumed, and the order matters.
+    //
+    // Metering first reads better — "do not let a request that will be refused anyway occupy a
+    // slot" — and it is wrong. The slot is held for microseconds on that path, whereas a token
+    // spent on a request the ceiling then refuses is gone for up to a minute: a reviewer flooded
+    // the ceiling and measured a legitimate user refused 10/10 during the flood and still refused
+    // 5/5 after it stopped, her whole burst drained by refusals that had nothing to do with her.
+    // That turns a transient denial into a lasting one for exactly the users being protected.
+    // Charging nothing for a refusal the server chose to make is the correct side of the trade.
+    if (!authStartSlots.tryAcquire()) {
+      warnCeilingReached();
       throw new RateLimitExceededException();
     }
+    try {
+      if (!authRateLimiter.tryConsume(req.credentialIdentifierBase64())) {
+        throw new RateLimitExceededException();
+      }
+      // The floor starts before the store lookup and ends after the response is built, because the
+      // lookup is the thing being masked. Deliberately not started until the limiter has passed:
+      // rate-limit rejection does not depend on whether the credential exists, so there is nothing
+      // to hide, and parking a refused request for 25 ms would hold a slot for no reason.
+      final long deadlineNanos = System.nanoTime() + AUTH_START_MIN_NANOS;
+      try {
+        return authStartWithinFloor(req);
+      } finally {
+        sleepUntil(deadlineNanos);
+      }
+    } finally {
+      authStartSlots.release();
+    }
+  }
+
+  /** At most one ceiling warning per {@link #CEILING_WARN_INTERVAL_NANOS}; see that constant. */
+  private void warnCeilingReached() {
+    if (shouldWarn(lastCeilingWarnNanos)) {
+      log.warn("authStart at its concurrency ceiling ({}); rejecting, and logging this at most "
+          + "once every {}s. Sustained occurrences indicate either genuine load beyond what the "
+          + "floor admits or an attempt to exhaust request threads through it.",
+          MAX_CONCURRENT_AUTH_START, CEILING_WARN_INTERVAL_NANOS / 1_000_000_000L);
+    }
+  }
+
+  /**
+   * True at most once per {@link #CEILING_WARN_INTERVAL_NANOS} for the given clock.
+   *
+   * <p>The CAS is what makes it "at most once" rather than "about once": two threads reading the
+   * same value cannot both win it, so a thousand simultaneous refusals produce one line.
+   */
+  private static boolean shouldWarn(final java.util.concurrent.atomic.AtomicLong lastWarnNanos) {
+    long now = System.nanoTime();
+    long last = lastWarnNanos.get();
+    return now - last >= CEILING_WARN_INTERVAL_NANOS
+        && lastWarnNanos.compareAndSet(last, now);
+  }
+
+  /**
+   * The body of {@link #authStart}, run inside its constant-time floor.
+   *
+   * <p>Split out so the floor's {@code try/finally} does not indent the protocol logic, and so
+   * that every {@code return} and every throw inside it is covered by the floor by construction
+   * rather than by remembering to wrap one. Nothing here may be moved outside that region: the
+   * whole point is that an observer cannot tell the branches apart, and work done after the floor
+   * is released is work whose duration is visible.
+   */
+  private AuthStartResponse authStartWithinFloor(AuthStartRequest req) {
     byte[] credentialIdentifier = req.credentialIdentifier();
     KE1 ke1 = req.ke1();
 
@@ -892,8 +1217,11 @@ public class HofmannOpaqueServerManager {
         server.generateKE2ForRecordOrFake(null, record, credentialIdentifier, ke1, null);
 
     String sessionToken = UUID.randomUUID().toString();
-    // NOTE: keep this method's remaining work identical across branches. See
-    // warnOnceAboutMissingKeyVersion for what a per-request log statement costs here.
+    // NOTE: keep this method's remaining work identical across branches, and keep all of it inside
+    // the floor. The floor now absorbs a per-branch difference that finishes within it — which the
+    // 31.2µs log statement described on warnOnceAboutMissingKeyVersion does — but "the floor will
+    // cover it" is not a licence to add branch-dependent work, because nothing here notices when a
+    // branch grows past 25 ms.
     pendingSessionStore.store(sessionToken, ke2Result.serverAuthState(),
         req.credentialIdentifierBase64(), keyVersion);
 
@@ -910,8 +1238,10 @@ public class HofmannOpaqueServerManager {
    * AUC 0.64, about 1,400 probes per identifier to distinguish at 5&sigma;. The minimum shifted too,
    * so it was a floor shift rather than a tail artefact.
    *
-   * <p>That is seven times cheaper than the 200-probe oracle {@code generateKE2ForRecordOrFake}
-   * was written to close, and it distinguishes exactly the population that work claimed to cover:
+   * <p>That is seven times <em>dearer</em> than the 200-probe oracle
+   * {@code generateKE2ForRecordOrFake} was written to close — this text said "cheaper", which
+   * inverts 1,400 against 200 and overstated the case it was making. It is still an oracle worth
+   * closing, and it distinguishes exactly the population that work claimed to cover:
    * "this account exists but is stranded on a dropped key version" against "this account does not
    * exist". It reads as no signal on a bare test classpath, where the logger is a NOP and the call
    * costs 1.5&micro;s — which is why it survived the change that was supposed to fix this branch,
@@ -927,6 +1257,13 @@ public class HofmannOpaqueServerManager {
    * which is small and operator-controlled rather than attacker-controlled. That is the property
    * that makes an unbounded-looking set safe here; it would not be safe keyed on the credential
    * identifier.
+   *
+   * <p><strong>The timing half of this is now also covered by {@link #AUTH_START_MIN_NANOS}</strong>
+   * — 31.2&micro;s finishes well inside a 25 ms floor, so a per-request warning would no longer be
+   * measurable from outside. Once-per-version stays anyway, for the second reason above: it closes
+   * the log-amplification vector, where anyone knowing one stranded identifier could drive
+   * unbounded WARN output from an unauthenticated endpoint. Two independent reasons, and only one
+   * of them has been superseded.
    *
    * @param keyVersion the version that has no server
    */

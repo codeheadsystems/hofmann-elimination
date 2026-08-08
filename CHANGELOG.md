@@ -60,6 +60,110 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The base-mode OPRF client API forced the caller's secret into a `String`.**
+  `OprfClientManager.hashingContext` and `HofmannOprfClientManager.performHash` now take `byte[]`,
+  and that is the entry point to prefer; the `String` overloads remain and delegate.
+
+  A `String` holding a secret cannot be erased — it is immutable, so the value stays on the heap
+  until the collector reclaims it, and any interning or substring on the way has already made
+  copies nobody holds a reference to. Every other secret in this library is a `byte[]` for that
+  reason, including OPAQUE's password and the verifiable modes' inputs; base mode was the last
+  place the API forced a caller to give that up. The `String` overloads are kept rather than
+  deprecated because a caller who already holds one has taken the damage before the call, and
+  refusing it would only move the conversion.
+
+  Half a fix would have been to accept `byte[]` and copy it somewhere the caller cannot reach, so
+  `ClientHashingContext`, `VoprfClientContext` and `PoprfClientContext` are now `AutoCloseable` and
+  zero their copy of the input on close. `HofmannOprfClientManager.performHash` closes the context
+  in a `try`-with-resources, which matters most on the failing path: the caller never receives the
+  context, so if that method does not clear it nobody can. The verifiable contexts already took
+  `byte[]` and already copied — what they lacked was any way to clear the copy, and fixing base
+  mode alone would have left two modes out of three holding an unerasable secret.
+
+  What this does not do: `blindingFactor` and `blinds` are `BigInteger` and cannot be zeroed at the
+  Java level. A blind together with its blinded element still recovers the input's OPRF output, so
+  closing a context shortens a window rather than emptying it — the same caveat, for the same
+  reason, that `ClientAuthState` carries on the OPAQUE side.
+- **`authStart` leaked account existence through the credential store's answer time**, on every
+  deployment using a persistent store — which is every production deployment. `authStart` now runs
+  the lookup and everything after it under a 25 ms constant-time floor, capped at 128 concurrent
+  requests.
+
+  The manufactured KE2 made the response *body* identical, and `generateKE2ForRecordOrFake` made
+  the *protocol work* identical — measured at AUC 0.5015 over 18,000 interleaved samples, no
+  signal. That measurement was taken against `InMemoryCredentialStore`, and that is why the
+  residual survived it: a `ConcurrentHashMap` answers a hit and a miss in the same few hundred
+  nanoseconds, so the in-memory store cannot exhibit what leaks. On the JDBC- or Redis-backed
+  `CredentialStore` the documentation recommends, an index probe that finds a row returns it and
+  one that does not returns early — commonly 0.2–5 ms, an order of magnitude more than the ~130 µs
+  the protocol equalisation closed, and remotely measurable.
+
+  Previously recorded as out of this library's control, on the grounds that closing it meant the
+  store answering in constant time. That is true of the store and false of the endpoint: a floor at
+  the layer that calls the store absorbs the difference without the store's cooperation, which is
+  what the `registrationFinish` floor already does for the same store on the write path. Requiring
+  every `CredentialStore` implementor to build a constant-time database lookup would have been a
+  contract almost none of them could satisfy.
+
+  Measured on a store built to answer a hit slower than a miss, 150–200 interleaved samples per
+  branch, three repetitions: at gaps of 1, 5, 10 and 15 ms the Mann-Whitney AUC lands between 0.47
+  and 0.58, median difference within about ±6 µs, with no direction surviving across repetitions.
+  With the floor removed a 3 ms gap gives AUC 1.0000 and separates the branches by 4 ms, a
+  one-probe distinguisher.
+
+  **Read the first of those as "no signal was detected", not "there is no signal".** Every timing
+  figure in this entry came from one ordinary shared development machine, not from a host prepared
+  for timing work; absolute offsets moved by an order of magnitude between runs of the same
+  harness. That biases in one direction: noise widens both distributions and pulls AUC toward 0.5,
+  so it makes a leak harder to see and makes this change look better than it may be. The null
+  results are the weakest claims here and are worth re-running on a quiet host. The positive ones —
+  the 3 ms distinguisher, and the degeneracy noted below — survive noise, since noise does not
+  manufacture separation.
+
+  The concurrency ceiling is not optional and is not new caution: a floor that parks a request
+  thread is a thread-exhaustion vector, which is exactly the finding raised against
+  `recoveryVerify`'s floor in this same release. Excess is refused rather than queued, since
+  queueing holds the resource being protected. 128 slots against a 25 ms floor sustain about
+  5,120 authentications/second, above the ~3,166/s this endpoint reaches without the floor, so the
+  ceiling is a backstop rather than the binding constraint.
+
+  **Three costs, stated rather than implied.**
+
+  - Every login takes at least 25 ms server-side.
+  - **Enough simultaneous connections to fill the ceiling deny every login for as long as the flood
+    lasts**, where before they would have degraded it partially. That is a deliberate narrowing:
+    the alternative to a global ceiling is an unbounded one, and the measured consequence there is
+    the whole application going down rather than one endpoint. Turn on the origin-keyed rate
+    limiter — off by default — if you are exposed to this. Ceiling refusals are charged to nobody:
+    the limiter token is consumed *after* the ceiling check, so a flood cannot drain a legitimate
+    user's burst and lock them out past the end of it.
+  - **The floor stops working before its nominal 25 ms.** `authStart`'s own work is about 2 ms and
+    is spent inside the floor. A 20 ms store gap already leaks a little (AUC 0.37–0.48, leaning one
+    way); past roughly 22–23 ms the oracle returns in full, and there the new wait strategy
+    measures AUC 0.82–0.84 — its settling phase degenerates once a branch arrives with less than
+    the settle window left, which is structural and readable in the code rather than a statistical
+    artefact. Whether that is also *worse* than the single long sleep it replaced is one
+    measurement against an erratic baseline and is not established. Raise the floor if your store
+    is anywhere near it; tracked in TODO.md.
+
+  `sleepUntil` now ends every floor with a settling phase of fixed shape — one coarse sleep, then
+  steps of 100 µs — instead of one long sleep. `Thread.sleep` does not exit exactly on time, and
+  how late it exits depends on the length of the sleep and on what the thread did beforehand; a
+  floor sleeps for whatever the branch *left over*, so that exit behaviour carried the branch
+  through the floor meant to hide it. Measured on a harness reproducing `authStart`'s shape with
+  both strategies and both branches fully interleaved sample by sample — which is what makes a
+  comparison survive a machine this noisy, and the first attempt at this fix was measured *without*
+  it, reported no signal, and was wrong. One long sleep gives AUC 0.34–0.53 with an unstable
+  direction; **uniform 1 ms slices, tried first, give AUC 0.48–0.74 with a stably positive
+  direction — worse than doing nothing**, not because the offset is larger but because it is
+  consistent, and the *number* of slices differs by branch even though their size does not; the
+  fixed settling phase gives AUC 0.42–0.55 with no stable direction, and beats the single sleep at
+  every store gap from 1 to 21 ms. It costs about ten timer wakeups per floored request (min 4,
+  median 10, max 14) and does not scale with the floor, so `recoveryVerify`'s 250 ms floor pays the
+  same ten, where uniform slicing would have paid 250.
+
+  A caller driving `Server.generateKE2ForRecordOrFake` without this manager gets the protocol
+  equalisation only and must add its own floor; see `hofmann-rfc/OPAQUE.md`.
 - `Ristretto255GroupSpec.serializeScalar` had no range check, and its little-endian encoder copies
   at most 32 bytes and silently drops the rest — so a scalar at or above 2^256 was truncated into a
   different, valid-looking scalar rather than rejected. Unreachable from any in-tree call path, since no
@@ -169,6 +273,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is not an ancestor of `main`.
 
 ### Breaking changes
+
+- **The OPRF client contexts are `AutoCloseable` and copy their input.** `ClientHashingContext`,
+  `VoprfClientContext` and `PoprfClientContext` gained `close()`, and `ClientHashingContext` now
+  copies the `input` array in its canonical constructor rather than aliasing the caller's — the
+  other two already did. See *Fixed* for why. Four things can break, and an earlier draft of this
+  entry claimed none could:
+
+  - **A `null` literal no longer compiles.** `hashingContext(null)` and `performHash(null, id)` are
+    now ambiguous between the `byte[]` and `String` overloads. Cast at the call site.
+  - **`equals` changed.** Records compare `byte[]` components by reference, so two
+    `ClientHashingContext` built from the *same* array used to be equal and now are not. Anything
+    keying a collection on a context, or asserting equality in a test, is affected.
+  - **Mutating the array you passed no longer changes a context you already built**, which is the
+    point of the copy but is a visible difference for a caller that relied on it.
+  - **`ClientHashingContext` rejects a null input at construction** rather than failing later
+    inside `hashToGroup`.
+
+  Behaviour of the protocol itself is unchanged — the RFC 9497 vectors and the Java↔TypeScript
+  cross-implementation tests pass untouched.
+
+  **`close()` is not guarded, and a closed context answers wrongly rather than failing.** Both
+  `eliminationRequest` and `hashResult` read the input, so using a context after closing it
+  finalizes over zeroes and returns a well-formed value derived from the wrong input, with no
+  exception. The verifiable modes hide it better: the blinded elements are stored rather than
+  recomputed, so the server evaluates correctly and **the DLEQ proof still verifies** — only the
+  final hash is wrong. Scope the `try`-with-resources to the whole exchange; an asynchronous round
+  trip is the shape to watch. A record cannot carry a mutable "closed" flag, so refusing
+  use-after-close needs these types to stop being records; tracked in TODO.md. The same applies to
+  OPAQUE's `ClientAuthState`, which has had `close()` and this hazard since it was introduced and
+  now documents it.
 
 - **The Spring Boot default security chain bean is renamed** from `securityFilterChain` to
   `hofmannSecurityFilterChain`. Nothing needs to change unless you referenced it *by name* — a

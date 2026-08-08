@@ -11,6 +11,8 @@ import com.codeheadsystems.rfc.oprf.model.BlindedRequest;
 import com.codeheadsystems.rfc.oprf.model.ClientHashingContext;
 import com.codeheadsystems.rfc.oprf.model.EvaluatedResponse;
 import com.codeheadsystems.rfc.oprf.model.HashResult;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -77,20 +79,54 @@ public class HofmannOprfClientManager {
   /**
    * Performs the OPRF hashing process using the server as the OPRF provider.
    *
-   * @param sensitiveData    sensitive data to be hashed.
+   * <p><strong>This is the entry point to prefer.</strong> {@code sensitiveData} is the client's
+   * plaintext OPRF input, and a {@code byte[]} is the only form of it the caller can erase — see
+   * {@link #performHash(String, ServerIdentifier)} for what the string form costs. It is copied
+   * here, so the caller may clear their own array as soon as this returns; the copy is cleared
+   * before this method returns either way.
+   *
+   * @param sensitiveData    sensitive data to be hashed; copied, not retained
+   * @param serverIdentifier the server identifier
+   * @return the RFC 9387 compliant OPRF hash of the input, using the server as the OPRF provider.
+   */
+  public HofmannHashResult performHash(byte[] sensitiveData, ServerIdentifier serverIdentifier) {
+    final OprfClientManager clientManager = managerFactory.apply(serverIdentifier);
+    // try-with-resources so the context's copy of the input is zeroed on the way out — including
+    // when the round trip throws, which is the path where a secret would otherwise be left on the
+    // heap with no handle for the caller to clear it by.
+    try (ClientHashingContext context = clientManager.hashingContext(sensitiveData)) {
+      log.trace("performHashing(requestId={}, serverIdentifier={})", context.requestId(), serverIdentifier);
+      final BlindedRequest blindedRequest = clientManager.eliminationRequest(context);
+      final OprfRequest oprfRequest = new OprfRequest(blindedRequest);
+      final OprfResponse oprfResponse = hofmannOprfAccessor.handleRequest(serverIdentifier, oprfRequest);
+      final EvaluatedResponse evaluatedResponse = oprfResponse.evaluatedResponse();
+      final HashResult hashResult = clientManager.hashResult(evaluatedResponse, context);
+      return new HofmannHashResult(serverIdentifier, hashResult.processIdentifier(), context.requestId(), hashResult.hash());
+    }
+  }
+
+  /**
+   * Convenience overload for callers whose input is already a {@link String}.
+   *
+   * <p>A {@code String} holding a secret cannot be erased — it is immutable, so the value survives
+   * on the heap until the collector reclaims it, and nothing here can change that. Prefer
+   * {@link #performHash(byte[], ServerIdentifier)} wherever you control how the secret arrives.
+   * See {@code OprfClientManager.hashingContext(String)} for the longer version of the argument.
+   *
+   * @param sensitiveData    sensitive data to be hashed
    * @param serverIdentifier the server identifier
    * @return the RFC 9387 compliant OPRF hash of the input, using the server as the OPRF provider.
    */
   public HofmannHashResult performHash(String sensitiveData, ServerIdentifier serverIdentifier) {
-    final OprfClientManager clientManager = managerFactory.apply(serverIdentifier);
-    final ClientHashingContext context = clientManager.hashingContext(sensitiveData);
-    log.trace("performHashing(requestId={}, serverIdentifier={})", context.requestId(), serverIdentifier);
-    final BlindedRequest blindedRequest = clientManager.eliminationRequest(context);
-    final OprfRequest oprfRequest = new OprfRequest(blindedRequest);
-    final OprfResponse oprfResponse = hofmannOprfAccessor.handleRequest(serverIdentifier, oprfRequest);
-    final EvaluatedResponse evaluatedResponse = oprfResponse.evaluatedResponse();
-    final HashResult hashResult = clientManager.hashResult(evaluatedResponse, context);
-    return new HofmannHashResult(serverIdentifier, hashResult.processIdentifier(), context.requestId(), hashResult.hash());
+    if (sensitiveData == null) {
+      throw new IllegalArgumentException("Sensitive data is required");
+    }
+    final byte[] input = sensitiveData.getBytes(StandardCharsets.UTF_8);
+    try {
+      return performHash(input, serverIdentifier);
+    } finally {
+      Arrays.fill(input, (byte) 0);
+    }
   }
 
 }

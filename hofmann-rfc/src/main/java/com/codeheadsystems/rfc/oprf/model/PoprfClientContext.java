@@ -1,6 +1,7 @@
 package com.codeheadsystems.rfc.oprf.model;
 
 import java.math.BigInteger;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
@@ -30,7 +31,27 @@ public record PoprfClientContext(String requestId,
                                  List<BigInteger> blinds,
                                  List<byte[]> blindedElements,
                                  byte[] info,
-                                 byte[] tweakedKey) {
+                                 byte[] tweakedKey)
+    implements AutoCloseable {
+
+  /**
+   * Zeroes this context's copies of the inputs. See {@link VoprfClientContext#close()}; the
+   * reasoning is identical and the two are kept in step deliberately.
+   *
+   * <p>Not {@code info} or {@code tweakedKey}: the public input is public by construction — it is
+   * agreed with the server and covered by the output — and the tweaked key is derived from it and
+   * the server's public key. Of the five components other than {@code requestId}, {@code inputs}
+   * is the only secret one, and zeroing any of the rest would only make a reader wonder which.
+   *
+   * <p>The use-after-close hazard described on {@link VoprfClientContext#close()} applies here
+   * identically, including the part where the DLEQ proof still verifies. Tracked in TODO.md.
+   */
+  @Override
+  public void close() {
+    for (byte[] input : inputs) {
+      Arrays.fill(input, (byte) 0);
+    }
+  }
 
   /**
    * Rejects a context whose lists are not aligned or which is missing its POPRF-specific state.
