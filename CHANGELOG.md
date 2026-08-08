@@ -60,6 +60,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`authStart` leaked account existence through the credential store's answer time**, on every
+  deployment using a persistent store — which is every production deployment. `authStart` now runs
+  the lookup and everything after it under a 25 ms constant-time floor, capped at 128 concurrent
+  requests.
+
+  The manufactured KE2 made the response *body* identical, and `generateKE2ForRecordOrFake` made
+  the *protocol work* identical — measured at AUC 0.5015 over 18,000 interleaved samples, no
+  signal. That measurement was taken against `InMemoryCredentialStore`, and that is why the
+  residual survived it: a `ConcurrentHashMap` answers a hit and a miss in the same few hundred
+  nanoseconds, so the in-memory store cannot exhibit what leaks. On the JDBC- or Redis-backed
+  `CredentialStore` the documentation recommends, an index probe that finds a row returns it and
+  one that does not returns early — commonly 0.2–5 ms, an order of magnitude more than the ~130 µs
+  the protocol equalisation closed, and remotely measurable.
+
+  Previously recorded as out of this library's control, on the grounds that closing it meant the
+  store answering in constant time. That is true of the store and false of the endpoint: a floor at
+  the layer that calls the store absorbs the difference without the store's cooperation, which is
+  what the `registrationFinish` floor already does for the same store on the write path. Requiring
+  every `CredentialStore` implementor to build a constant-time database lookup would have been a
+  contract almost none of them could satisfy.
+
+  Measured on a store built to answer a hit slower than a miss, 150–200 interleaved samples per
+  branch, three repetitions, on two machines: at gaps of 1, 5, 10 and 15 ms the Mann-Whitney AUC
+  lands between 0.47 and 0.58, median difference within about ±6 µs, with no direction surviving
+  across repetitions — noise. With the floor removed a 3 ms gap gives AUC 1.0000 and separates the
+  branches by 4 ms, a one-probe distinguisher. Absolute microsecond figures here move by an order
+  of magnitude between machines; the orderings do not.
+
+  The concurrency ceiling is not optional and is not new caution: a floor that parks a request
+  thread is a thread-exhaustion vector, which is exactly the finding raised against
+  `recoveryVerify`'s floor in this same release. Excess is refused rather than queued, since
+  queueing holds the resource being protected. 128 slots against a 25 ms floor sustain about
+  5,120 authentications/second, above the ~3,166/s this endpoint reaches without the floor, so the
+  ceiling is a backstop rather than the binding constraint.
+
+  **Three costs, stated rather than implied.**
+
+  - Every login takes at least 25 ms server-side.
+  - **Enough simultaneous connections to fill the ceiling deny every login for as long as the flood
+    lasts**, where before they would have degraded it partially. That is a deliberate narrowing:
+    the alternative to a global ceiling is an unbounded one, and the measured consequence there is
+    the whole application going down rather than one endpoint. Turn on the origin-keyed rate
+    limiter — off by default — if you are exposed to this. Ceiling refusals are charged to nobody:
+    the limiter token is consumed *after* the ceiling check, so a flood cannot drain a legitimate
+    user's burst and lock them out past the end of it.
+  - **The floor stops working before its nominal 25 ms, and past that point it is worse than what
+    it replaced.** `authStart`'s own work is about 2 ms and is spent inside the floor. A 20 ms store
+    gap already leaks a little (AUC 0.37–0.48, leaning one way); past roughly 22–23 ms the oracle
+    returns in full — and there the new wait strategy measures AUC 0.82–0.84 against 0.47 for the
+    single long sleep it replaced, because it tightens the distribution and so stops burying the
+    residual in variance. Inside a regime already documented as broken, but "broken worse than
+    before" is a different claim and nothing in the build notices either. Raise the floor if your
+    store is anywhere near it.
+
+  `sleepUntil` now ends every floor with a settling phase of fixed shape — one coarse sleep, then
+  steps of 100 µs — instead of one long sleep. `Thread.sleep` does not exit exactly on time, and
+  how late it exits depends on the length of the sleep and on what the thread did beforehand; a
+  floor sleeps for whatever the branch *left over*, so that exit behaviour carried the branch
+  through the floor meant to hide it. Measured on a harness reproducing `authStart`'s shape, both
+  strategies fully interleaved, two machines: one long sleep gives AUC 0.34–0.53 with an unstable
+  direction; **uniform 1 ms slices, tried first, give AUC 0.48–0.74 with a stably positive
+  direction — worse than doing nothing**, not because the offset is larger but because it is
+  consistent, and the *number* of slices differs by branch even though their size does not; the
+  fixed settling phase gives AUC 0.42–0.55 with no stable direction, and beats the single sleep at
+  every store gap from 1 to 21 ms. It costs about ten timer wakeups per floored request (min 4,
+  median 10, max 14) and does not scale with the floor, so `recoveryVerify`'s 250 ms floor pays the
+  same ten, where uniform slicing would have paid 250.
+
+  A caller driving `Server.generateKE2ForRecordOrFake` without this manager gets the protocol
+  equalisation only and must add its own floor; see `hofmann-rfc/OPAQUE.md`.
 - `Ristretto255GroupSpec.serializeScalar` had no range check, and its little-endian encoder copies
   at most 32 bytes and silently drops the rest — so a scalar at or above 2^256 was truncated into a
   different, valid-looking scalar rather than rejected. Unreachable from any in-tree call path, since no

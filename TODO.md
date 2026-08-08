@@ -109,14 +109,29 @@ on.
 
 ## New findings
 
-- [ ] **`generateKE2ForRecordOrFake` does not close the enumeration oracle on a persistent
-      `CredentialStore`** — the timing equalisation covers the protocol work, and against
-      `InMemoryCredentialStore` registered and unregistered are indistinguishable (AUC 0.5015 over
-      18,000 interleaved samples). But the JDBC- or Redis-backed store the documentation
-      recommends for production answers a hit and a miss at measurably different speeds, and that
-      signal is larger and more reliable than the ~130 µs the equalisation closed. Documented on
-      the method; closing it means the store answering in constant time, which is a
-      store-implementation concern this library does not control.
+- [ ] **`authStart`'s constant-time floor is worse than no floor once the store gap approaches it**
+      — **[reproduced]**. Raised while closing the persistent-store enumeration oracle, and a
+      property of the fix rather than of the code it replaced. `sleepUntil` ends every floor with a
+      settling phase of fixed shape, which is what makes the floor work across the range that
+      matters (store gaps 0.2–15 ms: AUC ~0.5). But the shape is only identical while the branch
+      has more than `FLOOR_SETTLE_NANOS` left to burn. Past that the coarse sleep is skipped, the
+      step count goes branch-dependent again, and the settling phase's tighter distribution stops
+      burying the residual: measured **AUC 0.82–0.84 at a 22 ms store gap under the 25 ms floor,
+      against 0.47 for the single long sleep it replaced**. Three configurations tried, same
+      result, so it is the strategy's and not one bad run.
+
+      This sits inside the band `AUTH_START_MIN_NANOS` already documents as broken — past ~22 ms
+      the floor does not work at all, because `authStart`'s own ~2 ms is spent inside it — so no
+      deployment on a sane store is exposed. It is open rather than accepted because "already
+      broken" and "measurably worse than before the change" are different claims, and because
+      nothing in the build notices: `AuthStartStoreTimingTest` probes 10 ms and 45 ms and steps
+      over the band entirely.
+
+      Closing it means either a settling phase that degrades gracefully when the branch arrives
+      late, or making the floor refuse to be configured below the work it has to cover — the
+      latter is probably the honest one, since a floor smaller than its own method's runtime is a
+      misconfiguration rather than a tuning choice. A boundary test would need to be conditioned on
+      the machine, which is why one was not added.
 
 - [ ] **The dependency scan is configured but inert: no `NVD_API_KEY` secret** — the
       `dependency-scan` job runs on every push, goes green in about ten seconds, and scans
