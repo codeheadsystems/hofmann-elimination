@@ -245,4 +245,60 @@ eval "set -- $(
         tr '\n' ' '
     )" '"$@"'
 
+# ─── Serialise builds in this project directory ────────────────────────────────
+#
+# Gradle does not serialise `build/` outputs across concurrent invocations on one directory. Two
+# builds here corrupt each other: one build's `clean` deletes build/classes/java/test/** while
+# another's worker is loading from it, and two builds writing the same Kryo test-result store
+# truncate it. The failure surfaces inside Gradle's own report generator as an EOFException, a
+# NoSuchFileException on in-progress-results-generic.bin, or a NoClassDefFoundError naming a
+# different arbitrary class each run. It also self-poisons: a truncated store makes the *next*
+# run fail in under a second, before any test executes, until build/test-results/<task>/binary is
+# deleted — which is why --rerun-tasks stays broken where `clean build` recovers.
+#
+# So invocations queue instead of interleaving. The lock is held on a file descriptor rather than
+# by the shell, so it survives the exec below and is released by the kernel when the JVM exits,
+# including on a crash or a kill -9. There is no stale lock to clean up.
+#
+# This is in gradlew rather than in the build itself on purpose: by the time settings.gradle.kts
+# is evaluated the damage is already possible, and with the configuration cache enabled a cache
+# hit skips the configuration phase entirely, so a lock taken there would not be taken at all on
+# the runs that matter most.
+#
+# Escape hatches: HOFMANN_NO_BUILD_LOCK=1 skips it. A separate git worktree needs no lock, since
+# the contention is per directory.
+#
+# NOTE FOR WRAPPER UPGRADES: `./gradlew wrapper` regenerates this file and will drop this block.
+# GradlewBuildLockTest fails if it goes missing — restore it rather than deleting the test.
+if [ -z "${HOFMANN_NO_BUILD_LOCK:-}" ] ; then
+    if command -v flock > /dev/null 2>&1 ; then
+        # Writability is tested with `:` first, because `exec` is a POSIX special builtin: a
+        # redirection error on it is fatal to the shell, so it cannot be guarded with `||`. And
+        # the redirection must be the only one on the exec — writing `exec 9>>lock 2>/dev/null`
+        # applies BOTH permanently, which silently sends the rest of this script's stderr to
+        # /dev/null and swallows the very message below. That was this block's first bug.
+        HOFMANN_LOCK_FILE="$APP_HOME/.gradle/build.lock"
+        if mkdir -p "$APP_HOME/.gradle" 2> /dev/null && : >> "$HOFMANN_LOCK_FILE" 2> /dev/null
+        then
+            exec 9>> "$HOFMANN_LOCK_FILE"
+            if ! flock -n 9 ; then
+                echo "gradlew: another Gradle build is running in $APP_HOME — waiting for it." >&2
+                echo "gradlew: concurrent builds in one directory corrupt each other's build/" >&2
+                echo "gradlew: outputs. Use a separate git worktree to run them in parallel, or" >&2
+                echo "gradlew: set HOFMANN_NO_BUILD_LOCK=1 to opt out of this wait." >&2
+                if ! flock -w 1800 9 ; then
+                    echo "gradlew: gave up waiting after 30 minutes. Refusing to start rather" >&2
+                    echo "gradlew: than run concurrently and corrupt the build output." >&2
+                    exit 1
+                fi
+            fi
+        fi
+    else
+        # No flock: macOS and some minimal images. Say so rather than leaving the reader to
+        # assume the protection described above is in effect.
+        echo "gradlew: flock not found — builds in this directory are NOT serialised." >&2
+        echo "gradlew: run concurrent builds from separate git worktrees to stay safe." >&2
+    fi
+fi
+
 exec "$JAVACMD" "$@"

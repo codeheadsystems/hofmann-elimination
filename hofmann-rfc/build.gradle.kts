@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.PathSensitivity
+
 
 plugins {
     id("buildlogic.java-library-conventions")
@@ -11,6 +13,16 @@ plugins {
 }
 
 description = "Hofmann's RFC implementation for OPRF and OPAQUE"
+
+// GradlewBuildLockTest reads gradlew, so gradlew has to be an input — otherwise the task stays
+// UP-TO-DATE when gradlew changes and the guard never runs on the one edit it exists to catch.
+// Found the hard way: deleting the lock block left the test reporting green because Gradle never
+// re-executed it. A guard that only runs when something unrelated changed is not a guard.
+tasks.named<Test>("test") {
+    inputs.file(rootProject.layout.projectDirectory.file("gradlew"))
+        .withPropertyName("gradlewScript")
+        .withPathSensitivity(PathSensitivity.NONE)
+}
 
 dependencies {
     implementation(libs.javax.inject)

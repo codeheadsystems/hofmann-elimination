@@ -15,6 +15,8 @@ P2 item is closed.** What remains is P3 and the findings raised while closing th
 | **P3 Low** | 4 |
 | **Total** | **10** |
 
+The build-concurrency finding is closed; what remains under it is the narrower residual below.
+
 Recount with `grep -c '^- \[ \]' TODO.md` after editing.
 
 ## How to read this file
@@ -71,35 +73,26 @@ two are documented in code with no action planned.
 
 ## New findings
 
-- [ ] **`:test` aborts when more than one `./gradlew` runs in the same project directory** —
-      **[root cause identified]**. Symptoms: `java.io.EOFException`, or `NoSuchFileException` on
-      `build/test-results/test/binary/in-progress-results-generic.bin`, or `NoClassDefFoundError`
-      on arbitrary and different classes each run, with results written for only some classes or
-      none. Gradle 9.6.1.
+- [ ] **A killed build can still leave a poisoned test-result store** — the residual of the
+      concurrency fix. `gradlew` now takes an exclusive `flock` before exec'ing the JVM, so two
+      builds in one directory queue instead of corrupting each other's `build/` outputs
+      (demonstrated: two concurrent builds overlapped by +10.9s without the lock and −0.5s with
+      it). That closes the cause that was actually being hit.
 
-      **Cause, from a review that caught it happening.** Gradle does not serialise `build/` outputs
-      across concurrent invocations on one directory. One build's `clean` deletes
-      `build/classes/java/test/**` while another's worker is loading from it, and two builds
-      writing the same Kryo result store truncate it — the read that fails is in Gradle's own
-      report generator (`GenericHtmlTestReportGenerator` → `SerializableTestResultStore` →
-      `KryoException: Buffer underflow`), not in anything this project wrote. It self-poisons: a
-      truncated store makes the *next* run fail in under a second via
-      `Test.getPreviousFailedTestClasses`, before any test executes, until
-      `build/test-results/<task>/binary` is deleted. That is why `--rerun-tasks` stays broken
-      where `clean build` recovers, and why toggling `org.gradle.parallel` changed nothing — the
-      concurrency is across builds, not within one.
+      It does not close the *effect* when a build dies mid-write — Ctrl-C, OOM, a killed daemon.
+      A truncated Kryo store still makes the next run fail in under a second via
+      `Test.getPreviousFailedTestClasses`, before any test executes, which is why `--rerun-tasks`
+      stays broken where `clean build` recovers. Recovery is one command:
+      `rm -rf <module>/build/test-results/<task>/binary`.
 
-      **Do not measure this while another agent is building.** An earlier A/B in this repo
-      concluded a build task made the flake three times more likely; a reviewer observed a second
-      agent running `clean build` in the same directory during *both* arms, so that comparison is
-      confounded in an unknown direction and should not be relied on.
+      Not auto-repaired on purpose: a killed build does not usually corrupt anything, and clearing
+      the result stores on every interrupted build would discard incremental test state and force
+      full re-runs for a rare event. Closing this properly means detecting a truncated store rather
+      than guessing from an unclean shutdown.
 
-      A `verifyTestsRan` task was tried and reverted for an unrelated and still-valid reason: the
-      abort always fails the task, so a green build was never ambiguous. The ambiguity is only in
-      reading result artifacts after the fact — when comparing runs, count result files per module
-      against concrete test classes rather than trusting a summary.
-
-      Closing this means serialising builds per directory, or giving each agent its own checkout.
+      Also unprotected: macOS and minimal images have no `flock` binary. `gradlew` prints a warning
+      there rather than pretending — run concurrent builds from separate git worktrees on those
+      platforms.
 
 - [ ] **The Spring Security escape hatch documented on `HofmannSecurityConfig` does not work** —
       **[reproduced]**. `HofmannSecurityConfig.java:51-66` tells a consumer they can supply their
