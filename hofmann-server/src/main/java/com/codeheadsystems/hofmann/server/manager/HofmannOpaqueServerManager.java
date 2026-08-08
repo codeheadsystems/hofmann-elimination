@@ -121,24 +121,35 @@ public class HofmannOpaqueServerManager {
    * <p>
    * <strong>Measured, on the range that motivates it.</strong> Driving {@code authStart} against a
    * store built to answer a hit slower than a miss, 150–200 interleaved samples per branch with the
-   * order alternated, three repetitions, on two machines. At store gaps of 1, 5, 10 and 15 ms the
-   * Mann-Whitney AUC lands between 0.47 and 0.58 and the median difference reaching the caller
-   * stays within about &plusmn;6&micro;s, with no direction that survives across repetitions and
-   * machines. With the floor removed a 3 ms gap gives AUC 1.0000 and separates the branches by
-   * 4 ms: a one-probe distinguisher. That range — see {@link #REGISTRATION_FINISH_MIN_NANOS}'s
-   * 0.2–5 ms — is what this exists for, and there it works.
+   * order alternated, three repetitions. At store gaps of 1, 5, 10 and 15 ms the Mann-Whitney AUC
+   * lands between 0.47 and 0.58 and the median difference reaching the caller stays within about
+   * &plusmn;6&micro;s, with no direction that survives across repetitions. With the floor removed a
+   * 3 ms gap gives AUC 1.0000 and separates the branches by 4 ms: a one-probe distinguisher. That
+   * range — see {@link #REGISTRATION_FINISH_MIN_NANOS}'s 0.2–5 ms — is what this exists for.
    * <p>
-   * Treat every microsecond figure in this class as conditioned on the box that produced it. The
-   * two used here disagreed by up to an order of magnitude on absolute offsets while agreeing on
-   * every ordering; run the harness before trusting a number to more than its first digit.
+   * <strong>Read the paragraph above as "no signal was detected here", not as "there is no
+   * signal", and re-measure before relying on it.</strong> Every figure in this class came from one
+   * ordinary shared development machine — an earlier version of this comment described them as
+   * coming from two, which was wrong; the spread was run-to-run variance on a single box, not
+   * agreement across environments. That machine is not suited to fine timing work: absolute offsets
+   * moved by an order of magnitude between runs of the same harness.
+   * <p>
+   * The bias that introduces runs one way and it is the unhelpful one. Noise widens both
+   * distributions, which pulls AUC toward 0.5 — so a noisy environment makes a leak <em>harder</em>
+   * to see and makes this constant look better than it may be. The null results above are therefore
+   * the weakest claims here, and the one thing worth doing before trusting them is re-running the
+   * harness on a quiet host with the governor pinned and the cores isolated. Findings in the other
+   * direction — the 3 ms one-probe distinguisher, and the degeneracy on
+   * {@link #FLOOR_SETTLE_NANOS} — survive noise, because noise does not manufacture separation.
    * <p>
    * <strong>Two residuals, both toward the edge of the floor, both stated because they were
    * measured rather than reasoned about.</strong>
    * <ul>
    *   <li>At a 20 ms gap the signal is small but no longer clearly noise: AUC 0.37–0.48 across
-   *       repetitions and machines, median difference &minus;9 to 0&micro;s, leaning consistently
-   *       negative. Distinguishing on that takes a great many probes against a rate-limited
-   *       endpoint, but it is not zero and should not be described as zero.
+   *       repetitions, median difference &minus;9 to 0&micro;s, leaning consistently negative.
+   *       Distinguishing on that takes a great many probes against a rate-limited endpoint, but it
+   *       is not zero and should not be described as zero. Given the measurement caveat above,
+   *       treat 20 ms as where the floor starts failing rather than as a precise edge.
    *   <li>Past roughly 22–23 ms the floor stops working, and — see {@link #FLOOR_SETTLE_NANOS} —
    *       in that band it is <em>worse</em> than the single long sleep it replaced. The cause is
    *       that {@code authStart}'s own work — the OPRF evaluation, the masking, the 3DH — is about
@@ -191,19 +202,22 @@ public class HofmannOpaqueServerManager {
    * {@link #recoveryVerify} and fixed by {@link #MAX_CONCURRENT_RECOVERY_VERIFY}. Adding a floor
    * here without the matching cap would reintroduce it on the higher-volume endpoint of the two.
    * <p>
-   * <strong>128, sized above what the endpoint can actually serve — on the boxes measured.</strong>
-   * An earlier value of 64 was justified here as "well beyond what the scalar multiplications
-   * underneath will support", and that was measured false: without the floor this endpoint sustains
-   * 2,500–4,700 authentications per second on two different 16-core machines, while 64 slots
-   * against a 25 ms floor cap it at 2,560/s. The ceiling was at or below the work's own throughput,
-   * which made it the binding constraint rather than a backstop. 128 slots give 5,120/s, above both
-   * measurements, and still inside a default servlet pool with room for other endpoints.
+   * <strong>128, sized above what the endpoint was measured to serve.</strong> An earlier value of
+   * 64 was justified here as "well beyond what the scalar multiplications underneath will support",
+   * and that was measured false: without the floor this endpoint sustained 2,500–4,700
+   * authentications per second across runs on one 16-core machine, while 64 slots against a 25 ms
+   * floor cap it at 2,560/s. The ceiling was at or below the work's own throughput, which made it
+   * the binding constraint rather than a backstop. 128 slots give 5,120/s, above every measurement
+   * taken, and still inside a default servlet pool with room for other endpoints.
    * <p>
-   * The margin is not generous — 8% over the faster of the two boxes — and it is a fixed number
-   * against hardware that keeps getting faster, so on a machine appreciably quicker than those this
-   * becomes the binding constraint again. If throughput matters more to you than the enumeration
-   * resistance the floor buys, this constant and {@link #AUTH_START_MIN_NANOS} are the two to move,
-   * in that order.
+   * <strong>Treat that margin as smaller than it looks.</strong> It is 8% over the fastest run
+   * observed, the runs varied by nearly 2x between themselves on the same hardware, and a busy
+   * machine <em>understates</em> throughput — so the true figure is likely at the top of that range
+   * or above it, and the real margin correspondingly thinner. It is also a fixed number against
+   * hardware that keeps getting faster. Expect this to become the binding constraint again, and
+   * measure on your own hardware rather than trusting the range above. If throughput matters more
+   * to you than the enumeration resistance the floor buys, this constant and
+   * {@link #AUTH_START_MIN_NANOS} are the two to move, in that order.
    * <p>
    * <strong>The residual is an availability trade, and it is real.</strong> Enough simultaneous
    * connections to fill this ceiling deny <em>every</em> login for as long as the flood lasts,
@@ -893,15 +907,20 @@ public class HofmannOpaqueServerManager {
    *
    * <p>Two wrong answers were measured before this one, on a harness that reproduces the shape of
    * {@code authStart} — block for the store gap, burn ~2 ms of work, floor to 25 ms — with the
-   * strategies and both branches fully interleaved so they see identical machine conditions. The
-   * absolute microsecond figures below move by an order of magnitude between machines and between
-   * runs; what is stable, and what the choice rests on, is the ordering and the directional
-   * stability. Two boxes, 250 samples per branch, three repetitions each:
+   * strategies and both branches fully interleaved so they see identical machine conditions.
+   * <p>
+   * Interleaving is not decoration here. Every measurement in this class was taken on one shared
+   * development machine that is poor at fine timing — see {@link #AUTH_START_MIN_NANOS} — so the
+   * absolute microsecond figures below move by an order of magnitude between runs and are worth
+   * nothing on their own. Flipping the strategies and the branches sample by sample is what makes
+   * the <em>comparison</em> survive that, and the comparison is all the choice below rests on. The
+   * first attempt at this fix was measured without interleaving, reported no signal, and was wrong.
+   * 250 samples per branch, three repetitions:
    *
    * <ul>
    *   <li><strong>One long sleep</strong> (the original): AUC 0.34–0.53, median difference
-   *       &minus;144 to +39&micro;s depending on the box, direction not stable. A leak, but a noisy
-   *       one — the variance is wide enough to bury the offset.
+   *       &minus;144 to +39&micro;s between runs, direction not stable. A leak, but a noisy one —
+   *       the variance is wide enough to bury the offset.
    *   <li><strong>Uniform 1 ms slices</strong> (the first attempt at a fix): AUC 0.48–0.74, median
    *       difference stably <em>positive</em> and growing with the store gap. Worse than doing
    *       nothing — not because the offset is larger in microseconds, which it is not, but because
@@ -917,17 +936,24 @@ public class HofmannOpaqueServerManager {
    *       to 21 ms, on three independent harnesses.
    * </ul>
    *
-   * <p><strong>The degeneracy, which is real and is not hypothetical.</strong> "The same shape on
-   * every branch" holds only while the branch has more than {@code FLOOR_SETTLE_NANOS} left to
-   * burn. Past that the coarse sleep is skipped and the step count goes branch-dependent again —
-   * and because the settling phase also <em>tightens</em> the distribution, the residual offset is
-   * no longer buried in variance. At a 22 ms store gap on a 25 ms floor a reviewer measured this
-   * strategy at AUC 0.82–0.84 against 0.47 for the single long sleep: in that band this is a
-   * regression against the code it replaced. It sits inside the region
-   * {@link #AUTH_START_MIN_NANOS} already declares broken — past ~22 ms the floor does not work at
-   * all — so the remedy is the same one stated there, raise the floor. It is recorded here because
-   * "already broken" and "broken worse than before" are different claims and nothing in the build
-   * notices either.
+   * <p><strong>The degeneracy, which is structural rather than statistical.</strong> "The same
+   * shape on every branch" holds only while the branch has more than {@code FLOOR_SETTLE_NANOS}
+   * left to burn. Past that {@code coarse} is non-positive, the coarse sleep is skipped, and the
+   * step count goes branch-dependent again — around nine steps against twenty — which is precisely
+   * the property this exists to remove. That much is readable in {@link #sleepUntil} and needs no
+   * measurement to establish.
+   * <p>
+   * Measured, it shows up at a 22 ms store gap under this 25 ms floor as AUC 0.82–0.84, against
+   * 0.47 for the single long sleep. Take the first number seriously and the comparison lightly: a
+   * noisy environment suppresses AUC toward 0.5, so a detected 0.82 is real and possibly
+   * understated, whereas 0.47 for the comparator is a null result on hardware unsuited to
+   * measuring it — and the same harness put that comparator at AUC 0.35 one millisecond away, at
+   * 21 ms. So "this strategy leaks badly in that band" is established; "it is worse there than what
+   * it replaced" is one measurement against an erratic baseline and is not.
+   * <p>
+   * Either way the band sits inside the region {@link #AUTH_START_MIN_NANOS} already declares
+   * broken — past ~22 ms the floor does not work — so the remedy is the same one stated there,
+   * raise the floor. It is recorded because nothing in the build notices, and tracked in TODO.md.
    *
    * <p>The cost is about ten timer wakeups per floored request rather than one (measured: min 4,
    * median 10, max 14), and it does not scale with the floor: {@link #RECOVERY_VERIFY_MIN_NANOS}'s

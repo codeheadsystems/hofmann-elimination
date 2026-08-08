@@ -82,11 +82,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   contract almost none of them could satisfy.
 
   Measured on a store built to answer a hit slower than a miss, 150–200 interleaved samples per
-  branch, three repetitions, on two machines: at gaps of 1, 5, 10 and 15 ms the Mann-Whitney AUC
-  lands between 0.47 and 0.58, median difference within about ±6 µs, with no direction surviving
-  across repetitions — noise. With the floor removed a 3 ms gap gives AUC 1.0000 and separates the
-  branches by 4 ms, a one-probe distinguisher. Absolute microsecond figures here move by an order
-  of magnitude between machines; the orderings do not.
+  branch, three repetitions: at gaps of 1, 5, 10 and 15 ms the Mann-Whitney AUC lands between 0.47
+  and 0.58, median difference within about ±6 µs, with no direction surviving across repetitions.
+  With the floor removed a 3 ms gap gives AUC 1.0000 and separates the branches by 4 ms, a
+  one-probe distinguisher.
+
+  **Read the first of those as "no signal was detected", not "there is no signal".** Every timing
+  figure in this entry came from one ordinary shared development machine, not from a host prepared
+  for timing work; absolute offsets moved by an order of magnitude between runs of the same
+  harness. That biases in one direction: noise widens both distributions and pulls AUC toward 0.5,
+  so it makes a leak harder to see and makes this change look better than it may be. The null
+  results are the weakest claims here and are worth re-running on a quiet host. The positive ones —
+  the 3 ms distinguisher, and the degeneracy noted below — survive noise, since noise does not
+  manufacture separation.
 
   The concurrency ceiling is not optional and is not new caution: a floor that parks a request
   thread is a thread-exhaustion vector, which is exactly the finding raised against
@@ -105,21 +113,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     limiter — off by default — if you are exposed to this. Ceiling refusals are charged to nobody:
     the limiter token is consumed *after* the ceiling check, so a flood cannot drain a legitimate
     user's burst and lock them out past the end of it.
-  - **The floor stops working before its nominal 25 ms, and past that point it is worse than what
-    it replaced.** `authStart`'s own work is about 2 ms and is spent inside the floor. A 20 ms store
-    gap already leaks a little (AUC 0.37–0.48, leaning one way); past roughly 22–23 ms the oracle
-    returns in full — and there the new wait strategy measures AUC 0.82–0.84 against 0.47 for the
-    single long sleep it replaced, because it tightens the distribution and so stops burying the
-    residual in variance. Inside a regime already documented as broken, but "broken worse than
-    before" is a different claim and nothing in the build notices either. Raise the floor if your
-    store is anywhere near it.
+  - **The floor stops working before its nominal 25 ms.** `authStart`'s own work is about 2 ms and
+    is spent inside the floor. A 20 ms store gap already leaks a little (AUC 0.37–0.48, leaning one
+    way); past roughly 22–23 ms the oracle returns in full, and there the new wait strategy
+    measures AUC 0.82–0.84 — its settling phase degenerates once a branch arrives with less than
+    the settle window left, which is structural and readable in the code rather than a statistical
+    artefact. Whether that is also *worse* than the single long sleep it replaced is one
+    measurement against an erratic baseline and is not established. Raise the floor if your store
+    is anywhere near it; tracked in TODO.md.
 
   `sleepUntil` now ends every floor with a settling phase of fixed shape — one coarse sleep, then
   steps of 100 µs — instead of one long sleep. `Thread.sleep` does not exit exactly on time, and
   how late it exits depends on the length of the sleep and on what the thread did beforehand; a
   floor sleeps for whatever the branch *left over*, so that exit behaviour carried the branch
-  through the floor meant to hide it. Measured on a harness reproducing `authStart`'s shape, both
-  strategies fully interleaved, two machines: one long sleep gives AUC 0.34–0.53 with an unstable
+  through the floor meant to hide it. Measured on a harness reproducing `authStart`'s shape with
+  both strategies and both branches fully interleaved sample by sample — which is what makes a
+  comparison survive a machine this noisy, and the first attempt at this fix was measured *without*
+  it, reported no signal, and was wrong. One long sleep gives AUC 0.34–0.53 with an unstable
   direction; **uniform 1 ms slices, tried first, give AUC 0.48–0.74 with a stably positive
   direction — worse than doing nothing**, not because the offset is larger but because it is
   consistent, and the *number* of slices differs by branch even though their size does not; the
