@@ -77,7 +77,7 @@ class NonScanningConsumerBackOffTest {
     @Test
     void theLibraryChainIsRegistered() {
       assertThat(context.getBeanNamesForType(SecurityFilterChain.class))
-          .containsExactly("securityFilterChain");
+          .containsExactly("hofmannSecurityFilterChain");
     }
   }
 
@@ -108,7 +108,7 @@ class NonScanningConsumerBackOffTest {
         .run()) {
       assertThat(context.getBeanNamesForType(SecurityFilterChain.class))
           .as("the library's chain must go when the library is excluded")
-          .doesNotContain("securityFilterChain");
+          .doesNotContain("hofmannSecurityFilterChain");
     }
   }
 

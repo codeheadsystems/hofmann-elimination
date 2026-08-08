@@ -33,8 +33,17 @@ class ConsumerAutoConfigurationCollisionTest {
   static class ConsumerApp {
   }
 
+  @SpringBootApplication
+  @ImportAutoConfiguration(NameClashConsumerAutoConfiguration.class)
+  static class NameClashApp {
+  }
+
   private ConfigurableApplicationContext boot() {
-    return new SpringApplicationBuilder(ConsumerApp.class)
+    return boot(ConsumerApp.class);
+  }
+
+  private ConfigurableApplicationContext boot(Class<?> app) {
+    return new SpringApplicationBuilder(app)
         .properties("hofmann.oprf-master-key-hex=2a",
             "hofmann.jwt-secret-hex=" + "ab".repeat(32),
             "hofmann.server-key-seed-hex=" + "cd".repeat(32),
@@ -50,6 +59,23 @@ class ConsumerAutoConfigurationCollisionTest {
       assertThat(context.getBeanNamesForType(SecurityFilterChain.class))
           .as("two chains here means UnreachableFilterChainException, which is how this failed")
           .containsExactly("appSecurity");
+    }
+  }
+
+  /**
+   * A consumer naming their chain {@code securityFilterChain} must start.
+   *
+   * <p>This did not collide — it failed outright with {@code BeanDefinitionOverrideException},
+   * and the post-processor structurally cannot help, because registration is where it dies. The
+   * library's chain is named {@code hofmannSecurityFilterChain} for exactly this reason, which is
+   * the same argument already made for {@code hofmannCorsConfigurationSource} and simply not
+   * applied here until a reviewer pointed at it.
+   */
+  @Test
+  void aConsumerMayNameTheirChainSecurityFilterChain() {
+    try (ConfigurableApplicationContext context = boot(NameClashApp.class)) {
+      assertThat(context.getBeanNamesForType(SecurityFilterChain.class))
+          .containsExactly("securityFilterChain");
     }
   }
 

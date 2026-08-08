@@ -153,13 +153,22 @@ public class HofmannSecurityConfig {
   public static final int HOFMANN_CHAIN_ORDER = Ordered.LOWEST_PRECEDENCE - 5;
 
   /**
-   * Jwt authentication filter jwt authentication filter.
+   * Bean name of this library's chain.
    *
-   * @param jwtManager the jwt manager
-   * @return the jwt authentication filter
+   * <p><strong>Deliberately not {@code securityFilterChain}</strong>, which is the name Spring
+   * Boot's own reference documentation uses and therefore the one a consumer reaches for. A
+   * consumer auto-configuration defining a bean of that name did not collide with this chain — it
+   * failed to start, with {@code BeanDefinitionOverrideException}, and the post-processor below
+   * cannot help because registration is where it dies.
+   *
+   * <p>Exactly the argument already made for {@link #hofmannCorsConfigurationSource()}, which is
+   * "deliberately NOT named {@code corsConfigurationSource}" for this reason. It simply had not
+   * been applied here.
+   *
+   * <p>The post-processor also needs an unambiguous name to withdraw, which this makes true by
+   * construction rather than by coincidence.
    */
-  /** Bean name of the chain below; the post-processor has to name it to withdraw it. */
-  static final String CHAIN_BEAN_NAME = "securityFilterChain";
+  static final String CHAIN_BEAN_NAME = "hofmannSecurityFilterChain";
 
   /**
    * Withdraws this library's chain if any other {@link SecurityFilterChain} is defined, whatever
@@ -207,6 +216,13 @@ public class HofmannSecurityConfig {
     };
   }
 
+  /**
+   * The JWT authentication filter, exposed as a bean so an application that supplies its own
+   * {@link SecurityFilterChain} can wire it into that chain.
+   *
+   * @param jwtManager the jwt manager
+   * @return the jwt authentication filter
+   */
   @Bean
   public JwtAuthenticationFilter jwtAuthenticationFilter(JwtManager jwtManager) {
     return new JwtAuthenticationFilter(jwtManager);
@@ -223,7 +239,7 @@ public class HofmannSecurityConfig {
   @Bean
   @Order(HOFMANN_CHAIN_ORDER)
   @ConditionalOnMissingBean(SecurityFilterChain.class)
-  public SecurityFilterChain securityFilterChain(
+  public SecurityFilterChain hofmannSecurityFilterChain(
       HttpSecurity http,
       JwtAuthenticationFilter jwtFilter,
       @Qualifier("hofmannCorsConfigurationSource") CorsConfigurationSource corsSource,

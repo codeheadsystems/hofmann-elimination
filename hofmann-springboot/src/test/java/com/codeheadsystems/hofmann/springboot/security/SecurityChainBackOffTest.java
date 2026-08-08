@@ -132,7 +132,7 @@ class SecurityChainBackOffTest {
     @Test
     void theLibraryChainIsRegistered() {
       assertThat(context.getBeanNamesForType(SecurityFilterChain.class))
-          .containsExactly("securityFilterChain");
+          .containsExactly("hofmannSecurityFilterChain");
     }
   }
 }
