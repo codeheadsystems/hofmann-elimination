@@ -277,6 +277,13 @@ public class Server {
   /**
    * Generates a fake KE2 for an unregistered credential identifier.
    *
+   * <p><strong>Prefer {@link #generateKE2ForRecordOrFake}.</strong> Calling this only on the
+   * unregistered branch is what produced the timing signal RFC 9807 §10.6 exists to remove: the
+   * fake record costs two HKDF expansions and a scalar multiplication that the registered branch
+   * does not pay, so an attacker learns which accounts exist by timing alone. This entry point
+   * remains for callers driving the fake path deliberately — tests, and anything that already
+   * knows the answer — and does no equalising work of its own.
+   *
    * @param ke1                  the ke 1
    * @param credentialIdentifier the credential identifier
    * @param serverIdentity       the server identity
@@ -291,6 +298,56 @@ public class Server {
     return OpaqueAke.generateKE2(
         config, serverIdentity, serverPrivateKey, serverPublicKey,
         fakeRecord, credentialIdentifier, oprfSeed, ke1, clientIdentity, null, null);
+  }
+
+  /**
+   * Generates KE2 for a stored record, or a fake one when {@code record} is null, doing the same
+   * work either way.
+   *
+   * <p>RFC 9807 §10.6 says to answer an unknown credential with a well-formed KE2 so the response
+   * does not distinguish a registered account from an unregistered one. The construction was
+   * followed and the goal was not: {@link #generateFakeKE2} builds a fake record first — two
+   * {@code hkdfExpand} calls plus a full {@code deriveAkeKeyPair}, which is a hash-to-scalar loop
+   * and a generator scalar multiplication — and only then runs the same {@code generateKE2} the
+   * registered path runs. Measured at 743.7&micro;s registered against 872.7&micro;s unregistered,
+   * a 17.4% offset in a fixed direction. Content that is indistinguishable does not help when the
+   * latency is not.
+   *
+   * <p><strong>So the fake record is built unconditionally and then discarded if unused.</strong>
+   * Both branches now pay for it. The alternative — caching fake records per identifier — is
+   * worse in two ways: the cache is keyed on attacker-controlled input, so it is an unbounded
+   * allocation, and the first probe for each identifier is still slow, which leaves the oracle in
+   * place for exactly the attacker who is enumerating rather than repeating.
+   *
+   * <p>The cost is roughly 130&micro;s added to every legitimate authentication, against an
+   * endpoint that is already rate limited and already performs several scalar multiplications.
+   * That is the trade this makes, stated so it can be disagreed with.
+   *
+   * <p>This equalises the work; it does not make it constant-time in the strict sense. The
+   * branch is still a branch, the two records differ in content, and a JIT that speculates or a
+   * store lookup whose cost depends on a hit are both outside what this can control. It closes a
+   * gross, remotely measurable offset rather than a microarchitectural one.
+   *
+   * @param serverIdentity       the server identity
+   * @param record               the stored registration record, or null when the credential is
+   *                             unregistered or cannot be authenticated under a known key version
+   * @param credentialIdentifier the credential identifier
+   * @param ke1                  the ke 1
+   * @param clientIdentity       the client identity
+   * @return the server ke 2 result
+   */
+  public ServerKE2Result generateKE2ForRecordOrFake(byte[] serverIdentity,
+                                                    RegistrationRecord record,
+                                                    byte[] credentialIdentifier,
+                                                    KE1 ke1,
+                                                    byte[] clientIdentity) {
+    // Unconditional, and deliberately not inside a branch or a ternary the JIT could hoist away:
+    // its result is used on one path and its cost is paid on both.
+    RegistrationRecord fakeRecord = createFakeRecord(credentialIdentifier);
+    RegistrationRecord effective = (record != null) ? record : fakeRecord;
+    return OpaqueAke.generateKE2(
+        config, serverIdentity, serverPrivateKey, serverPublicKey,
+        effective, credentialIdentifier, oprfSeed, ke1, clientIdentity, null, null);
   }
 
   private RegistrationRecord createFakeRecord(byte[] credentialIdentifier) {

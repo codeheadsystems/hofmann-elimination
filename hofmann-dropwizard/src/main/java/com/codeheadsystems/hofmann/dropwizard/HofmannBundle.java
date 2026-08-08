@@ -62,7 +62,10 @@ import java.security.SecureRandom;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.HexFormat;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
@@ -438,19 +441,54 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
   }
 
   /**
+   * Classpath location of the API doc assets.
+   *
+   * <p>Deliberately not under {@code META-INF/resources}, which the Servlet specification makes a
+   * container-published directory — Spring Boot serves it as a static location with no
+   * configuration, so the docs were reachable from consumers of the Spring integration too, with
+   * no switch on that side to turn them off. Nothing auto-publishes this path.
+   */
+  private static final String API_DOCS_RESOURCE_PATH = "/META-INF/hofmann/api-docs";
+
+  /**
    * Media type for assets whose extension the servlet container has no mapping for.
    *
-   * <p>{@link AssetServlet}'s four-argument constructor defaults to {@code text/html}, which is
-   * the wrong default for a directory of mixed documents: Jetty knows {@code .html} but not
-   * {@code .yaml}, so {@code opaque-api.yaml} was going out as {@code text/html} and browsers
-   * rendered the OpenAPI spec as a web page rather than showing or downloading it. Verified by
-   * request, not inferred — it returned {@code Content-Type: text/html;charset=utf-8}.
+   * <p>Left at {@code text/html}, which is {@link AssetServlet}'s own default, after a first
+   * attempt at {@code application/octet-stream} broke the mount root. {@code AssetServlet} looks
+   * the media type up from the request URI, and the bare mount path — {@code /api-docs}, the
+   * exact URL this bundle logs on startup — has no extension, so it falls through to this default.
+   * With {@code octet-stream} plus the {@code nosniff} header the landing page downloaded instead
+   * of rendering, and {@code nosniff} guaranteed the browser could not recover.
    *
-   * <p>Falling back to {@code application/octet-stream} means an unrecognised extension is
-   * downloaded rather than executed as markup. {@code .html} is unaffected, because that mapping
-   * comes from the container rather than from this default.
+   * <p>The problem that change was trying to solve is real and is fixed properly instead: Jetty
+   * has no {@code .yaml} mapping, so the OpenAPI spec was going out as {@code text/html} and
+   * browsers rendered it as markup. {@link #registerApiDocs} now registers the RFC 9512 mapping,
+   * which fixes the specs by name rather than by changing what every unknown extension becomes.
    */
-  private static final String DEFAULT_ASSET_MEDIA_TYPE = "application/octet-stream";
+  private static final String DEFAULT_ASSET_MEDIA_TYPE = "text/html";
+
+  /**
+   * Path prefixes a consumer may not mount the docs on.
+   *
+   * <p>A servlet mapping of {@code /opaque/*} beats Jersey's {@code /*}, so
+   * {@code apiDocsPath: "/opaque"} booted cleanly and served documentation where authentication
+   * used to be — every OPAQUE endpoint 404, OPRF still working, which is about as confusing as a
+   * failure can get. The validator only rejected the root case while its javadoc claimed to
+   * prevent exactly this.
+   */
+  private static final Set<String> RESERVED_API_DOCS_PREFIXES = Set.of("/opaque", "/oprf");
+
+  /**
+   * Shape a configured docs path must match: one or more slash-separated segments of unreserved
+   * URI characters.
+   *
+   * <p>Everything outside this was accepted before, and all of it failed silently rather than
+   * loudly: {@code "/*"} produced a mapping Jetty rejected only by luck, {@code "/api-docs?x=1"}
+   * booted and left the docs reachable at a percent-encoded path nobody would guess, and a value
+   * containing a newline was accepted as-is.
+   */
+  private static final Pattern API_DOCS_PATH_PATTERN =
+      Pattern.compile("(/[A-Za-z0-9._~-]+)+");
 
   /**
    * Registers the OpenAPI specs and Swagger UI, if the consumer asked for them.
@@ -463,9 +501,15 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
    * <p>The other half of the problem is that an {@code AssetServlet} is not a JAX-RS resource, so
    * none of the filters registered through {@code environment.jersey()} below apply to it — not
    * {@link SecurityHeadersFilter}, not {@link CorsFilter}, not the body-size limit. The headers
-   * are restored by registering {@link ApiDocsSecurityHeadersFilter} in the servlet chain. The
-   * size limit is not, and does not need to be: the asset servlet answers GET and HEAD and never
-   * reads a request body, so there is no payload for a limit to bound.
+   * are restored by registering {@link ApiDocsSecurityHeadersFilter} in the servlet chain.
+   *
+   * <p>The body-size limit is genuinely not applicable — {@code AssetServlet} implements only
+   * {@code doGet}, so no request body is ever read. But "therefore this endpoint needs no
+   * request-side defence" was the wrong conclusion from that, and a reviewer showed why: the
+   * amplification vector here is a request <em>header</em>. {@code AssetServlet} places no bound
+   * on the number of byte ranges in a {@code Range} header and {@code 0-} yields the whole
+   * resource each time, so a 4.9 KB request returned 71.5 MB — roughly 14,600&times;,
+   * unauthenticated. {@link ApiDocsSecurityHeadersFilter} caps the range count.
    *
    * @param configuration the configuration
    * @param environment   the environment
@@ -476,26 +520,41 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     }
     String base = normalizeApiDocsPath(configuration.getApiDocsPath());
     String wildcard = base + "/*";
+    // RFC 9512 registers application/yaml. Jetty has no mapping for the extension, so without
+    // this the OpenAPI specs go out as text/html and a browser renders them as markup. Registered
+    // on the context rather than by changing the servlet's fallback media type, so it fixes the
+    // specs without changing what an unknown extension becomes — the fallback also governs the
+    // extensionless mount root, and changing it there broke the landing page.
+    environment.getApplicationContext().getMimeTypes().addMimeMapping("yaml", "application/yaml");
     environment.servlets()
         .addServlet("api-docs", new AssetServlet(
-            "/META-INF/resources/api-docs", base, "index.html",
+            API_DOCS_RESOURCE_PATH, base, "index.html",
             DEFAULT_ASSET_MEDIA_TYPE, StandardCharsets.UTF_8))
         .addMapping(base, wildcard);
     environment.servlets()
-        .addFilter("api-docs-security-headers", new ApiDocsSecurityHeadersFilter())
+        .addFilter("api-docs-security-headers", new ApiDocsSecurityHeadersFilter(
+            configuration.isTrustForwardedHeaders()))
         .addMappingForUrlPatterns(EnumSet.of(DispatcherType.REQUEST), true, base, wildcard);
     log.info("Serving API docs at {} (security headers applied via servlet filter)", base);
   }
 
   /**
-   * Normalises a configured docs path to a leading slash and no trailing slash.
+   * Normalises and validates a configured docs path.
    *
    * <p>A servlet mapping is matched literally, so {@code "api-docs"} or {@code "/api-docs/"}
    * would not fail loudly — the docs would just not be reachable at the path the operator wrote
    * in their config, which is the kind of thing nobody notices until they need the docs.
    *
+   * <p><strong>The validation matters more than the normalisation.</strong> An earlier version
+   * rejected only a path that normalised to empty, on the reasoning that serving at the root
+   * would shadow the API. It would — but so does any prefix that collides with a real one, and
+   * {@code /opaque/*} beats Jersey's {@code /*}: {@code apiDocsPath: "/opaque"} started cleanly
+   * and served documentation in place of every authentication endpoint, while OPRF kept working.
+   * Silent, and confusing enough that the cause would not be obvious.
+   *
    * @param path the configured path
    * @return the normalised path
+   * @throws IllegalArgumentException if the path is empty, malformed, or would shadow the API
    */
   static String normalizeApiDocsPath(String path) {
     String trimmed = path == null ? "" : path.trim();
@@ -506,7 +565,30 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
       throw new IllegalArgumentException(
           "apiDocsPath must name a path prefix; serving docs at the root would shadow the API");
     }
-    return trimmed.startsWith("/") ? trimmed : "/" + trimmed;
+    String normalized = trimmed.startsWith("/") ? trimmed : "/" + trimmed;
+    if (!API_DOCS_PATH_PATTERN.matcher(normalized).matches()) {
+      throw new IllegalArgumentException(
+          "apiDocsPath must be one or more '/'-separated segments of unreserved URI characters, "
+              + "but was: " + normalized);
+    }
+    // '.' is an unreserved character, so the pattern alone admits dot segments. A servlet mapping
+    // is matched literally rather than resolved, so "/api-docs/../.." becomes a mapping nothing
+    // can ever request — the docs would simply be unreachable, with no error to explain why.
+    for (String segment : normalized.substring(1).split("/")) {
+      if (".".equals(segment) || "..".equals(segment)) {
+        throw new IllegalArgumentException(
+            "apiDocsPath may not contain '.' or '..' segments; servlet mappings are matched "
+                + "literally rather than resolved, so the docs would be unreachable: " + normalized);
+      }
+    }
+    String firstSegment = normalized.indexOf('/', 1) < 0
+        ? normalized : normalized.substring(0, normalized.indexOf('/', 1));
+    if (RESERVED_API_DOCS_PREFIXES.contains(firstSegment.toLowerCase(Locale.ROOT))) {
+      throw new IllegalArgumentException(
+          "apiDocsPath may not start with " + firstSegment + ": a servlet mapping there takes "
+              + "precedence over the Jersey resources and would replace the API with documentation");
+    }
+    return normalized;
   }
 
   private void registerSizeLimitFilter(C configuration, Environment environment) {

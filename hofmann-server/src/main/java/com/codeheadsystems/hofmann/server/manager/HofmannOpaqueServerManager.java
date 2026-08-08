@@ -845,25 +845,35 @@ public class HofmannOpaqueServerManager {
     OpaqueServerKeyDetail keyDetail = keyDetailSupplier.get();
     Optional<VersionedCredential> versioned = credentialStore.loadVersioned(credentialIdentifier);
 
-    ServerKE2Result ke2Result;
+    // All three cases converge on one call so that the registered and unregistered paths execute
+    // the same code doing the same work. Previously the two fake branches called
+    // generateFakeKE2 and the registered branch called generateKE2, and the fake record's two
+    // HKDF expansions plus scalar multiplication made the unregistered path measurably slower —
+    // 743.7µs against 872.7µs, a 17.4% offset in a fixed direction. That is a user-enumeration
+    // oracle regardless of how indistinguishable the response body is, and it is the residual
+    // that remained once the free oracles were closed.
+    Server server;
+    RegistrationRecord record;
     int keyVersion;
-    if (versioned.isPresent()) {
+    if (versioned.isPresent() && keyDetail.serverForVersion(versioned.get().keyVersion()) != null) {
       VersionedCredential vc = versioned.get();
       keyVersion = vc.keyVersion();
-      Server server = keyDetail.serverForVersion(keyVersion);
-      if (server == null) {
-        log.warn("No server key for version {} — credential cannot be authenticated", keyVersion);
-        // Fall through to fake KE2 to avoid leaking that the credential exists but is unmigrated
-        server = keyDetail.currentServer();
-        ke2Result = server.generateFakeKE2(ke1, credentialIdentifier, null, null);
-        keyVersion = keyDetail.currentVersion();
-      } else {
-        ke2Result = server.generateKE2(null, vc.record(), credentialIdentifier, ke1, null);
-      }
+      server = keyDetail.serverForVersion(keyVersion);
+      record = vc.record();
     } else {
+      if (versioned.isPresent()) {
+        log.warn("No server key for version {} — credential cannot be authenticated",
+            versioned.get().keyVersion());
+      }
+      // A null record means "answer with a fake". Both the unregistered case and the credential
+      // that exists but cannot be authenticated under any known key version take this path, so
+      // neither is distinguishable from the other or from a real one.
       keyVersion = keyDetail.currentVersion();
-      ke2Result = keyDetail.currentServer().generateFakeKE2(ke1, credentialIdentifier, null, null);
+      server = keyDetail.currentServer();
+      record = null;
     }
+    ServerKE2Result ke2Result =
+        server.generateKE2ForRecordOrFake(null, record, credentialIdentifier, ke1, null);
 
     String sessionToken = UUID.randomUUID().toString();
     pendingSessionStore.store(sessionToken, ke2Result.serverAuthState(),

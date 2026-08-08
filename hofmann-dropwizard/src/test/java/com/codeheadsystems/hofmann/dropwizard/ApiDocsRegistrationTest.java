@@ -67,6 +67,74 @@ class ApiDocsRegistrationTest {
       assertThatThrownBy(() -> HofmannBundle.normalizeApiDocsPath(null))
           .isInstanceOf(IllegalArgumentException.class);
     }
+
+    /**
+     * The root was the only case the earlier validator caught, and it was not the dangerous one.
+     *
+     * <p>A servlet mapping of {@code /opaque/*} takes precedence over Jersey's {@code /*}, so
+     * {@code apiDocsPath: "/opaque"} started cleanly and replaced every authentication endpoint
+     * with static documentation — {@code /opaque/config} 404, {@code /opaque/register/start} 404,
+     * {@code /opaque/index.html} 200 with 33 KB of HTML — while {@code /oprf} kept working, which
+     * makes it about as hard to diagnose as a failure gets. Demonstrated by a reviewer against a
+     * running server; the javadoc had claimed to prevent exactly this.
+     */
+    @Test
+    void refusesAPathThatWouldShadowTheApiEndpoints() {
+      assertThatThrownBy(() -> HofmannBundle.normalizeApiDocsPath("/opaque"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("would replace the API");
+      assertThatThrownBy(() -> HofmannBundle.normalizeApiDocsPath("/oprf"))
+          .isInstanceOf(IllegalArgumentException.class);
+      // Sub-paths are the same problem: /opaque/* is the mapping either way.
+      assertThatThrownBy(() -> HofmannBundle.normalizeApiDocsPath("/opaque/docs"))
+          .isInstanceOf(IllegalArgumentException.class);
+      assertThatThrownBy(() -> HofmannBundle.normalizeApiDocsPath("/OPAQUE"))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    /**
+     * Everything here was previously accepted, and every one of them failed silently rather than
+     * loudly: a wildcard produced a mapping the container rejected only by luck, a query string
+     * left the docs reachable at a percent-encoded path nobody would guess, and a newline in a
+     * YAML value went straight into a servlet mapping.
+     */
+    @Test
+    void refusesAMalformedPath() {
+      for (String bad : new String[]{"/*", "*", "/api-docs?x=1", "/a b", "//api-docs",
+          "/api-docs/../..", "/api\ndocs", "/api-docs#frag", "/api%2Fdocs"}) {
+        assertThatThrownBy(() -> HofmannBundle.normalizeApiDocsPath(bad))
+            .as("should reject %s", bad)
+            .isInstanceOf(IllegalArgumentException.class);
+      }
+    }
+  }
+
+  /** The range cap is pure, so it is checked directly. */
+  @Nested
+  class RangeCounting {
+
+    /**
+     * {@code AssetServlet} puts no bound on the number of byte ranges and {@code 0-} yields the
+     * whole resource each time, so a 4.9 KB request returned 71.5 MB against the 44 KB OpenAPI
+     * spec — around 14,600&times; amplification, unauthenticated. Measured by a reviewer.
+     *
+     * <p>Worth noting what this corrects: the commit that added this mount argued no request-side
+     * limit was needed because the servlet never reads a body. True, and beside the point — the
+     * amplifier is a request header.
+     */
+    @Test
+    void rejectsOnlyImplausibleRangeCounts() {
+      assertThat(ApiDocsSecurityHeadersFilter.tooManyRanges(null)).isFalse();
+      assertThat(ApiDocsSecurityHeadersFilter.tooManyRanges("bytes=0-1023")).isFalse();
+      assertThat(ApiDocsSecurityHeadersFilter.tooManyRanges("bytes=0-99,200-299")).isFalse();
+      assertThat(ApiDocsSecurityHeadersFilter.tooManyRanges("bytes=" + "0-,".repeat(7) + "0-"))
+          .as("8 ranges is the cap and must still be served")
+          .isFalse();
+      assertThat(ApiDocsSecurityHeadersFilter.tooManyRanges("bytes=" + "0-,".repeat(8) + "0-"))
+          .isTrue();
+      assertThat(ApiDocsSecurityHeadersFilter.tooManyRanges("bytes=" + "0-,".repeat(2000) + "0-"))
+          .isTrue();
+    }
   }
 
   /** Default configuration: no {@code serveApiDocs} key at all. */
@@ -164,23 +232,146 @@ class ApiDocsRegistrationTest {
     }
 
     /**
-     * An extension the container has no mapping for must not fall back to {@code text/html}.
+     * The OpenAPI spec gets a YAML media type rather than {@code text/html}.
      *
-     * <p>Found by probing rather than by reading: {@code AssetServlet}'s four-argument
-     * constructor defaults unmapped extensions to {@code text/html}, so the OpenAPI spec was
-     * going out as a web page — a browser rendered YAML as markup. The content is the deployer's
-     * own, so this is a correctness problem before it is a security one, but combined with
-     * {@code nosniff} it is now firmly the right thing rather than firmly the wrong one.
+     * <p>Jetty has no mapping for {@code .yaml}, so the spec was going out as a rendered web page.
+     * The first fix changed {@code AssetServlet}'s fallback media type to
+     * {@code application/octet-stream}, which fixed the spec and broke the landing page — see
+     * {@link #theMountRootStillRenders()}. Registering the RFC 9512 mapping fixes the file that
+     * is actually wrong without changing what every unknown extension becomes.
      */
     @Test
-    void anUnmappedExtensionIsNotServedAsHtml() throws Exception {
+    void theOpenApiSpecIsServedAsYamlRatherThanHtml() throws Exception {
       HttpResponse<String> response =
           get("http://localhost:" + app.getLocalPort() + "/reference/docs/opaque-api.yaml");
 
       assertThat(response.statusCode()).isEqualTo(200);
       assertThat(response.headers().firstValue("Content-Type").orElseThrow())
           .doesNotContain("text/html")
-          .contains("application/octet-stream");
+          .contains("application/yaml");
+    }
+
+    /**
+     * The bare mount path is the URL the bundle logs on startup, and it must render.
+     *
+     * <p>{@code AssetServlet} derives the media type from the request URI and only appends the
+     * index file when the URI ends in a slash, so the extensionless mount root falls through to
+     * the servlet's default. Setting that default to {@code application/octet-stream} made
+     * {@code /api-docs} download a file instead of showing a page, and the {@code nosniff} header
+     * added in the same commit guaranteed the browser could not recover. Caught by a reviewer;
+     * the tests at the time only exercised {@code /index.html}, {@code /} and the {@code .yaml},
+     * all of which happened to work.
+     */
+    @Test
+    void theMountRootStillRenders() throws Exception {
+      HttpResponse<String> response =
+          get("http://localhost:" + app.getLocalPort() + "/reference/docs");
+
+      assertThat(response.statusCode()).isEqualTo(200);
+      assertThat(response.headers().firstValue("Content-Type").orElseThrow())
+          .contains("text/html");
+      assertThat(response.body()).contains("<html");
+    }
+
+    /**
+     * A 404 from the asset servlet carries the headers too.
+     *
+     * <p>It did not. {@code AssetServlet.doGet} handles a missing asset by calling
+     * {@code response.reset()} before setting the status, and {@code reset()} discards headers
+     * set earlier in the chain — so every miss went out completely bare. The mechanism is not an
+     * {@code ERROR} dispatch, so widening the filter's dispatcher set does not fix it; the filter
+     * re-applies the headers after the chain instead. No test would have noticed, because the
+     * suite passed identically either way.
+     */
+    @Test
+    void aMissingAssetStillCarriesTheHeaders() throws Exception {
+      HttpResponse<String> response =
+          get("http://localhost:" + app.getLocalPort() + "/reference/docs/does-not-exist.html");
+
+      assertThat(response.statusCode()).isEqualTo(404);
+      assertThat(response.headers().firstValue("X-Frame-Options")).contains("DENY");
+      assertThat(response.headers().firstValue("X-Content-Type-Options")).contains("nosniff");
+      assertThat(response.headers().firstValue("Content-Security-Policy")).isPresent();
+    }
+
+    /**
+     * The Swagger page loads its bundle from unpkg.com, so a {@code 'self'}-only policy blocked
+     * the UI entirely and left the inline glue throwing a {@code ReferenceError}. This asserts
+     * the policy admits what the shipped page actually references — the earlier version shipped
+     * a policy that broke the page while conceding {@code 'unsafe-inline'} anyway, which is the
+     * worst of both.
+     */
+    @Test
+    void theContentSecurityPolicyAdmitsWhatTheSwaggerPageActuallyLoads() throws Exception {
+      HttpResponse<String> page =
+          get("http://localhost:" + app.getLocalPort() + "/reference/docs/api-docs.html");
+      assertThat(page.statusCode()).isEqualTo(200);
+      assertThat(page.body())
+          .as("if the page stops using the CDN, tighten the policy rather than leaving it open")
+          .contains("https://unpkg.com");
+
+      assertThat(page.headers().firstValue("Content-Security-Policy").orElseThrow())
+          .contains("script-src 'self' 'unsafe-inline' https://unpkg.com");
+    }
+
+    /**
+     * A multi-range request beyond the cap is refused rather than amplified.
+     *
+     * <p>Each {@code 0-} range returns the whole resource, so without a bound a few kilobytes of
+     * request produced tens of megabytes of response.
+     */
+    @Test
+    void anAbsurdNumberOfRangesIsRefused() throws Exception {
+      String ranges = "bytes=" + "0-,".repeat(500) + "0-";
+      HttpResponse<String> response = HttpClient.newHttpClient().send(
+          HttpRequest.newBuilder(
+                  URI.create("http://localhost:" + app.getLocalPort()
+                      + "/reference/docs/opaque-api.yaml"))
+              .header("Range", ranges).GET().build(),
+          HttpResponse.BodyHandlers.ofString());
+
+      assertThat(response.statusCode()).isEqualTo(416);
+      assertThat(response.body().length())
+          .as("a refusal must not itself be the amplification")
+          .isLessThan(10_000);
+    }
+
+    /** A range count a real client might send is still served. */
+    @Test
+    void anOrdinaryRangeRequestStillWorks() throws Exception {
+      HttpResponse<String> response = HttpClient.newHttpClient().send(
+          HttpRequest.newBuilder(
+                  URI.create("http://localhost:" + app.getLocalPort()
+                      + "/reference/docs/opaque-api.yaml"))
+              .header("Range", "bytes=0-99").GET().build(),
+          HttpResponse.BodyHandlers.ofString());
+
+      assertThat(response.statusCode()).isEqualTo(206);
+      assertThat(response.body()).hasSize(100);
+    }
+  }
+
+  /**
+   * The assets are not published by the container on their own.
+   *
+   * <p>They used to live under {@code META-INF/resources}, which the Servlet specification makes
+   * a container-published directory and which Spring Boot serves as a static location with no
+   * configuration. That meant the Spring integration exposed them too, with no switch to turn
+   * them off, and a reviewer demonstrated a Spring consumer serving all four files with no CSP.
+   * The commit that fixed the Dropwizard side claimed the Spring side did not have the problem;
+   * it did, and only the library's own default security chain was hiding it.
+   */
+  @Nested
+  class AssetPackaging {
+
+    @Test
+    void theAssetsAreNotUnderTheContainerPublishedDirectory() {
+      assertThat(getClass().getResource("/META-INF/resources/api-docs/index.html"))
+          .as("anything here is served by Spring Boot and by servlet web fragments, unasked")
+          .isNull();
+      assertThat(getClass().getResource("/META-INF/hofmann/api-docs/index.html"))
+          .as("still shipped, just not auto-published")
+          .isNotNull();
     }
   }
 }
