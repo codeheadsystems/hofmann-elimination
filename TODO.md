@@ -109,23 +109,24 @@ on.
 
 ## New findings
 
-- [ ] **The Spring Security escape hatch documented on `HofmannSecurityConfig` does not work** —
-      **[reproduced]**. `HofmannSecurityConfig.java:51-66` tells a consumer they can supply their
-      own `SecurityFilterChain` and the library's will back off, via
-      `@ConditionalOnMissingBean(SecurityFilterChain.class)`. Declaring one the ordinary way — a
-      `@Bean` on the `@SpringBootApplication` class — does **not** make it back off: the
-      application fails to start with `UnreachableFilterChainException`, scoped or unscoped,
-      unless the consumer also adds `@Order` below `LOWEST_PRECEDENCE - 5`, which the docs do not
-      mention.
+- [ ] **A consumer's own auto-configuration still collides with `HofmannSecurityConfig`, decided
+      by alphabetical class name** — **[reproduced]**. The escape hatch now works for every
+      ordinary shape: a `@Bean` on the `@SpringBootApplication` class, a separate
+      `@Configuration`, a `securityMatcher`-scoped chain, an explicit `@Order`, two user chains, a
+      component-scanned configuration, and one behind `@ConditionalOnProperty`. It does not work
+      when the consumer contributes the chain from their *own* `@AutoConfiguration`: that fails
+      with `UnreachableFilterChainException` unless they declare
+      `@AutoConfiguration(before = HofmannSecurityConfig.class)`.
 
-      `AutoConfigurationRegistrationTest:94` passes and does not catch this, because
-      `ApplicationContextRunner.withUserConfiguration` registers beans differently from a real
-      application. That makes the test worse than absent — it is evidence for a claim it does not
-      actually check.
+      Which one wins is decided by **class name**, because `AutoConfigurationSorter` sorts
+      alphabetically before applying before/after ordering. A reviewer demonstrated the same
+      auto-configuration booting or failing depending only on its package: `com.aaa.…` boots,
+      `com.example.autocfg.…` does not.
 
-      Pre-existing; found while closing the API-docs finding. Either fix the ordering so the
-      documented approach works, or document the `@Order` requirement and give the test a real
-      application context.
+      Pre-existing rather than introduced by the fix, and narrow — it needs a library built on this
+      library. Documented on `HofmannSecurityConfig`. Closing it means either detecting the
+      collision and failing with a message that names the fix, or dropping the unscoped default
+      chain in favour of a scoped one, which is a larger design change.
 
 - [ ] **The `...opaque.internal` package re-exposes every capability just made package-private** —
       **[reproduced]**. `Client` and `Server`'s five `*Deterministic` methods are package-private,
