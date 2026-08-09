@@ -252,9 +252,21 @@ public class Server {
   /**
    * Finalizes server-side authentication: verifies the client MAC and returns the session key.
    *
-   * @param state the state
-   * @param ke3   the ke 3
-   * @return the byte [ ]
+   * <p><strong>The returned array is {@code state}'s own, not a copy.</strong> Copy it if it must
+   * outlive the state, and do not assume the two are independent — mutating one mutates the other.
+   *
+   * <p><strong>{@code state} is dead after this call either way.</strong> On success it has handed
+   * out its session key; on failure both of its arrays are zeroed before the exception is thrown,
+   * because the pending session is removed before the MAC check and can never be presented again.
+   * That is why the failure path clears them here rather than leaving it to the caller — the caller
+   * gets an exception, not a handle.
+   *
+   * @param state the server auth state from {@code generateKE2}, retrieved from the pending session
+   *              store
+   * @param ke3   the client's final AKE message
+   * @return the session key — the live array held by {@code state}, not a copy
+   * @throws SecurityException if the client MAC does not verify. Constant-time compared, so the
+   *                           failure reveals nothing about how close the guess was
    */
   public byte[] serverFinish(ServerAuthState state, KE3 ke3) {
     // Security: constant-time comparison prevents timing side-channel attacks on MAC verification

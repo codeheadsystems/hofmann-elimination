@@ -9,6 +9,12 @@ import jakarta.ws.rs.container.ContainerResponseFilter;
  */
 public class SecurityHeadersFilter implements ContainerResponseFilter {
 
+  /**
+   * Creates the filter. Stateless; one instance serves every request.
+   */
+  public SecurityHeadersFilter() {
+  }
+
   @Override
   public void filter(ContainerRequestContext requestContext,
                      ContainerResponseContext responseContext) {

@@ -46,7 +46,8 @@ public class OprfClientManager {
    * what it is given, so the caller may clear their own array as soon as this returns; closing the
    * context clears the copy.
    *
-   * @param sensitiveData the sensitive data you want to hash; copied, not retained
+   * @param sensitiveData the sensitive data you want to hash. The returned context stores a copy
+   *                      and zeroes it on close; your array is untouched and yours to clear
    * @return a hashing context
    */
   public ClientHashingContext hashingContext(final byte[] sensitiveData) {
@@ -94,8 +95,10 @@ public class OprfClientManager {
   /**
    * Creates a elimination request for the hashing context. This is largely deterministic based on the hashing context.
    *
-   * @param clientHashingContext to generate the elimination request from.
+   * @param clientHashingContext to generate the elimination request from; must not have been closed
    * @return an elimination request that can be sent to the OPRF server manager.
+   * @throws com.codeheadsystems.rfc.common.ClosedContextException if the context has been closed
+   * @throws IllegalArgumentException if HashToGroup produces the identity element
    */
   public BlindedRequest eliminationRequest(final ClientHashingContext clientHashingContext) {
     log.trace("eliminationRequest(requestId={})", clientHashingContext.requestId());
@@ -129,6 +132,11 @@ public class OprfClientManager {
    * @param evaluatedResponse    the response from the OPRF server manager after processing the elimination request.
    * @param clientHashingContext the original context that was used to generate the elimination request, which contains the necessary information for finalizing the hash.
    * @return the final hash result.
+   * @throws com.codeheadsystems.rfc.common.ClosedContextException if the context has been closed. This is what
+   *         the paragraph above used to warn about in prose and nothing enforced
+   * @throws SecurityException if the server returned malformed hex for the evaluated element.
+   *         Wrapped deliberately: BouncyCastle's decoder throws an {@code IllegalStateException},
+   *         so without this a hostile server could pick which exception type you see
    */
   public HashResult hashResult(final EvaluatedResponse evaluatedResponse, final ClientHashingContext clientHashingContext) {
     log.trace("hashResult(requestId={})", clientHashingContext.requestId());

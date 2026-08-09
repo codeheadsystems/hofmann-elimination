@@ -70,6 +70,14 @@ public class HofmannAutoConfiguration {
   private static final Logger log = LoggerFactory.getLogger(HofmannAutoConfiguration.class);
 
   /**
+   * Creates the auto-configuration. Instantiated by Spring Boot; applications do not
+   * construct it directly, and override individual {@code @Bean} methods by defining their own
+   * bean of the same type or name.
+   */
+  public HofmannAutoConfiguration() {
+  }
+
+  /**
    * Default {@link SecureRandom} instance.  Override this bean to supply a custom implementation
    * (e.g. an HSM-backed or seeded provider for testing):
    * <pre>{@code
@@ -546,6 +554,22 @@ public class HofmannAutoConfiguration {
     }
   }
 
+  /**
+   * Supplies the OPRF master key and processor id for the standalone OPRF endpoint.
+   *
+   * <p>The returned supplier is fixed at startup: the key is read from
+   * {@code hofmann.oprf-master-key-hex}, normalized modulo the group order, and handed out
+   * unchanged thereafter. Define your own {@code Supplier<ServerProcessorDetail>} bean to source
+   * the key from elsewhere — a KMS, a rotating secret store — and this backs off.
+   *
+   * @param props the Hofmann properties, supplying the master key, the processor id and the
+   *              cipher suite the key is normalized against
+   * @return a supplier of the server's OPRF processor detail
+   * @throws IllegalStateException if no master key is configured and
+   *                               {@code hofmann.allow-ephemeral-keys} is not set. Starting
+   *                               without one would produce OPRF outputs that change on every
+   *                               restart, silently invalidating every stored hash
+   */
   @Bean
   @ConditionalOnMissingBean
   public Supplier<ServerProcessorDetail> serverProcessorDetailSupplier(HofmannProperties props) {

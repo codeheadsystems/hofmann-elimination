@@ -18,7 +18,11 @@ import java.math.BigInteger;
  * serialization sink. That is not addressed here — the type is part of the public API and
  * removing the interface would be a breaking change — but it is the reason the {@code toString}
  * guard is not sufficient on its own for a deployment that serializes this type.
- */
+ *
+ * @param masterKey           the long-term OPRF secret. Redacted by {@code toString}; still
+ *                            reachable through serialization, per the paragraph above
+ * @param processorIdentifier the label echoed back to clients as {@code processIdentifier}. A
+ *                            routing hint, not an authenticated value */
 public record ServerProcessorDetail(BigInteger masterKey, String processorIdentifier) implements Serializable {
 
   @Override

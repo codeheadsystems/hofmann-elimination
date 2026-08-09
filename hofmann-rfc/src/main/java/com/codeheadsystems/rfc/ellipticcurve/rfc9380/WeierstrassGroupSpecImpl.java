@@ -9,6 +9,13 @@ import org.bouncycastle.math.ec.ECPoint;
  * {@link GroupSpec} implementation for Weierstrass elliptic curves (P-256, P-384, P-521, secp256k1).
  * Delegates hash-to-group to the existing {@link HashToCurve} pipeline and
  * serializes all group elements as compressed SEC1 byte arrays.
+ *
+ * @param curve                  the curve this spec operates over, supplying the generator, group
+ *                               order and point arithmetic
+ * @param hashToCurveImpl        the RFC 9380 hash-to-curve pipeline for {@code curve}, used to map
+ *                               messages to group elements
+ * @param hashToScalarFieldImpl  the hash-to-field instance configured for the scalar field of
+ *                               {@code curve}, used to map messages to scalars
  */
 public record WeierstrassGroupSpecImpl(
     Curve curve,
@@ -365,6 +372,14 @@ public record WeierstrassGroupSpecImpl(
    * <p>The check was previously in {@link #validateElement} only, which the verifiable modes call
    * but the base-mode OPRF and OPAQUE paths do not; those reach the group through
    * {@link #scalarMultiply} and so were unprotected. Putting it here covers every path.
+   *
+   * @param bytes the compressed SEC1 encoding, exactly {@link #elementSize()} bytes
+   * @return the decoded point, guaranteed non-identity, on-curve and in the prime-order subgroup
+   * @throws IllegalArgumentException if the encoding is null, the wrong length, or not compressed
+   *                                  SEC1 — a malformed request, which the adapters map to 400
+   * @throws SecurityException        if the encoding is well-formed but denotes the identity, a
+   *                                  point off the curve, or a point outside the prime-order
+   *                                  subgroup — which the adapters map to 401
    */
   public ECPoint deserializePoint(byte[] bytes) {
     // The SEC1 identity is the single byte 0x00, which the canonical checks below would refuse as

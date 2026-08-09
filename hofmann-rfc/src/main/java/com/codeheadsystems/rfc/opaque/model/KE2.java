@@ -5,6 +5,12 @@ import com.codeheadsystems.rfc.opaque.config.OpaqueConfig;
 /**
  * KE2: server's AKE response.
  * Wire format: credentialResponse || serverNonce || serverAkePublicKey || serverMac
+ *
+ * @param credentialResponse the evaluated element plus the masked envelope
+ * @param serverNonce        the server's per-exchange nonce, {@code Nn} bytes
+ * @param serverAkePublicKey the server's ephemeral AKE public key, {@code Npk} bytes
+ * @param serverMac          the MAC the client verifies before deriving anything. A failure here
+ *                           means a wrong password or the wrong server, indistinguishably
  */
 public record KE2(CredentialResponse credentialResponse, byte[] serverNonce,
                   byte[] serverAkePublicKey, byte[] serverMac) {

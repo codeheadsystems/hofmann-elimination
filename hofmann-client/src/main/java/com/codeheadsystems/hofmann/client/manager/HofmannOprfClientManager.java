@@ -85,7 +85,8 @@ public class HofmannOprfClientManager {
    * here, so the caller may clear their own array as soon as this returns; the copy is cleared
    * before this method returns either way.
    *
-   * @param sensitiveData    sensitive data to be hashed; copied, not retained
+   * @param sensitiveData    sensitive data to be hashed. The library copies it and clears its own
+   *                         copy before returning; your array is untouched and yours to clear
    * @param serverIdentifier the server identifier
    * @return the RFC 9387 compliant OPRF hash of the input, using the server as the OPRF provider.
    */

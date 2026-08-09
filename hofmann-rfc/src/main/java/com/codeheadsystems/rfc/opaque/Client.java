@@ -13,7 +13,29 @@ import com.codeheadsystems.rfc.opaque.model.RegistrationResponse;
 import java.math.BigInteger;
 
 /**
- * OPAQUE client public API. Stateless; takes OpaqueConfig at construction time.
+ * OPAQUE client public API.
+ *
+ * <p><strong>The client itself is stateless and safe to share</strong> — it holds only the
+ * {@link OpaqueConfig} given at construction. The <em>state objects it returns</em> are not: each
+ * carries a copy of the caller's password and must be closed.
+ *
+ * <p>{@link #createRegistrationRequest(byte[])}, {@link #generateKE1(byte[])} and
+ * {@link #generateKE3(ClientAuthState, byte[], byte[], KE2)} all return {@link AutoCloseable}
+ * values. Scope a {@code try}-with-resources to the whole exchange:
+ *
+ * <pre>{@code
+ * try (ClientAuthState state = client.generateKE1(password)) {
+ *   KE2 ke2 = server.exchange(state.ke1());
+ *   try (AuthResult result = client.generateKE3(state, null, null, ke2)) {
+ *     send(result.ke3());
+ *   }
+ * }
+ * }</pre>
+ *
+ * <p>Closing during an exchange rather than after it is refused rather than silently mis-answered:
+ * every accessor on a closed state throws
+ * {@link com.codeheadsystems.rfc.common.ClosedContextException}. The caller's own password array is
+ * never touched — the state copies it — so it remains yours to clear.
  */
 public class Client {
 
@@ -33,8 +55,13 @@ public class Client {
   /**
    * Creates a registration request by blinding the password.
    *
-   * @param password the password
-   * @return the client registration state
+   * <p>The returned state holds a copy of the password and <strong>must be closed</strong> once
+   * {@link #finalizeRegistration} has run. See {@link ClientRegistrationState} — closing it early
+   * is refused, and before that guard existed it produced a registration record no password could
+   * ever open.
+   *
+   * @param password the password; copied by the returned state, and still yours to clear
+   * @return the client registration state, which the caller must close
    */
   public ClientRegistrationState createRegistrationRequest(byte[] password) {
     return OpaqueCredentials.createRegistrationRequest(password, config);
@@ -61,8 +88,12 @@ public class Client {
   /**
    * Generates KE1 (first AKE message) by blinding the password and creating a client ephemeral key pair.
    *
-   * @param password the password
-   * @return the client auth state
+   * <p>The returned state holds a copy of the password and <strong>must be closed</strong> after
+   * {@link #generateKE3} has consumed it — not before, and not between the two calls. See
+   * {@link ClientAuthState}.
+   *
+   * @param password the password; copied by the returned state, and still yours to clear
+   * @return the client auth state, which the caller must close
    */
   public ClientAuthState generateKE1(byte[] password) {
     BigInteger blind = config.cipherSuite().oprfSuite().randomScalar();
@@ -74,11 +105,25 @@ public class Client {
   /**
    * Generates KE3 (final client authentication message) and produces session/export keys.
    *
-   * @param state          the state
-   * @param clientIdentity the client identity
-   * @param serverIdentity the server identity
-   * @param ke2            the ke 2
-   * @return the auth result
+   * <p>This is where a wrong password, a hostile server and a caller lifetime bug all surface, and
+   * they are deliberately distinguishable — see the {@code @throws} below. The returned
+   * {@link AuthResult} holds the session and export keys and <strong>must be closed</strong>; take
+   * what you need from it first, because closing zeroes arrays the caller may still hold.
+   *
+   * @param state          the state from {@link #generateKE1}, which must not have been closed
+   * @param clientIdentity the client identity, or null to use the client public key
+   * @param serverIdentity the server identity, or null to use the server public key
+   * @param ke2            the server's KE2 message
+   * @return the auth result, which the caller must close
+   * @throws SecurityException if the server MAC in KE2 does not verify. This means <em>either</em>
+   *                           a wrong password <em>or</em> the wrong server — OPAQUE cannot tell
+   *                           the caller which, by design, and neither can this method
+   * @throws com.codeheadsystems.rfc.common.ClosedContextException if {@code state} has already been
+   *                           closed. Distinct from the above on purpose: it is a lifetime bug in
+   *                           the calling application, not a failed authentication, and reporting
+   *                           it as a bad password is what the guard exists to stop
+   * @throws IllegalArgumentException if the AKE Diffie-Hellman produces the identity element, which
+   *                           a malicious server supplying an identity ephemeral key would force
    */
   public AuthResult generateKE3(ClientAuthState state,
                                 byte[] clientIdentity,

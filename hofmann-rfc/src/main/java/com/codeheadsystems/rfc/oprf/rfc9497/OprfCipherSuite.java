@@ -570,6 +570,13 @@ public class OprfCipherSuite {
     private RandomProvider random = new RandomProvider();
 
     /**
+     * Creates a builder carrying the defaults noted on each setter. Prefer
+     * {@link OprfCipherSuite#builder()}.
+     */
+    public Builder() {
+    }
+
+    /**
      * Sets the RFC 9497 protocol mode. Defaults to {@link OprfMode#OPRF} (base mode), which is
      * what OPAQUE and every existing caller in this repository use.
      *

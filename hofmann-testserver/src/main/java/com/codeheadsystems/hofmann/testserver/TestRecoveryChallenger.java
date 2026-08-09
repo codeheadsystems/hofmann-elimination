@@ -19,6 +19,12 @@ import org.slf4j.LoggerFactory;
  */
 public class TestRecoveryChallenger implements RecoveryChallenger {
 
+  /**
+   * Creates a challenger that issues the fixed code to every request.
+   */
+  public TestRecoveryChallenger() {
+  }
+
   private static final Logger log = LoggerFactory.getLogger(TestRecoveryChallenger.class);
   private static final String FIXED_CODE = "123456";
 

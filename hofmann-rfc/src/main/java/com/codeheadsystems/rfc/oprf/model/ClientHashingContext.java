@@ -62,7 +62,8 @@ public final class ClientHashingContext implements AutoCloseable {
    *
    * @param requestId      correlates the request with its response
    * @param blindingFactor the blinding scalar
-   * @param input          the client input; copied, not retained
+   * @param input          the client input. This object stores a copy and zeroes it on
+   *                       {@link #close()}; your array is untouched and remains yours to clear
    */
   public ClientHashingContext(final String requestId,
                               final BigInteger blindingFactor,

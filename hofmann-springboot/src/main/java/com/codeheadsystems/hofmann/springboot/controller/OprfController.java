@@ -57,6 +57,11 @@ public class OprfController {
    *                              the client IP from {@code X-Forwarded-For} — only safe behind a
    *                              trusted proxy that overwrites it. False by default, using the
    *                              real socket peer address and ignoring the spoofable header
+   * @param voprfServerManager    the VOPRF server manager, or null when no such bean is defined;
+   *                              the verifiable endpoints then answer 404 rather than failing
+   * @param poprfServerManager    the POPRF server manager, or null when no such bean is defined;
+   *                              the partially-oblivious endpoints then answer 404 rather than
+   *                              failing
    */
   public OprfController(OprfServerManager oprfServerManager,
                         OprfClientConfigResponse clientConfig,

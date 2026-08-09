@@ -20,6 +20,13 @@ import io.dropwizard.core.setup.Environment;
 public class HofmannTestServerApplication extends Application<HofmannConfiguration> {
 
   /**
+   * Creates the application. Invoked by Dropwizard's bootstrap; use {@link #main(String[])}
+   * rather than constructing this directly.
+   */
+  public HofmannTestServerApplication() {
+  }
+
+  /**
    * The entry point of application.
    *
    * @param args the input arguments

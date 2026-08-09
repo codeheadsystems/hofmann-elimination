@@ -43,7 +43,8 @@ public final class ClientRegistrationState implements AutoCloseable {
    * Copies the password so this object's lifetime is independent of the caller's array.
    *
    * @param blind    the OPRF blind
-   * @param password the password; copied, not retained
+   * @param password the password. This object stores a copy and zeroes it on {@link #close()};
+   *                 your array is untouched and remains yours to clear
    * @param request  the registration request
    */
   public ClientRegistrationState(final BigInteger blind,

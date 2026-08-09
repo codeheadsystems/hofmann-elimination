@@ -14,6 +14,10 @@ import java.util.Base64;
  *
  * @param credentialIdentifierBase64 base64-encoded credential identifier
  * @param challengeResponse          the user's response to the challenge (e.g. "482901")
+ * @param challengeId                the server-generated id of the challenge being answered, as
+ *                                   delivered out of band. May be null or blank; the request is
+ *                                   then rate-limited on the credential identifier rather than on
+ *                                   the challenge.
  */
 public record RecoveryVerifyRequest(
     @JsonProperty("credentialIdentifier") String credentialIdentifierBase64,

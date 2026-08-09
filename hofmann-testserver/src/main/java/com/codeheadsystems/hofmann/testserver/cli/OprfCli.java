@@ -34,6 +34,12 @@ public class OprfCli {
   private static final String DEFAULT_SERVER = "http://localhost:8080";
 
   /**
+   * Creates the CLI holder. All behaviour is static; see {@link #main(String[])}.
+   */
+  public OprfCli() {
+  }
+
+  /**
    * Main entry point.
    *
    * @param args command-line arguments

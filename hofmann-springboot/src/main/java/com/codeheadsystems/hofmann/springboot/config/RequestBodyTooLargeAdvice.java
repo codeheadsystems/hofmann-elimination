@@ -26,6 +26,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class RequestBodyTooLargeAdvice {
 
   /**
+   * Creates the advice. Stateless, and scoped to the Hofmann controllers only.
+   */
+  public RequestBodyTooLargeAdvice() {
+  }
+
+  /**
    * Handles the exception thrown directly by the bounded stream.
    *
    * @param e the exception

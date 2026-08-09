@@ -133,7 +133,13 @@ public class OprfResource {
   /**
    * Evaluate oprf response.
    *
-   * @param request the request
+   * @param request     the OPRF evaluation request
+   * @param ctx         the injected JAX-RS request context; read only for the
+   *                    {@code X-Forwarded-For} header, and only when the deployment trusts it
+   * @param httpRequest the injected servlet request; supplies the socket peer address for the
+   *                    client-address rate-limit key. Both are tolerated as null, which keys every
+   *                    caller alike, so they are threaded as parameters rather than injected as
+   *                    fields on this singleton
    * @return the oprf response
    */
   @POST

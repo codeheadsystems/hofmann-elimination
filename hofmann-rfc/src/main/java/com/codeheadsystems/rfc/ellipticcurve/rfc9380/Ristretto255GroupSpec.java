@@ -624,7 +624,12 @@ public class Ristretto255GroupSpec implements GroupSpec {
 
   // ─── Endianness utilities ─────────────────────────────────────────────────
 
-  /** Decodes a little-endian byte array to a non-negative BigInteger. */
+  /**
+   * Decodes a little-endian byte array to a non-negative BigInteger.
+   *
+   * @param b the little-endian bytes, interpreted as unsigned
+   * @return the non-negative value they encode
+   */
   public static BigInteger decodeLittleEndian(byte[] b) {
     byte[] rev = new byte[b.length];
     for (int i = 0; i < b.length; i++) {
