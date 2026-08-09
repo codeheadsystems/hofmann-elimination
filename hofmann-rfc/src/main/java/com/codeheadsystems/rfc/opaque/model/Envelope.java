@@ -3,6 +3,13 @@ package com.codeheadsystems.rfc.opaque.model;
 /**
  * OPAQUE credential envelope: { envelopeNonce, authTag }.
  * The envelope protects the client's long-term private key.
+ *
+ * @param envelopeNonce the per-registration nonce, {@code Nn} bytes, from which the client's key
+ *                      material is re-derived at login
+ * @param authTag       the MAC binding the envelope to the password and the identities,
+ *                      {@code Nm} bytes. This is the check that fails on a wrong password, and the
+ *                      only one — registration has no equivalent, which is why a corrupted
+ *                      registration produces no error at all
  */
 public record Envelope(byte[] envelopeNonce, byte[] authTag) {
 

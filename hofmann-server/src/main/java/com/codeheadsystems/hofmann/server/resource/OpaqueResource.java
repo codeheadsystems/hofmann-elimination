@@ -130,8 +130,11 @@ public class OpaqueResource {
   /**
    * Registration start registration start response.
    *
-   * @param req        the req
-   * @param authHeader optional Authorization header (recovery token for re-registration)
+   * @param req         the registration start request
+   * @param authHeader  optional Authorization header (recovery token for re-registration)
+   * @param httpRequest the injected servlet request; used only to resolve the origin rate-limit
+   *                    key. Tolerates null, which keys every caller alike — see
+   *                    {@code enforceOriginLimit} for why it is a parameter and not a field
    * @return the registration start response
    */
   @POST
@@ -158,8 +161,11 @@ public class OpaqueResource {
   /**
    * Registration finish response.
    *
-   * @param req        the req
-   * @param authHeader optional Authorization header (recovery token for re-registration)
+   * @param req         the registration finish request
+   * @param authHeader  optional Authorization header (recovery token for re-registration)
+   * @param httpRequest the injected servlet request; used only to resolve the origin rate-limit
+   *                    key. Tolerates null, which keys every caller alike — see
+   *                    {@code enforceOriginLimit} for why it is a parameter and not a field
    * @return the response
    */
   @POST
@@ -268,7 +274,10 @@ public class OpaqueResource {
   /**
    * Recovery start — sends an out-of-band challenge.
    *
-   * @param req the recovery start request
+   * @param req         the recovery start request
+   * @param httpRequest the injected servlet request; used only to resolve the origin rate-limit
+   *                    key. Tolerates null, which keys every caller alike — see
+   *                    {@code enforceOriginLimit} for why it is a parameter and not a field
    * @return 202 Accepted
    */
   @POST
@@ -294,7 +303,10 @@ public class OpaqueResource {
   /**
    * Recovery verify — verifies the challenge response and returns a recovery token.
    *
-   * @param req the recovery verify request
+   * @param req         the recovery verify request
+   * @param httpRequest the injected servlet request; used only to resolve the origin rate-limit
+   *                    key. Tolerates null, which keys every caller alike — see
+   *                    {@code enforceOriginLimit} for why it is a parameter and not a field
    * @return the recovery verify response containing the recovery token
    */
   @POST
@@ -319,7 +331,10 @@ public class OpaqueResource {
   /**
    * Auth start auth start response.
    *
-   * @param req the req
+   * @param req         the auth start request
+   * @param httpRequest the injected servlet request; used only to resolve the origin rate-limit
+   *                    key. Tolerates null, which keys every caller alike — see
+   *                    {@code enforceOriginLimit} for why it is a parameter and not a field
    * @return the auth start response
    */
   @POST
@@ -354,7 +369,10 @@ public class OpaqueResource {
   /**
    * Auth finish auth finish response.
    *
-   * @param req the req
+   * @param req         the auth finish request
+   * @param httpRequest the injected servlet request; used only to resolve the origin rate-limit
+   *                    key. Tolerates null, which keys every caller alike — see
+   *                    {@code enforceOriginLimit} for why it is a parameter and not a field
    * @return the auth finish response
    */
   @POST

@@ -3,6 +3,12 @@ package com.codeheadsystems.rfc.opaque.model;
 /**
  * KE1: client's first AKE message.
  * Wire format: credentialRequest.blindedElement || clientNonce || clientAkePublicKey
+ *
+ * @param credentialRequest   the blinded password
+ * @param clientNonce         the client's per-exchange nonce, {@code Nn} bytes
+ * @param clientAkePublicKey  the client's ephemeral AKE public key, {@code Npk} bytes. Wire-visible
+ *                            and stable across a single exchange only — reusing the AKE key seed
+ *                            across logins makes a user's sessions linkable
  */
 public record KE1(CredentialRequest credentialRequest, byte[] clientNonce, byte[] clientAkePublicKey) {
 

@@ -67,6 +67,12 @@ public class OpaqueCli {
   private static final int DEFAULT_PARALLELISM = 1;
 
   /**
+   * Creates the CLI holder. All behaviour is static; see {@link #main(String[])}.
+   */
+  public OpaqueCli() {
+  }
+
+  /**
    * Main entry point.
    *
    * @param args command-line arguments

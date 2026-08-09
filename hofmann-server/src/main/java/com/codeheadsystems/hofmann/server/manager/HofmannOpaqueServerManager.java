@@ -54,8 +54,21 @@ import org.slf4j.LoggerFactory;
  *   <li>{@link IllegalArgumentException}      — bad / missing request data → HTTP 400</li>
  *   <li>{@link SecurityException}             — auth failure or expired session → HTTP 401</li>
  *   <li>{@link UnsupportedOperationException} — recovery not configured → HTTP 404</li>
+ *   <li>{@link RateLimitExceededException}    — rate limit or concurrency ceiling → HTTP 429</li>
  *   <li>{@link IllegalStateException}         — session store at capacity → HTTP 503</li>
  * </ul>
+ *
+ * <p>This list is meant to be exhaustive for the public methods below, and an adapter that maps
+ * only what it finds here should be correct. It was not: {@link RateLimitExceededException} is
+ * thrown from seven of these methods and was missing from the list, so an adapter written against
+ * it returned HTTP 500 under load for a condition the type's own javadoc says to report as 429.
+ * If you add a throw, add it here.
+ *
+ * <p><strong>Two distinct conditions share {@link RateLimitExceededException}</strong>, and
+ * operators reading 429 metrics should know they are conflated: a token-bucket budget being
+ * exhausted, and a concurrency ceiling being reached ({@link #authStart} and
+ * {@link #recoveryVerify} bound how many requests may sit inside their timing floors at once).
+ * The second is a capacity signal about this process, not about the caller.
  */
 public class HofmannOpaqueServerManager {
 
@@ -498,8 +511,10 @@ public class HofmannOpaqueServerManager {
    * @param req         the registration start request
    * @param bearerToken optional recovery token (without "Bearer " prefix), or null for normal registration
    * @return the registration start response
-   * @throws IllegalArgumentException if the request contains missing or invalid fields
-   * @throws SecurityException        if the recovery token is invalid, expired, or mismatched
+   * @throws IllegalArgumentException    if the request contains missing or invalid fields
+   * @throws SecurityException           if the recovery token is invalid, expired, or mismatched
+   * @throws RateLimitExceededException  if this credential identifier's registration budget is
+   *                                     exhausted
    */
   public RegistrationStartResponse registrationStart(RegistrationStartRequest req, String bearerToken) {
     log.debug("registrationStart()");
@@ -533,8 +548,11 @@ public class HofmannOpaqueServerManager {
    *
    * @param req         the registration finish request
    * @param bearerToken optional recovery token (without "Bearer " prefix), or null for normal registration
-   * @throws IllegalArgumentException if the request contains missing or invalid fields
-   * @throws SecurityException        if the recovery token is invalid, expired, or mismatched
+   * @throws IllegalArgumentException    if the request contains missing or invalid fields
+   * @throws SecurityException           if the recovery token is invalid, expired, or mismatched
+   * @throws RateLimitExceededException  if the registration budget for this credential identifier
+   *                                     is exhausted, or — on the recovery path — the budget keyed
+   *                                     on the presented recovery token
    */
   public void registrationFinish(RegistrationFinishRequest req, String bearerToken) {
     log.debug("registrationFinish()");
@@ -706,8 +724,10 @@ public class HofmannOpaqueServerManager {
    * @param req         the registration start request
    * @param bearerToken the JWT bearer token (without "Bearer " prefix)
    * @return the registration start response
-   * @throws SecurityException        if the JWT is missing, invalid, or mismatched
-   * @throws IllegalArgumentException if the request contains missing or invalid fields
+   * @throws SecurityException           if the JWT is missing, invalid, or mismatched
+   * @throws IllegalArgumentException    if the request contains missing or invalid fields
+   * @throws RateLimitExceededException  if the password-change budget for this credential
+   *                                     identifier is exhausted
    */
   public RegistrationStartResponse changePasswordStart(RegistrationStartRequest req, String bearerToken) {
     log.debug("changePasswordStart()");
@@ -791,6 +811,10 @@ public class HofmannOpaqueServerManager {
    * @param req the recovery start request
    * @throws UnsupportedOperationException if recovery is not configured
    * @throws IllegalArgumentException      if the request contains missing or invalid fields
+   * @throws RateLimitExceededException    if the recovery budget for this credential identifier is
+   *                                       exhausted. Note this is thrown on a key that does not
+   *                                       depend on whether the account exists, so it is not itself
+   *                                       an enumeration signal
    */
   public void recoveryStart(RecoveryStartRequest req) {
     log.debug("recoveryStart()");
@@ -822,6 +846,10 @@ public class HofmannOpaqueServerManager {
    * @throws UnsupportedOperationException if recovery is not configured
    * @throws IllegalArgumentException      if the request contains missing or invalid fields
    * @throws SecurityException             if the challenge response is incorrect or expired
+   * @throws RateLimitExceededException    if the recovery budget is exhausted, or if
+   *                                       16 requests are already inside the timing floor — the
+   *                                       second is a capacity signal about this process, not about
+   *                                       the caller
    */
   public RecoveryVerifyResponse recoveryVerify(RecoveryVerifyRequest req) {
     log.debug("recoveryVerify()");
@@ -1102,8 +1130,8 @@ public class HofmannOpaqueServerManager {
    *                                                                               store has reached
    *                                                                               capacity
    * @throws com.codeheadsystems.hofmann.server.ratelimit.RateLimitExceededException
-   *     if the credential's rate limit is exhausted, or if {@link #MAX_CONCURRENT_AUTH_START}
-   *     requests are already inside the floor
+   *     if the credential's rate limit is exhausted, or if 128 requests are already inside the
+   *     floor
    */
   public AuthStartResponse authStart(AuthStartRequest req) {
     log.debug("authStart()");

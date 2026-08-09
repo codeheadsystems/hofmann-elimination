@@ -66,6 +66,14 @@ public class HofmannProperties {
   private boolean trustForwardedHeaders = false;
 
   /**
+   * Creates the properties holder with the defaults documented on each field. Spring Boot
+   * instantiates this and binds {@code hofmann.*} onto it; applications read it as a bean rather
+   * than constructing it.
+   */
+  public HofmannProperties() {
+  }
+
+  /**
    * Gets opaque cipher suite.
    *
    * @return the opaque cipher suite

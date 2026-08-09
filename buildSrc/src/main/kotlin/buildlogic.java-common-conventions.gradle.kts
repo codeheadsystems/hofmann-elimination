@@ -51,4 +51,9 @@ tasks.javadoc {
     if (JavaVersion.current().isJava9Compatible) {
         (options as StandardJavadocDocletOptions).addBooleanOption("html5", true)
     }
+    // Javadoc warnings fail the build. This is a published library, so a missing @param or a
+    // stale @link is a defect in the artifact consumers actually read, not a lint nit — and
+    // warnings that do not fail accumulate until nobody reads them. The backlog was driven to
+    // zero before this was switched on.
+    (options as StandardJavadocDocletOptions).addBooleanOption("Werror", true)
 }

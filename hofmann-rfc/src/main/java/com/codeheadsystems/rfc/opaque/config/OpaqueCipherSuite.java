@@ -19,7 +19,10 @@ import java.nio.charset.StandardCharsets;
  *   <li>P521_SHA512 — P-521 / SHA-512</li>
  *   <li>RISTRETTO255_SHA512 — ristretto255 / SHA-512</li>
  * </ul>
- */
+ *
+ * @param oprfSuite the underlying RFC 9497 suite, which must be in base ({@code OPRF}) mode —
+ *                  OPAQUE's OPRF is unverifiable by design, since the client has no committed
+ *                  server key to check against before it has recovered its envelope */
 public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
 
   /**

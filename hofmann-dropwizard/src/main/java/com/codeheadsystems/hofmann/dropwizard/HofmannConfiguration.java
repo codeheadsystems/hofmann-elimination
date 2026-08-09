@@ -213,6 +213,13 @@ public class HofmannConfiguration extends Configuration {
   private String apiDocsPath = "/api-docs";
 
   /**
+   * Creates a configuration holding the defaults documented on each field. Dropwizard instantiates
+   * this and populates it from YAML; applications rarely construct it directly.
+   */
+  public HofmannConfiguration() {
+  }
+
+  /**
    * Gets opaque cipher suite.
    *
    * @return the opaque cipher suite
@@ -372,21 +379,44 @@ public class HofmannConfiguration extends Configuration {
     this.oprfSeedHex = oprfSeedHex;
   }
 
+  /**
+   * Gets the previous server key seed hex.
+   *
+   * @return the previous server key seed hex, or the empty string when not rotating
+   */
   @JsonProperty
   public String getPreviousServerKeySeedHex() {
     return previousServerKeySeedHex;
   }
 
+  /**
+   * Sets the previous server key seed hex. Set it together with
+   * {@link #setPreviousOprfSeedHex(String)} during key rotation, so that credentials registered
+   * under the old keys stay authenticatable.
+   *
+   * @param previousServerKeySeedHex the previous server key seed hex
+   */
   @JsonProperty
   public void setPreviousServerKeySeedHex(String previousServerKeySeedHex) {
     this.previousServerKeySeedHex = previousServerKeySeedHex;
   }
 
+  /**
+   * Gets the previous oprf seed hex.
+   *
+   * @return the previous oprf seed hex, or the empty string when not rotating
+   */
   @JsonProperty
   public String getPreviousOprfSeedHex() {
     return previousOprfSeedHex;
   }
 
+  /**
+   * Sets the previous oprf seed hex. Must be set together with
+   * {@link #setPreviousServerKeySeedHex(String)}, or both left unset.
+   *
+   * @param previousOprfSeedHex the previous oprf seed hex
+   */
   @JsonProperty
   public void setPreviousOprfSeedHex(String previousOprfSeedHex) {
     this.previousOprfSeedHex = previousOprfSeedHex;

@@ -58,11 +58,24 @@ public class PoprfClientManager {
   }
 
   /**
-   * Creates a context for a single input under a public input.
+   * Convenience overload for callers whose input is already a {@link String}.
+   *
+   * <p><strong>A {@code String} holding a secret cannot be erased.</strong> It is immutable, so
+   * there is no supported way to overwrite its contents; the value survives on the heap until the
+   * collector happens to reclaim it, and any interning, substring or concatenation on the way here
+   * has already made copies nobody holds a reference to. Prefer
+   * {@link #hashingContext(java.util.List, byte[])} with {@code List.of(bytes)} — a {@code byte[]} is
+   * the only form of the input this library can clear, and closing the context clears its copy.
+   *
+   * <p>Unlike the base-mode overload on {@code OprfClientManager}, this one does <strong>not</strong>
+   * zero the intermediate array it derives from the {@code String}, and rejects null with a
+   * {@link NullPointerException} rather than an {@link IllegalArgumentException}. Both are
+   * consequences of it being a thin convenience wrapper; neither is a reason to use it.
    *
    * @param sensitiveData the input to evaluate
    * @param info          the public input
    * @return the context
+   * @throws NullPointerException if {@code sensitiveData} is null
    */
   public PoprfClientContext hashingContext(final String sensitiveData, final byte[] info) {
     return hashingContext(List.of(sensitiveData.getBytes(StandardCharsets.UTF_8)), info);
@@ -129,8 +142,11 @@ public class PoprfClientManager {
   /**
    * Builds the wire request for a context.
    *
-   * @param context the context
+   * @param context the context; must not have been closed
    * @return the request
+   * @throws com.codeheadsystems.rfc.common.ClosedContextException if the context has been closed. This is the
+   *         call that matters: a closed context used to build a perfectly valid request here, the
+   *         server evaluated it correctly, and the proof verified — only the final hash was wrong
    */
   public PartiallyBlindedRequest eliminationRequest(final PoprfClientContext context) {
     List<String> points = new ArrayList<>(context.size());
@@ -153,6 +169,9 @@ public class PoprfClientManager {
    * @return one result per input, aligned with the context's inputs
    * @throws SecurityException if the proof does not verify, the response length does not match the
    *                           request, or any field is malformed
+   * @throws com.codeheadsystems.rfc.common.ClosedContextException if {@code context} has been closed. Not a
+   *                           {@code SecurityException} on purpose — that type means the peer
+   *                           misbehaved, and this is a lifetime bug in the calling application
    */
   public List<HashResult> hashResults(final PartiallyEvaluatedResponse response,
                                       final PoprfClientContext context) {

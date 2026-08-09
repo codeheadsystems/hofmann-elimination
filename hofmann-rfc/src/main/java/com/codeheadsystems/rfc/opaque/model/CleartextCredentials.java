@@ -5,6 +5,12 @@ import com.codeheadsystems.rfc.common.ByteUtils;
 /**
  * Cleartext credentials included in HMAC computation during envelope construction/recovery.
  * Contains { serverPublicKey, serverIdentity, clientIdentity }.
+ *
+ * @param serverPublicKey the server's long-term public key, {@code Npk} bytes
+ * @param serverIdentity  the server identity bound into the envelope MAC; defaults to
+ *                        {@code serverPublicKey} when null
+ * @param clientIdentity  the client identity bound into the envelope MAC; defaults to the client
+ *                        public key when null
  */
 public record CleartextCredentials(byte[] serverPublicKey, byte[] serverIdentity, byte[] clientIdentity) {
 

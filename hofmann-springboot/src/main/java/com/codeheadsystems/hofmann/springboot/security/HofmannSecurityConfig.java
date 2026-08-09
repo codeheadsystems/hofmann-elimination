@@ -133,6 +133,13 @@ public class HofmannSecurityConfig {
       org.slf4j.LoggerFactory.getLogger(HofmannSecurityConfig.class);
 
   /**
+   * Creates the security configuration. Instantiated by Spring; see the class javadoc for
+   * how to replace or opt out of the filter chain it registers.
+   */
+  public HofmannSecurityConfig() {
+  }
+
+  /**
    * Order for the default chain: last, matching Spring Boot's own default.
    * <p>
    * A chain that matches every request must be published after any narrower one, or the narrower
@@ -231,8 +238,14 @@ public class HofmannSecurityConfig {
   /**
    * Security filter chain security filter chain.
    *
-   * @param http      the http
-   * @param jwtFilter the jwt filter
+   * @param http       the http
+   * @param jwtFilter  the jwt filter
+   * @param corsSource the CORS configuration source for the Hofmann endpoints, qualified so this
+   *                   chain uses the library's own rather than whatever else the context supplies
+   * @param errorPath  the servlet container's error dispatch path, resolved from
+   *                   {@code server.error.path} (falling back to {@code error.path}, then
+   *                   {@code /error}). Permitted through the chain so an error forward is not
+   *                   itself rejected, which would mask the original failure
    * @return the security filter chain
    * @throws Exception the exception
    */

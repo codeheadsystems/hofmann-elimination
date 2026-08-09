@@ -19,6 +19,12 @@ import java.util.Map;
 public class WhoAmIResource {
 
   /**
+   * Creates the resource. Stateless; the principal arrives per request from the auth filter.
+   */
+  public WhoAmIResource() {
+  }
+
+  /**
    * Returns the credential identifier from the authenticated JWT principal.
    *
    * @param principal the principal injected by the Dropwizard auth filter

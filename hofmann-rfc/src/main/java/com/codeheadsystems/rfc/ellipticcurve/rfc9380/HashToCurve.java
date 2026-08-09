@@ -34,9 +34,6 @@ public class HashToCurve {
    *
    * <p>Applications should pass their own application-specific DST. Callers that want the
    * conformant per-suite tag should take it from the cipher suite rather than from here.
-   *
-   * @deprecated misleading as a "default"; use the suite-specific DST for the curve in use.
-   *     Retained under the old name below for source compatibility.
    */
   public static final String SECP256K1_XMD_SHA256_SSWU_RO_DST = "secp256k1_XMD:SHA-256_SSWU_RO_";
 

@@ -8,6 +8,27 @@ import org.bouncycastle.crypto.params.Argon2Parameters;
 /**
  * Configuration for the OPAQUE-3DH protocol.
  * Holds the cipher suite, Argon2id parameters, application context, and protocol constants.
+ *
+ * <p>Every field here must match between client and server. A mismatch does not report itself —
+ * it surfaces as an authentication failure indistinguishable from a wrong password.
+ *
+ * @param cipherSuite       the curve and hash pair; determines every length constant below
+ * @param argon2Memory      Argon2id memory cost in KiB. The KSF runs <em>client-side</em>, so these
+ *                          three parameters set the cost of an offline attack on the user's own
+ *                          password — which is why the clients police the server's advertised
+ *                          values rather than trusting them
+ * @param argon2Iterations  Argon2id time cost
+ * @param argon2Parallelism Argon2id lanes
+ * @param context           an application-chosen byte string folded into the AKE preamble, so a
+ *                          transcript from one deployment cannot be replayed against another. It is
+ *                          the only deployment-distinguishing value in the preamble; two
+ *                          deployments sharing a context accept each other's transcripts. Changing
+ *                          it invalidates every existing registration
+ * @param ksf               the key-stretching function; {@link Argon2idKsf} in production and
+ *                          {@link IdentityKsf} only for test vectors
+ * @param randomProvider    the source of nonces and seeds. Injectable so an operator can install an
+ *                          HSM-backed source — and, unavoidably, so a test can install a stub;
+ *                          nothing can distinguish the two
  */
 public record OpaqueConfig(
     OpaqueCipherSuite cipherSuite,
@@ -199,8 +220,17 @@ public record OpaqueConfig(
 
   /**
    * Identity KSF: returns input unchanged. Used for CFRG test vectors.
+   *
+   * <p><strong>Never in production.</strong> With no stretching, a stolen registration record plus
+   * the OPRF key reduces password recovery to the cost of one hash per guess. Both the TypeScript
+   * and Java clients refuse a server advertising this unless explicitly opted in.
    */
   public static class IdentityKsf implements KeyStretchingFunction {
+
+    /** Creates an identity KSF. */
+    public IdentityKsf() {
+    }
+
     @Override
     public byte[] stretch(byte[] input, OpaqueConfig config) {
       return input;
@@ -213,6 +243,11 @@ public record OpaqueConfig(
    * TypeScript and Rust implementations for cross-implementation interop.
    */
   public static class Argon2idKsf implements KeyStretchingFunction {
+
+    /** Creates an Argon2id KSF that reads its parameters from the config passed to stretch. */
+    public Argon2idKsf() {
+    }
+
     @Override
     public byte[] stretch(byte[] input, OpaqueConfig config) {
       Argon2BytesGenerator gen = new Argon2BytesGenerator();

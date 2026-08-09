@@ -64,7 +64,8 @@ public final class ClientAuthState implements AutoCloseable {
    * Copies the password so this object's lifetime is independent of the caller's array.
    *
    * @param blind               the OPRF blind
-   * @param password            the password; copied, not retained
+   * @param password            the password. This object stores a copy and zeroes it on
+   *                            {@link #close()}; your array is untouched and yours to clear
    * @param ke1                 the KE1 message
    * @param clientAkePrivateKey the client ephemeral AKE private key
    */

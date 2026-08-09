@@ -58,8 +58,15 @@ public class OpaqueController {
   /**
    * Instantiates a new Opaque controller.
    *
-   * @param manager      the manager
-   * @param clientConfig the client config response to expose via GET /opaque/config
+   * @param manager           the manager
+   * @param clientConfig      the client config response to expose via GET /opaque/config
+   * @param originRateLimiter limiter applied per request origin across these endpoints. Disabled
+   *                          by default, in which case this bean is a no-op that admits every
+   *                          request — see {@code RateLimitConfigSupplier.originRateLimitConfig}
+   * @param props             the Hofmann properties; supplies
+   *                          {@code hofmann.trust-forwarded-headers}, which when true derives the
+   *                          origin from {@code X-Forwarded-For} — only safe behind a trusted
+   *                          proxy that overwrites it
    */
   public OpaqueController(HofmannOpaqueServerManager manager,
                           OpaqueClientConfigResponse clientConfig,
@@ -111,8 +118,11 @@ public class OpaqueController {
   /**
    * Registration start registration start response.
    *
-   * @param req        the req
-   * @param authHeader optional Authorization header (recovery token for re-registration)
+   * @param req         the registration start request
+   * @param authHeader  optional Authorization header (recovery token for re-registration)
+   * @param httpRequest the injected servlet request; used only to resolve the origin
+   *                    rate-limit key. Tolerates null, which keys every caller alike — see
+   *                    {@code enforceOriginLimit} for why it is a parameter and not a field
    * @return the registration start response
    */
   @PostMapping("/registration/start")
@@ -138,8 +148,11 @@ public class OpaqueController {
   /**
    * Registration finish response entity.
    *
-   * @param req        the req
-   * @param authHeader optional Authorization header (recovery token for re-registration)
+   * @param req         the registration finish request
+   * @param authHeader  optional Authorization header (recovery token for re-registration)
+   * @param httpRequest the injected servlet request; used only to resolve the origin
+   *                    rate-limit key. Tolerates null, which keys every caller alike — see
+   *                    {@code enforceOriginLimit} for why it is a parameter and not a field
    * @return the response entity
    */
   @PostMapping("/registration/finish")
@@ -246,7 +259,10 @@ public class OpaqueController {
   /**
    * Recovery start — sends an out-of-band challenge.
    *
-   * @param req the recovery start request
+   * @param req         the recovery start request
+   * @param httpRequest the injected servlet request; used only to resolve the origin
+   *                    rate-limit key. Tolerates null, which keys every caller alike — see
+   *                    {@code enforceOriginLimit} for why it is a parameter and not a field
    * @return 202 Accepted
    */
   @PostMapping("/recovery/start")
@@ -270,7 +286,10 @@ public class OpaqueController {
   /**
    * Recovery verify — verifies the challenge response and returns a recovery token.
    *
-   * @param req the recovery verify request
+   * @param req         the recovery verify request
+   * @param httpRequest the injected servlet request; used only to resolve the origin
+   *                    rate-limit key. Tolerates null, which keys every caller alike — see
+   *                    {@code enforceOriginLimit} for why it is a parameter and not a field
    * @return the recovery verify response containing the recovery token
    */
   @PostMapping("/recovery/verify")
@@ -294,7 +313,10 @@ public class OpaqueController {
   /**
    * Auth start auth start response.
    *
-   * @param req the req
+   * @param req         the auth start request
+   * @param httpRequest the injected servlet request; used only to resolve the origin
+   *                    rate-limit key. Tolerates null, which keys every caller alike — see
+   *                    {@code enforceOriginLimit} for why it is a parameter and not a field
    * @return the auth start response
    */
   @PostMapping("/auth/start")
@@ -327,7 +349,10 @@ public class OpaqueController {
   /**
    * Auth finish auth finish response.
    *
-   * @param req the req
+   * @param req         the auth finish request
+   * @param httpRequest the injected servlet request; used only to resolve the origin
+   *                    rate-limit key. Tolerates null, which keys every caller alike — see
+   *                    {@code enforceOriginLimit} for why it is a parameter and not a field
    * @return the auth finish response
    */
   @PostMapping("/auth/finish")

@@ -9,9 +9,8 @@ package com.codeheadsystems.hofmann.server.ratelimit;
  *
  * <p>The credential-identifier-keyed limiters bound repeated attempts against a single account.
  * They do nothing against an attacker who varies the identifier, because every distinct value
- * gets its own fresh bucket — which is also what lets a flood exhaust the bucket map and the
- * pending-session store. Bounding by origin is the missing dimension, and it only works if the
- * key cannot be forged.
+ * draws on its own budget — which is what lets a flood reach the pending-session store unthrottled.
+ * Bounding by origin is the missing dimension, and it only works if the key cannot be forged.
  */
 public final class ClientIpResolver {
 
@@ -33,9 +32,9 @@ public final class ClientIpResolver {
                                final String remoteAddress,
                                final boolean trustForwardedHeader) {
     // Only honour X-Forwarded-For when explicitly told we are behind a trusted proxy. Otherwise
-    // the header is fully attacker-controlled, and rotating it per request would mint a fresh
-    // bucket every time — leaving the limiter strictly worse than useless, since it would also
-    // fill the bucket map.
+    // the header is fully attacker-controlled, and rotating it per request would draw on a fresh
+    // budget every time — leaving the limiter useless against exactly the caller it is meant to
+    // bound, while still charging honest ones.
     if (trustForwardedHeader) {
       String forwarded = rightmostForwardedFor(forwardedForHeader);
       if (forwarded != null) {
@@ -50,24 +49,12 @@ public final class ClientIpResolver {
   }
 
   /**
-   * Returns the right-most entry of an {@code X-Forwarded-For} header, or {@code null} if absent.
-   *
-   * <p>The right-most entry is the address appended by the immediate (trusted) proxy and is the
-   * only value an external client cannot forge: proxies that <em>append</em> to XFF — the common
-   * default, e.g. HAProxy {@code option forwardfor} — place attacker-supplied values to the left,
-   * so taking the left-most entry would let a client choose its own rate-limit key even in
-   * trusted-proxy mode.
-   *
-   * @param header the raw header value, or null
-   * @return the right-most entry, or null
-   */
-  /**
    * Collapses an address to the smallest unit an operator is plausibly allocated.
    *
    * <p>IPv6 is aggregated to the /64 prefix. A single IPv6 /64 — the standard allocation for one
    * subscriber line — contains 2^64 addresses, so keying on the full address lets one host mint
-   * an unbounded number of distinct rate-limit keys. That defeats the limiter and, on a
-   * map-backed one, fills it. IPv4 is returned unchanged: addresses there are scarce enough that
+   * an unbounded number of distinct rate-limit keys. That defeats the limiter outright, and on a
+   * map-backed one fills it. IPv4 is returned unchanged: addresses there are scarce enough that
    * a single one is a meaningful unit, and aggregating to a /24 would lump unrelated networks
    * together.
    *
@@ -110,6 +97,18 @@ public final class ClientIpResolver {
     }
   }
 
+  /**
+   * Returns the right-most entry of an {@code X-Forwarded-For} header, or {@code null} if absent.
+   *
+   * <p>The right-most entry is the address appended by the immediate (trusted) proxy and is the
+   * only value an external client cannot forge: proxies that <em>append</em> to XFF — the common
+   * default, e.g. HAProxy {@code option forwardfor} — place attacker-supplied values to the left,
+   * so taking the left-most entry would let a client choose its own rate-limit key even in
+   * trusted-proxy mode.
+   *
+   * @param header the raw header value, or null
+   * @return the right-most entry, or null
+   */
   public static String rightmostForwardedFor(final String header) {
     if (header == null || header.isBlank()) {
       return null;
