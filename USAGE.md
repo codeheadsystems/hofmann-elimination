@@ -53,6 +53,17 @@ at their default in a real deployment.
 | `maxRequestBodyBytes`   | `65536` | No | Maximum request body size; requests with a larger body are rejected with HTTP 413. Enforced two ways, so a chunked body cannot evade it: a declared `Content-Length` over the limit is rejected before the body is read, and the request stream is bounded as it is read for bodies that declare no length. The batched VOPRF/POPRF endpoints carry their own tighter limit of 17,024 bytes, derived from the batch cap of 64. The largest OPAQUE message is well under 64 KiB; raise this only if you have a specific reason. |
 | `trustForwardedHeaders` | `false` | No | Derives the client IP for origin rate limiting from `X-Forwarded-For` instead of the socket peer address. **Only safe behind a trusted proxy that overwrites the header** rather than appending to a client-supplied one — otherwise a single source can mint unlimited distinct rate-limit keys and escape the limiter entirely. |
 
+### API documentation (Dropwizard only)
+
+| Field           | Default      | Required for production | Description |
+|-----------------|--------------|-------------------------|-------------|
+| `serveApiDocs`  | `false`      | No | Serves an embedded Swagger UI over the OPAQUE and OPRF OpenAPI specs. Off by default because a library should not register a servlet on your server without being asked, and a consumer with their own `/api-docs` mapping would collide with it. When enabled, `ApiDocsSecurityHeadersFilter` is installed on the same path — the servlet sits outside the JAX-RS filter chain, so it would otherwise get no security headers at all. |
+| `apiDocsPath`   | `/api-docs`  | No | Path prefix the UI is mounted under when `serveApiDocs` is enabled. Configurable so a consumer already serving something at `/api-docs` can move these out of the way. |
+
+The Spring Boot integration has no equivalent — it does not serve API docs. Use the
+[hosted Swagger UI](https://codeheadsystems.github.io/hofmann-elimination/api-docs.html) or the raw
+specs in `docs/` instead.
+
 ### Development-only escape hatches
 
 Two flags exist to let a local server start in a state a production server must never be in. Both
@@ -272,7 +283,7 @@ Add the autoconfiguration dependency:
 
 ```groovy
 dependencies {
-    implementation 'com.codeheadsystems.hofmann:hofmann-springboot:<version>'
+    implementation 'com.codeheadsystems:hofmann-springboot:<version>'
 }
 ```
 
@@ -357,7 +368,7 @@ If you are not using Dropwizard or Spring Boot, add the framework-agnostic serve
 
 ```groovy
 dependencies {
-    implementation 'com.codeheadsystems.hofmann:hofmann-server:<version>'
+    implementation 'com.codeheadsystems:hofmann-server:<version>'
 }
 ```
 

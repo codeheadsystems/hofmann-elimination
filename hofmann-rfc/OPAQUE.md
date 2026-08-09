@@ -39,9 +39,11 @@ OpaqueConfig config = OpaqueConfig.withArgon2id(
     1                   // parallelism
 );
 
-// For test vectors (identity KSF, no key stretching)
-OpaqueConfig config = OpaqueConfig.forTesting();
-OpaqueConfig config = OpaqueConfig.forTesting(OpaqueCipherSuite.P384_SHA384);
+// For test vectors (identity KSF, no key stretching). These live in OpaqueTestConfigs,
+// which ships under the testFixtures classifier and is deliberately not on a consumer's
+// compile classpath — an identity KSF in production removes all password stretching.
+OpaqueConfig config = OpaqueTestConfigs.forTesting();
+OpaqueConfig config = OpaqueTestConfigs.forTesting(OpaqueCipherSuite.P384_SHA384);
 ```
 
 Key Stretching Functions (KSF):
@@ -285,9 +287,15 @@ Where `Hash` is the suite's hash function (SHA-256 for P-256, SHA-384 for P-384,
 ### Constant-Time Comparisons
 MAC verification (`serverFinish` and AKE internally) uses `MessageDigest.isEqual()` to prevent timing-based oracle attacks.
 
-## Deterministic APIs
+## Deterministic APIs (internal)
 
-For test vector validation, both `Client` and `Server` expose deterministic variants where random values (blind, nonce, seed) are caller-supplied:
+For test vector validation, `Client` and `Server` carry deterministic variants where random values
+(blind, nonce, seed) are caller-supplied. **These are package-private and cannot be called from
+outside `com.codeheadsystems.rfc.opaque`** — the samples below are shown so the vector tests are
+readable, not as API you can use. That is deliberate, and it is the same boundary described under
+*Package sealing* above: passing a constant to a parameter that asks for one is what pasting an RFC
+test vector into production code looks like, and a fixed blind makes `blindedElement = blind ·
+H(password)` an offline password oracle from a single observed KE1.
 
 ```java
 client.createRegistrationRequestDeterministic(password, blind);

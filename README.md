@@ -43,7 +43,7 @@ See [hofmann-elimination-example](https://github.com/codeheadsystems/hofmann-eli
 - **[Configuration guide](USAGE.md)** — server configuration, key management, credential store implementation
 - **[Account recovery guide](RECOVERY.md)** — pluggable account recovery via email, OTP, or custom mechanisms
 - **[Interactive API docs](https://codeheadsystems.github.io/hofmann-elimination/api-docs.html)** — Swagger UI for OPAQUE and OPRF endpoints
-- **At runtime:** Start your Dropwizard or Spring Boot server and visit `/api-docs/` for embedded Swagger UI
+- **At runtime (Dropwizard only):** set `serveApiDocs: true` and visit `/api-docs/` for embedded Swagger UI. It is off by default, and the Spring Boot integration does not serve API docs at all.
 - **Raw OpenAPI specs:** [OPRF API](docs/oprf-api.yaml) | [OPAQUE API](docs/opaque-api.yaml)
 
 ### Building

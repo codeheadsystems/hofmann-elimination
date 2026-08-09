@@ -11,9 +11,9 @@ P2 item is closed.** What remains is P3 and the findings raised while closing th
 
 | Section | Open |
 |---|---:|
-| New findings | 4 |
+| New findings | 5 |
 | **P3 Low** | 3 |
-| **Total** | **7** |
+| **Total** | **8** |
 
 Recount with `grep -c '^- \[ \]' TODO.md` after editing.
 
@@ -44,11 +44,14 @@ Findings tagged **[reproduced]** were demonstrated by executing code, not by rea
 - **Phase 6** — Java HTTP endpoints, `docs/oprf-api.yaml` and the transport request-size bound,
   done. `hofmann-client`, TypeScript and Rust remain deferred by design, and are the obvious next
   scope if a client needs the verifiable modes.
-- **Recovery lockout** — closed with the challenge id. `RecoveryChallenger` gained
-  `bindsChallengeId()` plus challenge-id overloads; a challenger that opts in gets the
-  verification limiter keyed on a value only the account owner receives. Deployments that do not
-  opt in keep the old behaviour and the residual, documented on the interface and in
-  `RECOVERY.md`.
+- **Recovery lockout** — closed with the challenge id. `RecoveryChallenger` gained challenge-id
+  overloads of `sendChallenge` and `verifyResponse`, and the manager always calls those, so the
+  verification limiter is keyed on a value only the account owner receives. **There is no
+  capability flag and no opt-in**: an earlier design had a `bindsChallengeId()` predicate and it was
+  a trap, because a challenger that could not deliver the id would have silently kept the residual
+  while looking configured. The server records the challenge id it issued and checks it regardless
+  of what the challenger does with it; a challenger that cannot deliver the id to the user simply
+  gets no benefit from the second half of the check. See `RECOVERY.md`.
 
 ---
 
@@ -108,6 +111,26 @@ on.
 ---
 
 ## New findings
+
+- [ ] **The Rust port has no constant-work KE2 path, and its README advertises the protection it
+      lacks** — found during the August 2026 documentation review. `hofmann-rust/src/opaque/server.rs`
+      exposes `generate_ke2`, `generate_fake_ke2` and `generate_ke2_deterministic`; there is no
+      equivalent of Java's `generateKE2ForRecordOrFake`. So the only way to serve an unregistered
+      credential in Rust is to branch on registration — which is exactly the shape `OPAQUE.md`
+      records as a **measured** user-enumeration oracle: building the fake record costs two HKDF
+      expansions and a full `deriveAkeKeyPair` the registered branch does not pay, at a 17–20%
+      one-directional offset, distinguishable in roughly 200 probes per identifier.
+
+      The Java side closed this by building the fake record unconditionally and discarding it when
+      unused, and deprecated `generateFakeKE2` (`forRemoval = true`). The port needs the same
+      treatment: a `generate_ke2_for_record_or_fake` taking `Option<&RegistrationRecord>`, with
+      `generate_fake_ke2` deprecated behind it.
+
+      **The doc claim is fixed; the code gap is not.** `hofmann-rust/README.md` now states that the
+      response body is indistinguishable while the work is not, rather than claiming enumeration
+      protection outright. Note the timing figures above are Java's — this machine cannot produce
+      trustworthy fine-grained timing measurements, so a Rust-side measurement is not part of
+      closing this. The structural argument does not need one: the branch does strictly less work.
 
 - [ ] **The server-side secret-bearing result types have no `close()` at all** — raised while
       closing the use-after-close finding, and the mirror of it rather than an instance. That work

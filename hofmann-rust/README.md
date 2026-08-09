@@ -76,7 +76,16 @@ The library supports Argon2id for password hardening between the OPRF output and
 
 ## User Enumeration Protection
 
-`OpaqueServer::generate_fake_ke2` produces a KE2 message for unregistered users that is indistinguishable from a real one, preventing attackers from determining whether a username exists.
+`OpaqueServer::generate_fake_ke2` produces a KE2 message for unregistered users whose **contents**
+are indistinguishable from a real one. The **work** is not equalised, and that is the part that
+leaks: the fake path pays two HKDF expansions and a full `derive_ake_key_pair` that the registered
+path does not, so branching on whether a record exists is measurable from outside. The Java
+implementation measured that same shape at a 17–20% one-directional offset — distinguishable in
+roughly 200 probes per identifier — and closed it with `generateKE2ForRecordOrFake`, which builds
+the fake record unconditionally and discards it when unused. See `hofmann-rfc/OPAQUE.md`.
+
+**This port has no constant-work equivalent yet**, so a server built on it should not be described
+as enumeration-resistant on latency. Tracked in `TODO.md`.
 
 ## Building and Testing
 
