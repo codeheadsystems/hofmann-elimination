@@ -1,212 +1,190 @@
 # Ristretto255 Implementation Notes
 
-This document captures what was learned during an incomplete implementation attempt
-of the `ristretto255-SHA512` OPRF cipher suite (RFC 9497 §4.4). Use it as a guide
-when resuming the work.
+**Status: implemented and shipping.** `ristretto255-SHA512` is one of the four supported OPRF
+cipher suites, in all three modes. The implementation is
+[`Ristretto255GroupSpec`](hofmann-rfc/src/main/java/com/codeheadsystems/rfc/ellipticcurve/rfc9380/Ristretto255GroupSpec.java),
+reached as `CurveHashSuite.RISTRETTO255_SHA512`, and it passes the RFC 9497 Appendix A vectors
+end to end. See [OPRF.md](hofmann-rfc/OPRF.md#cipher-suites) for the suite table and
+[HASH_TO_CURVE.md](hofmann-rfc/HASH_TO_CURVE.md#hash-to-group-pipeline-ristretto255) for how the
+pipeline differs from the Weierstrass curves.
 
-## Background
+This document is a retrospective on why it was hard, kept because the traps are real and the
+first attempt's *diagnosis of them was wrong in every specific* — which is the more useful half.
 
-Ristretto255 is a prime-order group built on Edwards25519 (the same curve as Ed25519).
-It uses equivalence classes to produce a clean prime-order group (no cofactor issues)
-with a canonical 32-byte encoding. See [RFC 9496](https://www.rfc-editor.org/rfc/rfc9496).
+Ristretto255 is a prime-order group built on Edwards25519, using equivalence classes to give a
+clean prime-order group with no cofactor issues and a canonical 32-byte encoding. It is defined
+in [RFC 9496](https://www.rfc-editor.org/rfc/rfc9496); the OPRF suite is RFC 9497 **§4.1**.
 
-The OPRF suite identifier is `ristretto255-SHA512` and it is defined in RFC 9497 §4.4.
-
----
-
-## Relevant RFCs and References
-
-- **RFC 9496** — The ristretto255 and decaf448 Groups (encoding/decoding, arithmetic)
-- **RFC 9380 Appendix B** — `hash_to_ristretto255` (map_to_ristretto255 via Elligator)
-- **RFC 9497 §4.4** — OPRF suite ristretto255-SHA512
-- **CFRG PoC test vectors**: `github.com/cfrg/draft-irtf-cfrg-voprf` → `poc/vectors/allVectors.json`
-  - Suite identifier: `ristretto255-SHA512`
-  - Seed: `a3a3...a3` (32 bytes), Info: `"test key"`
+> **On section numbers.** RFC 9497 orders its suites ristretto255 (§4.1), decaf448 (§4.2), P-256
+> (§4.3), P-384 (§4.4), P-521 (§4.5). An earlier version of this document cited §4.4 for
+> ristretto255 throughout, which is P-384. The same ordering applies to the Appendix A vectors.
 
 ---
 
-## Architecture: Where to Add It
+## Why it was hard
 
-The `GroupSpec` interface (in `rfc9380/`) is the extension point. A new
-`Ristretto255GroupSpec` class implementing `GroupSpec` is all that's needed for
-the OPRF layer — no other files need to change. Once it exists:
+BouncyCastle covers the three Weierstrass suites. It does not provide ristretto255, so this is
+the one suite implemented as pure `BigInteger` Edwards25519 arithmetic — every field operation,
+the extended-coordinate group law, the Elligator map, and the encode/decode pair, written out.
 
-1. Add `Ristretto255GroupSpec.INSTANCE` to `OprfCipherSuite.buildRistretto255Sha512()`
-2. Add `RISTRETTO255_SHA512` constant to `OprfCipherSuite`
-3. Add `Ristretto255Sha512` nested test class to `OprfVectorsTest`
-
-The test vectors and test structure were already written and are preserved below.
-
----
-
-## Key Constants (Verified Correct)
-
-All constants are in `GF(p)` where `p = 2^255 - 19`.
-
-```
-D = -121665 * modInverse(121666, p) mod p
-SQRT_M1 = 2^((p-1)/4) mod p     (= sqrt(-1))
-```
-
-**INVSQRT_A_MINUS_D** = `1 / sqrt(-(1+d))` (since a = -1 on Edwards25519)
-- Computed as: `sqrtRatioM1(1, p - (1+d))[1]`  (note: `-(1+d)` = `p - (1+d)`)
-- Canonical value: `54469307008909316920995813868745141605393597292927456921205312896311721017578`
-- This value has LSB=0 (even/"positive"), so `ctabs()` result is correct as-is
-
-**SQRT_AD_MINUS_ONE** = `sqrt(-(d+1))` (the "negative"/odd square root)
-- Computed as the NEGATION of `sqrtRatioM1(p-d-1, 1)[1]`
-  - i.e., `p - sqrtRatioM1(p-d-1, 1)[1]`
-  - Because `sqrtRatioM1` returns `ctabs()` which gives the even root (LSB=0),
-    but the canonical constant requires the odd root (LSB=1)
-- Canonical value: `25063068953384623474111414158702152701244531502492656460079210482610430750235`
-- This value has LSB=1 (odd/"negative")
-
-**Group order** L = `2^252 + 27742317777372353535851937790883648493`
+That alone is a lot of surface. What makes it *hard* rather than merely long is that almost every
+way of getting it wrong still produces well-formed 32-byte output. A sign error in one branch of
+the encoder yields a valid-looking encoding that simply is not the point you meant. There is no
+type error, no exception, and no partial credit — you get a wrong answer that looks exactly like
+a right one, and the only oracle is a test vector.
 
 ---
 
-## Critical Implementation Details
+## The two real traps
 
-### hashToScalar: Use Little-Endian
-Ristretto255 uses **little-endian** scalar encoding throughout (per RFC 9496 convention).
-The P-256/P-384/P-521 suites use big-endian (OS2IP). This is a per-suite difference.
+### Scalars are little-endian; field elements in hash-to-group are not
+
+Ristretto255 uses **little-endian** scalar encoding throughout, per RFC 9496. The P-256, P-384
+and P-521 suites use big-endian (OS2IP). This is a per-suite difference, and it is the trap that
+catches people first because both encodings produce a 32-byte array.
 
 ```java
-// CORRECT for ristretto255:
-byte[] uniformBytes = XMD.expand(msg, dst, 64);
-return decodeLE32(uniformBytes).mod(L);  // little-endian!
+// Correct for ristretto255 — hashToScalar:
+byte[] uniform = XMD_SHA512.expand(msg, dst, 64);
+return decodeLittleEndian(uniform).mod(L);
 
-// WRONG (would be correct for Weierstrass suites):
-return new BigInteger(1, uniformBytes).mod(L);  // big-endian
+// Correct for the Weierstrass suites, wrong here:
+return new BigInteger(1, uniform).mod(L);
 ```
 
-Test: `testDeriveKeyPair` was passing with this fix in place.
+`GroupSpec.serializeScalar` exists so callers never have to know which suite they are on — see
+[HASH_TO_CURVE.md](hofmann-rfc/HASH_TO_CURVE.md), and note that `Server`'s constructor decodes a
+fixed-width scalar in exactly this per-suite encoding.
 
-### decodeRistretto255: v-sign
-In the decode algorithm (RFC 9496 §4.3.3), `v = a*d*u1^2 - u2^2`.
-With `a = -1`: `v = -d*u1^2 - u2^2`.
-
-The bug that was present (and fixed): computing `d*u1^2 - u2^2` instead of `-d*u1^2 - u2^2`.
+**`hashToGroup` is the exception, and not in the direction the first attempt recorded.** The
+shipped pipeline expands to **64** bytes, splits into two **32**-byte halves, masks bit 255 of
+each, and decodes each as a **little-endian** field element mod p:
 
 ```java
-// CORRECT:
-BigInteger dU1sq = D.multiply(u1).mod(P).multiply(u1).mod(P);
-BigInteger v = P.subtract(dU1sq).subtract(u2sq).mod(P);  // -d*u1^2 - u2^2
+byte[] uniform = XMD_SHA512.expand(msg, dst, 64);
+byte[] b0 = Arrays.copyOfRange(uniform, 0, 32);
+byte[] b1 = Arrays.copyOfRange(uniform, 32, 64);
+b0[31] &= 0x7F;
+b1[31] &= 0x7F;
+BigInteger u0 = decodeLittleEndian(b0).mod(P);
 ```
 
-### hashToGroup: 128-byte expand, big-endian field elements
-RFC 9380 Appendix B says to expand to 128 bytes, split into two 64-byte halves,
-and interpret each half as a **big-endian** integer mod p (standard OS2IP), then
-apply the Elligator map to each, add the two points, and encode.
+An earlier version of this document stated the opposite under a heading reading "Critical
+Implementation Details" — 128-byte expand, two 64-byte **big-endian** halves. That was never what
+the code did, in the abandoned attempt or since. Follow the source.
 
-Note: the little-endian convention is specific to *scalars*, not field elements
-for hash-to-group.
+### The two square roots have opposite parity, and both are "correct"
 
----
+`INVSQRT_A_MINUS_D` and `SQRT_AD_MINUS_ONE` are square roots of related quantities, and the spec
+wants a *specific* one of each pair. `sqrtRatioM1` returns `CT_ABS(...)`, which is always the even
+root, so one of the two constants has to be negated after computing it. Getting this backwards
+gives you a constant that is a genuine square root of the right value and still wrong.
 
-## SQRT_RATIO_M1 Function (p ≡ 5 mod 8)
+| Constant | Value | Parity | How to derive |
+|---|---|---|---|
+| `INVSQRT_A_MINUS_D` = `1/sqrt(-(1+d))` | `54469307008909316920995813868745141605393597292927456921205312896311721017578` | LSB 0 (even) | `sqrtRatioM1(1, p-(1+d))[1]` directly |
+| `SQRT_AD_MINUS_ONE` = `sqrt(-(d+1))` | `25063068953384623474111414158702152701244531502492656460079210482610430750235` | LSB 1 (odd) | `p - sqrtRatioM1(p-d-1, 1)[1]` — **negate** |
 
-Based on RFC 9380 §F.2.1:
+The other constants are unremarkable, in `GF(p)` with `p = 2^255 - 19`:
+
+```
+D              = -121665 * modInverse(121666, p) mod p
+SQRT_M1        = 2^((p-1)/4) mod p            (= sqrt(-1))
+ONE_MINUS_D_SQ = 1 - d^2   mod p              (NOT (1-d)^2)
+D_MINUS_ONE_SQ = (d-1)^2   mod p
+L              = 2^252 + 27742317777372353535851937790883648493
+```
+
+`ONE_MINUS_D_SQ` is worth its parenthesis. The first attempt hardcoded the correct value under a
+comment reading `(1 - d)^2`, which is a different quantity — the value was right and the comment
+was wrong, which is the shape of error that survives review. Both are now derived from `D` rather
+than transcribed, so the comment cannot drift from the arithmetic again.
+
+### `SQRT_RATIO_M1`, for reference
+
+`p ≡ 5 (mod 8)`, so per RFC 9380 §F.2.1:
 
 ```
 r = u*v^3 * (u*v^7)^((p-5)/8)
 check = v * r^2
 correct_sign: check == u
-flipped_sign: check == -u  (→ r_prime = SQRT_M1 * r is the actual sqrt)
+flipped_sign: check == -u        (→ r_prime = SQRT_M1 * r is the actual sqrt)
 wasSquare = correct_sign OR flipped_sign
-root = r_prime if flipped_sign, else r
+root = r_prime if flipped, else r
 return [wasSquare, ctabs(root)]
 ```
 
-When `wasSquare = false` (neither case), `ctabs(SQRT_M1 * r)` is returned.
-This is a valid `sqrt(SQRT_M1 * u/v)` (useful for the Elligator map but not a
-true square root of u/v).
+When `wasSquare` is false, `ctabs(SQRT_M1 * r)` is returned: a valid `sqrt(SQRT_M1 * u/v)`, which
+the Elligator map needs and which is not a square root of `u/v`.
 
 ---
 
-## Known Remaining Bug: encodeRistretto255
+## Superseded analysis: the bug that was not there
 
-At the time of abandoning the implementation, `encodeRistretto255` was producing
-wrong output. Specifically:
+The first attempt was abandoned with a section titled **"Known Remaining Bug: encodeRistretto255"**
+and three ranked root-cause hypotheses. The reported symptoms were real —
+`scalarMultiplyGenerator(1)` returned `d6941cb6...` rather than the base point
+`e2f2ae0a...`, and `hashToGroup(0x00)` produced output that failed to decode.
 
-- `scalarMultiplyGenerator(1)` returned `d6941cb684770ac09340d0ae4657eb566f819db316073a36b3884ff938516d7a`
-  instead of the expected base point `e2f2ae0a6abc4e71a884a961c500515f58e30b6aa582dd8db6a65945e08d2d76`
-- `hashToGroup(0x00, dst)` produced `8a2536b7...` which failed round-trip decoding
+Every named suspect turned out to be innocent. Comparing that abandoned source against what
+ships today:
 
-Debug showed `sqrtRatioM1 wasSquare = 0` for `u1 * u2^2` when encoding the
-Edwards25519 base point (X:Y:Z:T = Bx:By:1:Bx*By). This is unexpected since
-the base point is a valid curve point; `u1 * u2^2` should be a perfect square.
+| The note said | Actually |
+|---|---|
+| `encodeRistretto255` is producing wrong output | Statement-for-statement identical to the shipping version; only trailing comments differ |
+| Hypothesis 1: `SQRT_RATIO_M1` has a sign issue in the flipped case | Unchanged but for an algebraic rearrangement of one comparison |
+| Hypothesis 2: `Z ≠ 1` handling in encode needs different treatment | Unchanged |
+| Hypothesis 3: `addPoints` / `doublePoint` have an `a = -1` sign error | Unchanged |
+| Constants "Verified Correct" | Correct, and still the shipping values |
+| `hashToGroup`: 128-byte expand, big-endian halves | Never true; 64-byte, little-endian, then and now |
 
-The encode algorithm (RFC 9496 §4.3.2) being implemented:
-```
-u1 = (Z+Y)*(Z-Y)
-u2 = X*Y
-(was_square, invsqrt) = SQRT_RATIO_M1(1, u1*u2^2)
-den1 = invsqrt * u1
-den2 = invsqrt * u2
-z_inv = den1 * den2 * T     ← NOTE: T here is the extended coordinate T=X*Y/Z (projective)
-rotate = is_negative(T * z_inv)
-if rotate: X = Y*SQRT_M1, Y = X*SQRT_M1, z = den1 * INVSQRT_A_MINUS_D
-else:       z = den2
-if is_negative(X * z_inv): Y = -Y
-s = ctabs(z * (Z - Y))
-```
+So the confident sections were the wrong ones, and the section hedged as "likely root cause
+hypotheses to investigate" pointed at three pieces of code that needed no investigation. The
+encoder was not broken. What that leaves is a lesson rather than a diagnosis: with an algorithm
+where every wrong answer is well-formed, a symptom localises nothing, and reasoning about which
+function "must" be at fault is worth less than bisecting against a known-good vector one
+operation at a time — decode a published encoding, re-encode it, and compare, before forming any
+theory about why.
 
-Likely root cause hypotheses to investigate:
-1. The SQRT_RATIO_M1 function may have a subtle sign issue when `check ≡ -u` (flipped case)
-   that causes it to return a root of `SQRT_M1 * u/v` rather than `u/v` for certain inputs
-2. The Z coordinate handling when Z ≠ 1 (for intermediate points from mapToRistretto255
-   or scalarMul) may require different treatment than for the affine base point
-3. The addition formula or doubling formula in `addPoints`/`doublePoint` may have
-   a sign error in the `a=-1` adaption
+The debugging procedure the note closed with was sound, and is the part worth keeping:
 
-### Recommended Debug Approach
-1. Decode the known-valid base point encoding `e2f2ae0a6abc4e71a884a961c500515f58e30b6aa582dd8db6a65945e08d2d76`
-   → verify decode works correctly (returns X, Y, Z=1, T=X*Y)
-2. Re-encode the decoded point → verify we get back the same bytes (round-trip test)
-3. If round-trip fails: step through encode line by line with concrete numbers,
-   checking against a reference implementation (e.g., libsodium, dalek-cryptography)
-4. Test `addPoints` with known vectors from RFC 9496 or the ristretto255 test suite
+1. Decode the known-valid base point encoding
+   `e2f2ae0a6abc4e71a884a961c500515f58e30b6aa582dd8db6a65945e08d2d76` and verify it returns
+   `X, Y, Z=1, T=X*Y`.
+2. Re-encode it and check you get the same bytes back.
+3. If the round trip fails, step through encode with concrete numbers against a reference
+   implementation.
+4. Test `addPoints` against known vectors before trusting anything built on it.
 
 ---
 
-## Test Vectors
+## Test vectors
 
-From `poc/vectors/allVectors.json` in `github.com/cfrg/draft-irtf-cfrg-voprf`:
+Vectors live in
+[`hofmann-rfc/src/test/resources/rfc9497/vectors.json`](hofmann-rfc/src/test/resources/rfc9497/vectors.json)
+and run through `OprfVectorsTest`, `OprfModeTest`, `VoprfVectorsTest`, `PoprfVectorsTest` and
+`DleqVectorsTest`.
 
-```
-Suite:   ristretto255-SHA512, mode=0 (OPRF)
-Seed:    a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3
-Info:    7465737420 6b6579  ("test key")
-skSm:    5ebcea5ee37023ccb9fc2d2019f9d7737be85591ae8652ffa9ef0f4d37063b0e  (LE)
+They are transcribed from the published RFC 9497 text, **not** vendored from the CFRG
+proof-of-concept repository — that is an unpinned draft artifact, and it carries decaf448 vectors
+this module has no suite for. An earlier version of this document cited
+`poc/vectors/allVectors.json` as the source and inlined a copy of two vectors; the values agreed
+with the RFC, but the citation pointed the reader at the source the project had decided against.
+Read the vectors from the repository.
 
-HashToGroup DST:
-  48617368546f47726f75702d4f50524656312d002d72697374726574746f3235352d534841353132
-
-Vector 1:
-  Input:            00
-  Blind (LE):       64d37aed22a27f5191de1c1d69fadb899d8862b58eb4220029e036ec4c1f6706
-  BlindedElement:   609a0ae68c15a3cf6903766461307e5c8bb2f95e7e6550e1ffa2dc99e412803c
-  EvalElement:      7ec6578ae5120958eb2db1745758ff379e77cb64fe77b0b2d8cc917ea0869c7e
-  Output:           527759c3d9366f277d8c6020418d96bb393ba2afb20ff90df23fb7708264e2f3
-                    ab9135e3bd69955851de4b1f9fe8a0973396719b7912ba9ee8aa7d0b5e24bcf6
-
-Vector 2:
-  Input:            5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a  (17 bytes of 0x5a)
-  Blind (LE):       64d37aed22a27f5191de1c1d69fadb899d8862b58eb4220029e036ec4c1f6706
-  BlindedElement:   da27ef466870f5f15296299850aa088629945a17d1f5b7f5ff043f76b3c06418
-  EvalElement:      b4cbf5a4f1eeda5a63ce7b77c7d23f461db3fcab0dd28e4e17cecb5c90d02c25
-  Output:           f4a74c9c592497375e796aa837e907b1a045d34306a749db9f34221f7e750cb4
-                    f2a6413a6bf6fa5e19ba6348eb673934a722a7ede2e7621306d18951e7cf2c73
-```
-
-Note: All ristretto255 element encodings are 32 bytes. All scalars are 32 bytes little-endian.
+The ristretto255 suite is additionally covered by `GroupSpecArithmeticTest` for element addition,
+multi-scalar accumulation, and both encodings, and by the per-suite integration tests in
+`hofmann-integration-tests`.
 
 ---
 
-## Reference Implementations
+## References
 
-For comparison during debugging, these open-source implementations of ristretto255 are useful:
-- **dalek-cryptography/curve25519-dalek** (Rust): canonical reference, well-commented
-- **libsodium**: C implementation, includes ristretto255 since 1.0.18
-- **ristretto.group** (Python): pure Python, easy to read
+- **RFC 9496** — The ristretto255 and decaf448 Groups: encoding, decoding, arithmetic
+- **RFC 9380 Appendix B** — `hash_to_ristretto255` via the Elligator map
+- **RFC 9497 §4.1** — OPRF suite `ristretto255-SHA512`
+- **RFC 8032 §5.1** — Edwards25519 parameters and the base point
+
+Implementations useful for differential debugging: `dalek-cryptography/curve25519-dalek` (Rust,
+well commented), libsodium (C, ristretto255 since 1.0.18), and `ristretto.group` (Python, short
+enough to read in one sitting).
