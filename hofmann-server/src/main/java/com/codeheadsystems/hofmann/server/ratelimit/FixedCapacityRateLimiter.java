@@ -35,6 +35,8 @@ import org.slf4j.LoggerFactory;
  * of distinct keys causing a total outage purely by exhausting capacity, at a fraction of the cost
  * of actually saturating the buckets.
  *
+ * <p>Recorded as a decision in {@code docs/adr/0001-fixed-capacity-rate-limiting.md}.
+ *
  * <p>Suitable wherever the key space is attacker-controlled — client addresses, credential
  * identifiers. For a small, trusted key space {@link InMemoryRateLimiter} gives exact per-key
  * accounting and remains the better choice.

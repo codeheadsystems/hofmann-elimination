@@ -13,8 +13,8 @@ import org.junit.jupiter.api.Test;
  * version got it backwards, refusing to record at capacity so that every recovery started after a
  * flood fell back to identifier keying. Since {@code recoveryStart} is unauthenticated and its
  * limiter keys on the credential identifier, an attacker varying the identifier is bounded only by
- * the origin limiter, which is off by default. Filling the store was cheap and silently disabled
- * the protection for everyone.
+ * the origin limiter, which was off by default when this was written and is now on. Filling the
+ * store was cheap and silently disabled the protection for everyone.
  */
 class InMemoryRecoveryChallengeStoreTest {
 

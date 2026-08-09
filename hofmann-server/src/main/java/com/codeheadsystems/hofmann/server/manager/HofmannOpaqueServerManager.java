@@ -238,8 +238,10 @@ public class HofmannOpaqueServerManager {
    * alternative to a global ceiling is an unbounded one, and the measured consequence there is the
    * whole application going down rather than one endpoint. Narrowing an outage from "everything" to
    * "login" is the trade being made. The outer defence against reaching it at all is the
-   * origin-keyed rate limiter, which is off by default — a deployment exposed to this should turn
-   * it on.
+   * origin-keyed rate limiter, which is on by default at 600 requests a minute per aggregated
+   * origin — a deployment exposed to this should check that figure is sized for its own client
+   * distribution rather than assume it. See
+   * {@code docs/adr/0002-origin-rate-limiting-on-by-default.md}.
    * <p>
    * Refusal here is not itself an enumeration oracle: the ceiling is global, so whether a request
    * is admitted does not depend on the credential it names. It is also charged to no one — see

@@ -20,8 +20,11 @@ import org.slf4j.LoggerFactory;
  * after the flood rather than for one — the same primitive with a much larger blast radius, and
  * signalled only by a log line. Since {@code recoveryStart} is unauthenticated and its limiter
  * keys on the credential identifier, an attacker who varies the identifier is bounded only by the
- * origin limiter, which is <em>off by default</em>. Filling the store was therefore cheap, and
- * doing so silently disabled the protection for everyone.
+ * origin limiter — which was off by default when this was written, and is now on at 600 requests
+ * a minute per aggregated origin
+ * ({@code docs/adr/0002-origin-rate-limiting-on-by-default.md}). Filling the store was therefore
+ * cheap, and doing so silently disabled the protection for everyone. It is no longer free, but the
+ * bounds below are what make it bounded rather than the limiter in front of them.
  *
  * <p>Two bounds, and neither refuses. A per-identifier cap, at which that identifier's <em>own</em>
  * oldest entry is dropped — refusing there reintroduced the same failure per-identifier, which is

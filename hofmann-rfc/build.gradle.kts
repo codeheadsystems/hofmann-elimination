@@ -34,6 +34,8 @@ dependencies {
 // `com.codeheadsystems.rfc.opaque` in some *other* jar compiles against those methods and calls
 // them, because the compiler asks only whether the package names match.
 //
+// Why the package was folded rather than bridged, and why a name-based check was not enough:
+// docs/adr/0008-sealed-opaque-package.md
 // Sealing is what makes the package name insufficient. A sealed package must be loaded entirely
 // from one code source, so `URLClassLoader` refuses the intruder with a sealing violation at
 // class-definition time rather than at first call.

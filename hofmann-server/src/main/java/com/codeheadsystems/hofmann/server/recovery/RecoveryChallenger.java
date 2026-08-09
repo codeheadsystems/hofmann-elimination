@@ -43,6 +43,9 @@ package com.codeheadsystems.hofmann.server.recovery;
  * victim's <em>start</em> budget. The harm is bounded to "cannot request a new challenge for a
  * while" rather than "cannot complete a recovery already in progress", and it is the price of
  * letting an unauthenticated caller trigger an email at all.
+ *
+ * <p>The challenge-id design, the two ways to opt in wrongly, and the accepted attribution
+ * oracle are recorded in {@code docs/adr/0003-recovery-challenge-id-binding.md}.
  */
 public interface RecoveryChallenger {
 

@@ -35,6 +35,10 @@ package com.codeheadsystems.rfc.common;
  * the guard sits</em>: in the accessors, upstream of anything the peer controls. Moving a check
  * downstream of a server-supplied value would make the failure server-observable in timing and
  * give away the property for free.
+ *
+ * <p>Why this is a subclass rather than a plain {@code IllegalStateException}, and why the
+ * guard covers every protocol accessor, are recorded in
+ * {@code docs/adr/0005-closed-contexts-refuse-use.md}.
  */
 public final class ClosedContextException extends IllegalStateException {
 

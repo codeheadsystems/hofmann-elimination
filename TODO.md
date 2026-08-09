@@ -19,6 +19,11 @@ Recount with `grep -c '^- \[ \]' TODO.md` after editing.
 
 ## How to read this file
 
+Decisions that close as *decisions* rather than as code live in
+[docs/adr/](docs/adr/), not here. Each of those records carries a **Superseded analyses**
+section, which is where reasoning that was written down and later disproved ends up — including
+one entry that was written into *this* file a day after the code had already contradicted it.
+
 Every entry here is **outstanding**. Completed entries are removed rather than checked off; the
 analysis each carried lives in the commit that closed it and in this file's own history
 (`git log -p -- TODO.md`). Nothing is lost, but it is no longer in front of you while you work.
@@ -82,7 +87,8 @@ Kryo result store truncate it. The failing read is in Gradle's own report genera
 underflow`), not in anything this project wrote.
 
 **Decision: run one build per checkout, and use a separate `git worktree` to build in parallel.**
-Documented in README.md under Building. A `flock` in `gradlew` was built and measured — it works
+Documented in README.md under Building, and recorded in
+[docs/adr/0004-one-build-per-checkout.md](docs/adr/0004-one-build-per-checkout.md). A `flock` in `gradlew` was built and measured — it works
 (critical-section overlap +10.9s without it, −0.5s with it) — and then reverted: `gradlew` is a
 generated file, so the edit needs a guard task to survive `./gradlew wrapper`, and that is a lot of
 machinery in shipped tooling for a condition that a separate checkout avoids entirely.

@@ -60,9 +60,10 @@ public class OpaqueController {
    *
    * @param manager           the manager
    * @param clientConfig      the client config response to expose via GET /opaque/config
-   * @param originRateLimiter limiter applied per request origin across these endpoints. Disabled
-   *                          by default, in which case this bean is a no-op that admits every
-   *                          request — see {@code RateLimitConfigSupplier.originRateLimitConfig}
+   * @param originRateLimiter limiter applied per request origin across these endpoints. Enabled by
+   *                          default; a supplier returning null yields a no-op bean that admits
+   *                          every request — see {@code RateLimitConfigSupplier.originRateLimitConfig}
+   *                          and {@code docs/adr/0002-origin-rate-limiting-on-by-default.md}
    * @param props             the Hofmann properties; supplies
    *                          {@code hofmann.trust-forwarded-headers}, which when true derives the
    *                          origin from {@code X-Forwarded-For} — only safe behind a trusted
