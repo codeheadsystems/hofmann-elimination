@@ -225,8 +225,11 @@ Eurocrypt 2018) and has been standardized through the IETF process with
 multi-year review. The protocol is sound. The risk lies in implementation
 correctness — translating the mathematical specification into code without
 introducing bugs. This risk is mitigated by test vector validation, constant-time
-operations for MAC comparison and scalar serialization, and explicit zeroing of
-intermediate key material. A formal audit would further reduce this risk.
+MAC comparison, and explicit zeroing of intermediate key material. Scalar
+serialization is *not* constant-time — it produces a fixed-width result through a
+copy whose length varies with leading zero bytes — and SECURITY.md sets out why
+that is not on a path an attacker can measure repeatedly. A formal audit would
+further reduce this risk.
 
 **Q: What are the ongoing maintenance costs?**
 

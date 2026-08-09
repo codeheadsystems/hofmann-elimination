@@ -13,6 +13,7 @@ Supported cipher suites:
 | `P256_SHA256` | P-256 | SHA-256 | 32 bytes | 33 bytes |
 | `P384_SHA384` | P-384 | SHA-384 | 48 bytes | 49 bytes |
 | `P521_SHA512` | P-521 | SHA-512 | 64 bytes | 67 bytes |
+| `RISTRETTO255_SHA512` | ristretto255 | SHA-512 | 64 bytes | 32 bytes |
 
 The active suite is negotiated automatically from the server's `/opaque/config` endpoint — no hardcoding required.
 
@@ -51,7 +52,7 @@ Dependencies pulled in automatically:
 
 | Package | Purpose |
 |---|---|
-| `@noble/curves` | P-256, P-384, P-521 elliptic curve arithmetic and hash-to-curve |
+| `@noble/curves` | P-256, P-384, P-521 and ristretto255 arithmetic and hash-to-curve |
 | `@noble/hashes` | SHA-256, SHA-384, SHA-512, HMAC, HKDF |
 | `hash-wasm` | Argon2id key stretching (only loaded when used) |
 
@@ -66,7 +67,7 @@ The recommended way to create a client is via `OpaqueHttpClient.create()`. It fe
 ```typescript
 import { OpaqueHttpClient } from '@codeheadsystems/hofmann-typescript';
 
-// Fetches /opaque/config → resolves cipher suite (P-256/P-384/P-521),
+// Fetches /opaque/config → resolves cipher suite (P-256/P-384/P-521/ristretto255),
 // context string, and Argon2id parameters automatically.
 const client = await OpaqueHttpClient.create('https://your-server.example.com');
 
@@ -91,7 +92,7 @@ import { strToBytes } from '@codeheadsystems/hofmann-typescript';
 const client = await OprfHttpClient.create('https://your-server.example.com');
 const result = await client.evaluate(strToBytes('my-secret-input'));
 // result is a stable Nh-byte Uint8Array — same every time for the same input and server key
-// Nh = 32 (P-256), 48 (P-384), or 64 (P-521) depending on server configuration
+// Nh = 32 (P-256), 48 (P-384), or 64 (P-521 and ristretto255) depending on server configuration
 ```
 
 ---
@@ -112,6 +113,7 @@ import type { CipherSuite } from '@codeheadsystems/hofmann-typescript';
 | `P256_SHA256` | P-256 | SHA-256 | 32 | 33 | 32 | 48 |
 | `P384_SHA384` | P-384 | SHA-384 | 48 | 49 | 48 | 72 |
 | `P521_SHA512` | P-521 | SHA-512 | 64 | 67 | 66 | 98 |
+| `RISTRETTO255_SHA512` | ristretto255 | SHA-512 | 64 | 32 | 32 | 64 |
 
 *Nh = hash output length · Npk = compressed public key size · Nsk = scalar size · L = hashToScalar expand length*
 
@@ -125,7 +127,7 @@ import { getCipherSuite } from '@codeheadsystems/hofmann-typescript';
 const suite = getCipherSuite('P384_SHA384'); // returns P384_SHA384
 ```
 
-Accepted values: `"P256_SHA256"`, `"P384_SHA384"`, `"P521_SHA512"`. Throws for any other value.
+Accepted values: `"P256_SHA256"`, `"P384_SHA384"`, `"P521_SHA512"`, `"RISTRETTO255_SHA512"`. Throws for any other value.
 
 ### Using a suite directly
 
@@ -185,7 +187,7 @@ For a Dropwizard server, look at the YAML configuration:
 
 ```yaml
 # hofmann-testserver/config/config.yml (example)
-cipherSuite: P384_SHA384
+opaqueCipherSuite: P384_SHA384
 context: hofmann-testserver
 argon2MemoryKib: 65536
 argon2Iterations: 3
@@ -194,7 +196,21 @@ argon2Parallelism: 1
 
 ### Identity KSF (test servers only)
 
-If the server has `argon2MemoryKib: 0` (identity KSF, no Argon2), the `create()` factory handles this automatically. When constructing manually, omit `ksf` or pass `identityKsf`:
+If the server reports an identity KSF or parameters below the floor — 19456 KiB memory and 2
+iterations — **`create()` refuses and throws**. It does not fall back automatically. The client
+polices the server here because the KSF runs on the client, so server-supplied parameters decide the
+cost of an offline attack on the user's own password; a server that switched its users' stretching
+off could not otherwise be detected.
+
+To opt in locally, which you should only do against a test server, pass `allowWeakServerKsf`:
+
+```typescript
+const client = await OpaqueHttpClient.create('http://localhost:8080', {
+  allowWeakServerKsf: true,
+});
+```
+
+When constructing manually rather than through `create()`, omit `ksf` or pass `identityKsf`:
 
 ```typescript
 import { OpaqueHttpClient, identityKsf } from '@codeheadsystems/hofmann-typescript';

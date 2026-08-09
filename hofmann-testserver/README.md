@@ -96,17 +96,21 @@ Different inputs yield different hashes.
 
 ## OPAQUE CLI
 
-The OPAQUE CLI exercises the full OPAQUE-3DH protocol. It supports three sub-commands:
+The OPAQUE CLI exercises the full OPAQUE-3DH protocol. It supports six sub-commands:
 
 | Command | What it does |
 |---------|-------------|
 | `register` | Register a credential with the server |
 | `login` | Authenticate and print the session key and JWT token |
 | `delete` | Delete a registration using a JWT token from a prior `login` |
+| `change-password` | Re-register under a new password, authorized by a JWT from a prior `login` |
+| `recover` | Run the recovery flow and re-register without the old password |
 | `whoami` | Call `GET /api/whoami` with a JWT token obtained from a prior `login` |
 
 These commands form a natural workflow: `register` once, `login` to get a JWT, then use
-`delete` to remove the registration or `whoami` to verify the JWT grants access to a protected endpoint.
+`delete` to remove the registration or `whoami` to verify the JWT grants access to a protected
+endpoint. `change-password` covers the rotation path and `recover` the forgotten-password path —
+see `CHANGE_PASSWORD.md` and `RECOVERY.md` for the flows they drive.
 
 ### Usage — register / login
 

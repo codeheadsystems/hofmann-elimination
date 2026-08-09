@@ -198,19 +198,19 @@ curl -k -s -o /dev/null -w "%{http_code}\n" https://localhost/
 # → 200
 
 # OPRF endpoint reachable through demo path-routing
-curl -k -s -o /dev/null -w "%{http_code}\n" \
-  -X POST https://localhost/oprf \
-  -H "Content-Type: application/json" \
-  -d '{"serverId":"testserver","input":"dGVzdA=="}'
+curl -k -s -o /dev/null -w "%{http_code}\n" https://localhost/oprf/config
 # → 200
 
 # OPRF endpoint reachable directly via API frontend
-curl -k -s -o /dev/null -w "%{http_code}\n" \
-  -X POST https://localhost:8443/oprf \
-  -H "Content-Type: application/json" \
-  -d '{"serverId":"testserver","input":"dGVzdA=="}'
+curl -k -s -o /dev/null -w "%{http_code}\n" https://localhost:8443/oprf/config
 # → 200
 ```
+
+> These are **reachability** checks — they confirm routing and TLS termination, not the protocol.
+> `POST /oprf` cannot be smoke-tested with curl: its body is `{"ecPoint","requestId"}` where
+> `ecPoint` is a hex-encoded blinded curve point the client must compute. Use the CLI or the
+> TypeScript client to exercise the protocol itself.
+
 
 - [ ] All three return `200`.
 

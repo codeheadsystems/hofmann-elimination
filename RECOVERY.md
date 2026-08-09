@@ -309,16 +309,23 @@ exists, a code was sent" email.
 ### Rate Limiting
 
 Recovery endpoints have their own dedicated rate limiter (separate from auth/registration)
-with stricter defaults (3 tokens, 3 per 60 seconds refill). This prevents:
+with stricter defaults: **6 tokens, 6 per 60 seconds refill**. A full legitimate recovery draws
+three of them, so the budget is two recoveries a minute before throttling. This prevents:
 - Email flooding / SMS cost abuse
 - Brute-force attempts on challenge codes
 
-**Enable the origin rate limiter if you enable recovery.** It is off by default
-(`RateLimitConfigSupplier.originRateLimitConfig()` returns null), and that default is deliberate —
-as a blanket setting it does more harm than good behind a corporate NAT or a mobile CGNAT, where
-many users share one key. But it is the **only global bound** on `recoveryStart`, which is
-unauthenticated and whose own limiter keys on the credential identifier: an attacker varying the
-identifier is otherwise unthrottled.
+**The origin rate limiter is on by default, and you want it on if you enable recovery.**
+`RateLimitConfigSupplier.originRateLimitConfig()` returns `RateLimitConfig(600, 600.0/60, 50_000)` —
+600 requests a minute, keyed on an IPv6 /64 rather than a bare address. It matters here because it
+is the **only global bound** on `recoveryStart`, which is unauthenticated and whose own limiter keys
+on the credential identifier: an attacker varying the identifier is otherwise unthrottled.
+
+The /64 key is what makes a blanket default defensible. Keying on the full address let a single host
+mint 2^64 distinct keys and walk straight past the limiter; keying on the /64 aggregates one
+subscriber line, so a corporate NAT or mobile CGNAT shares a budget sized to stay out of its way
+(600/min is 300 logins a minute at two tokens each) rather than being throttled as one address.
+Override the supplier if that sizing is wrong for your deployment — returning `null` disables the
+limiter entirely, which on a recovery-enabled server means accepting the unthrottled case above.
 
 What that leaves carrying the weight is `InMemoryRecoveryChallengeStore`'s capacity policy — its
 per-identifier cap and its oldest-first eviction. Those are written to degrade gracefully rather
@@ -326,9 +333,8 @@ than fail closed, and they hold, but they are the last line rather than the firs
 has been got wrong once already during development. With the origin limiter on, a flood becomes
 expensive at the source and the store's policies stop being load-bearing.
 
-Supply a non-null `originRateLimitConfig()` from your `RateLimitConfigSupplier` to turn it on. The
-default sizing (600/min per IPv6 /64 — one subscriber line, not one address) is chosen to stay out
-of the way of shared egress while still bounding a single source.
+With the limiter at its default the store's policies are a second line rather than the first. If you
+override `originRateLimitConfig()` to return `null`, they become the only line.
 
 ### Targeted lockout, and the challenge id that closes it
 

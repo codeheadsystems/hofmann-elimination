@@ -138,7 +138,7 @@ The group operations run on a constant-time ladder, but `s = r − c·k` in `Gen
 
 ### Batching is bounded by policy, not by cryptography
 
-Batch proofs are sound at any size. The servers cap a request at 64 elements by default (1024 absolute) purely as a resource bound, checked before any curve operation. **A transport-level bound on request body size is still owed** — the manager cap fires only after the whole request has been deserialized.
+Batch proofs are sound at any size. The servers cap a request at 64 elements by default (1024 absolute) purely as a resource bound, checked before any curve operation. That cap fires only after the whole request has been deserialized, so both integrations also enforce a transport-level body-size bound in front of it — `VerifiableOprfLimits.maxRequestBodyBytes(maxBatchSize)`, wired by the Dropwizard bundle and the Spring auto-configuration. At the default batch size of 64 that bound is 17,024 bytes per endpoint.
 
 ## Usage
 
@@ -244,22 +244,27 @@ List<HashResult> results = client.hashResults(server.process(client.eliminationR
 
 Results are positionally aligned with the inputs. The client rejects a response whose length differs from the request before doing anything else, and a reordered response fails proof verification — the composite coefficients bind each element pair to its batch index.
 
-## Model Records
+## Model Types
 
-| Record | Purpose |
+| Type | Purpose |
 |---|---|
 | `BlindedRequest(blindedPoint, requestId)` | OPRF client → server |
 | `EvaluatedResponse(evaluatedPoint, processIdentifier)` | OPRF server → client |
-| `ClientHashingContext(requestId, blindingFactor, input)` | OPRF client state |
+| `ClientHashingContext(requestId, blindingFactor, input)` | OPRF client state — `AutoCloseable` final class, not a record |
 | `ServerProcessorDetail(masterKey, processorIdentifier)` | OPRF server key material |
 | `VerifiableBlindedRequest(blindedPoints, requestId)` | VOPRF client → server |
 | `VerifiableEvaluatedResponse(evaluatedPoints, proof, processIdentifier)` | VOPRF server → client |
-| `VoprfClientContext(requestId, inputs, blinds, blindedElements)` | VOPRF client state |
+| `VoprfClientContext(requestId, inputs, blinds, blindedElements)` | VOPRF client state — `AutoCloseable` final class, not a record |
 | `PartiallyBlindedRequest(blindedPoints, info, requestId)` | POPRF client → server |
 | `PartiallyEvaluatedResponse(evaluatedPoints, proof, processIdentifier)` | POPRF server → client |
-| `PoprfClientContext(requestId, inputs, blinds, blindedElements, info, tweakedKey)` | POPRF client state |
+| `PoprfClientContext(requestId, inputs, blinds, blindedElements, info, tweakedKey)` | POPRF client state — `AutoCloseable` final class, not a record |
 | `VerifiableProcessorDetail(masterKey, publicKey, processorIdentifier, mode)` | VOPRF/POPRF server key material |
 | `HashResult(hash, processIdentifier)` | Final output (see the caveat above) |
+
+The three client contexts are final classes rather than records, so they can carry a `closed` flag
+and refuse use after `close()`. That costs record equality — `equals`/`hashCode` are identity-based
+and record patterns do not deconstruct them. See the upgrade note in `MIGRATION.md`. Everything else
+in this table is a record.
 
 The client contexts hold their lists positionally aligned and immutable, so alignment cannot be broken after construction. All wire values are hex-encoded: compressed SEC1 for Weierstrass suites, 32-byte canonical encodings for ristretto255.
 
