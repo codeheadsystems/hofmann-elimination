@@ -1,5 +1,6 @@
 package com.codeheadsystems.rfc.oprf.model;
 
+import com.codeheadsystems.rfc.common.ClosedContextException;
 import java.math.BigInteger;
 import java.util.Arrays;
 
@@ -7,12 +8,16 @@ import java.util.Arrays;
  * Client-side context for hashing: { requestId, blindingFactor, input }.
  *
  * <p><strong>The input is copied on construction, and {@link #close()} zeroes the copy.</strong>
- * Copying decouples this record's lifetime from the caller's array, so a caller who clears their
+ * Copying decouples this object's lifetime from the caller's array, so a caller who clears their
  * own buffer immediately after handing it over does not pull the value out from under an exchange
  * still in flight — and, conversely, closing this does not destroy a buffer the caller still owns.
  * The verifiable-mode contexts copy for the same reason; they gained {@code close()} alongside this
  * one so that "the library keeps an unclearable copy of your secret" stops being true of any of
  * the three.
+ *
+ * <p><strong>A closed context refuses to be used.</strong> Every accessor that returns protocol
+ * state throws {@link ClosedContextException}; see {@link #close()} for what used to happen
+ * instead and why {@link #requestId()} is exempt.
  *
  * <p><strong>Do not read this as "the input is then gone from memory".</strong> {@code Arrays.fill}
  * clears one copy of one buffer. A moving collector may already have copied it, the page may
@@ -24,25 +29,74 @@ import java.util.Arrays;
  * output for this input. It is a {@link BigInteger}; nothing at the Java level can zero it. The
  * same caveat, for the same reason, appears on OPAQUE's {@code ClientAuthState}.
  *
- * @param requestId      a unique identifier for the request, used to correlate with the server's response
- * @param blindingFactor the random blinding factor used in the OPRF protocol, which should be kept secret and is used to blind the input before sending it to the server
- * @param input          the original input data that the client wants to hash using the OPRF protocol, which will be blinded and sent to the server for processing; copied, not retained
+ * <p><strong>A final class rather than a record</strong>, because refusing use-after-close needs a
+ * mutable {@code closed} flag and a record cannot carry one. The alternative considered and
+ * rejected was sniffing the input for an all-zero run, which would refuse a legal OPRF input in
+ * order to detect an illegal call. The visible consequences of not being a record are that
+ * {@code equals}/{@code hashCode} are now identity-based and that record patterns no longer
+ * deconstruct it. Value equality was not re-implemented on purpose: the generated one compared
+ * {@code byte[]} by reference and was already near-useless here, and a content-based replacement
+ * would be a variable-time comparison of secret material, which is a worse thing to hand a caller
+ * than no {@code equals} at all.
  */
-public record ClientHashingContext(String requestId, BigInteger blindingFactor, byte[] input)
-    implements AutoCloseable {
+public final class ClientHashingContext implements AutoCloseable {
+
+  private final String requestId;
+  private final BigInteger blindingFactor;
+  // final, and that is load-bearing rather than stylistic. A record's components are implicitly
+  // final and so get the JMM final-field freeze: safe publication to another thread with no
+  // synchronisation. Dropping to a hand-written class with non-final fields would quietly lose
+  // that — and an asynchronous round trip, which is the very shape this guard exists for, is
+  // cross-thread publication. Without final, a second thread could observe a half-built context
+  // regardless of what the closed flag says.
+  private final byte[] input;
 
   /**
-   * Copies the input so this record's lifetime is independent of the caller's array.
+   * Volatile so a close on one thread is visible to a guard check on another. That is all it does:
+   * see {@link #close()} for the check-then-read race it does not remove.
+   */
+  private volatile boolean closed;
+
+  /**
+   * Copies the input so this object's lifetime is independent of the caller's array.
    *
    * @param requestId      correlates the request with its response
    * @param blindingFactor the blinding scalar
    * @param input          the client input; copied, not retained
    */
-  public ClientHashingContext {
+  public ClientHashingContext(final String requestId,
+                              final BigInteger blindingFactor,
+                              final byte[] input) {
     if (input == null) {
       throw new IllegalArgumentException("Input is required");
     }
-    input = input.clone();
+    this.requestId = requestId;
+    this.blindingFactor = blindingFactor;
+    this.input = input.clone();
+  }
+
+  /**
+   * Returns the request identifier.
+   *
+   * <p>Not guarded, along with {@link #toString()} and {@link #isClosed()}. It is correlation
+   * metadata rather than protocol state — it carries no secret and nothing is computed from it —
+   * and it is exactly what you want available when logging why a context was closed.
+   *
+   * @return the request id
+   */
+  public String requestId() {
+    return requestId;
+  }
+
+  /**
+   * Returns the blinding scalar.
+   *
+   * @return the blinding factor
+   * @throws ClosedContextException if this context has been closed
+   */
+  public BigInteger blindingFactor() {
+    assertOpen();
+    return blindingFactor;
   }
 
   /**
@@ -56,39 +110,66 @@ public record ClientHashingContext(String requestId, BigInteger blindingFactor, 
    * contexts pay that cost to protect a batch whose list alignment is load-bearing; there is no
    * alignment to protect here.
    *
-   * <p>The price is that a caller can mutate this context through the returned array. That is the
-   * same contract as {@link #close()}: the array is live for the duration of the exchange and
-   * changing it mid-exchange produces a wrong answer rather than an error.
+   * <p>The price is that a caller can mutate this context through the returned array, and that
+   * changing it mid-exchange produces a wrong answer rather than an error. The guard does not help
+   * there — it refuses a closed context, not a mutated one.
    *
    * @return the input, live and shared with this context
+   * @throws ClosedContextException if this context has been closed
    */
-  @Override
   public byte[] input() {
+    assertOpen();
     return input;
   }
 
   /**
-   * Zeroes this record's copy of the input. Idempotent, and safe to call from a
-   * {@code try}-with-resources around a whole exchange.
+   * Whether this context has been closed.
+   *
+   * <p>A lifetime assertion for a caller holding a context across an asynchronous boundary who
+   * would rather check than catch. <strong>It is not a concurrency check</strong>: a {@code false}
+   * here is a statement about the past, not a reservation on the future, and a close on another
+   * thread can land between this call and the accessor that follows it.
+   *
+   * @return true if {@link #close()} has been called
+   */
+  public boolean isClosed() {
+    return closed;
+  }
+
+  /**
+   * Zeroes this context's copy of the input and refuses all further use. Idempotent, and safe to
+   * call from a {@code try}-with-resources around a whole exchange.
    *
    * <p>The caller still owns its own array; this clears what was copied, not what was given.
    *
-   * <p><strong>Close this after the exchange, never during one — a closed context does not fail,
-   * it answers wrongly.</strong> {@code eliminationRequest} and {@code hashResult} both read
-   * {@code input}, so calling either against a closed context blinds or finalizes over a run of
-   * zeroes: the call succeeds and returns a well-formed value derived from the wrong input. There
-   * is no exception and nothing downstream notices. The verifiable modes are sharper still — see
-   * {@link VoprfClientContext#close()}.
+   * <p><strong>Close this after the exchange, never during one.</strong> {@code eliminationRequest}
+   * and {@code hashResult} both read {@code input}, so before the guard existed either call
+   * against a closed context blinded or finalized over a run of zeroes and returned a well-formed
+   * value derived from the wrong input, with no exception and nothing downstream the wiser. Now
+   * they throw {@link ClosedContextException}. The scope rule has not changed — the
+   * {@code try}-with-resources must still enclose the whole exchange — but breaking it is now
+   * loud, which is what makes an asynchronous round trip a bug you find rather than a hash you
+   * trust.
    *
-   * <p>This is not currently guarded. A record cannot carry a mutable "closed" flag, so refusing
-   * use-after-close needs this type to stop being a record, which is a larger change than the one
-   * that introduced {@code close()}. Tracked in TODO.md. Until then the rule is the scope rule:
-   * the {@code try}-with-resources must enclose the whole exchange, which is what makes an
-   * asynchronous round trip the shape to watch for.
+   * <p><strong>The flag is set before the zeroing, and that ordering is deliberate</strong>: after
+   * the volatile write no new reader gets past {@code assertOpen}. It narrows the race rather than
+   * removing it. A reader already past the guard can still have the array zeroed under it, which
+   * is inherent to clearing a buffer someone may be reading and is not fixable without a lock on
+   * every read. The guard turns the realistic sequential misuse into an immediate failure; it is
+   * not a concurrency control, and a context must not be shared across threads.
    */
   @Override
   public void close() {
+    closed = true;
     Arrays.fill(input, (byte) 0);
+  }
+
+  private void assertOpen() {
+    if (closed) {
+      throw new ClosedContextException(
+          "ClientHashingContext has been closed and its copy of the input zeroed; "
+              + "scope the try-with-resources to the whole exchange");
+    }
   }
 
   /**
@@ -99,10 +180,13 @@ public record ClientHashingContext(String requestId, BigInteger blindingFactor, 
    * the corresponding evaluated element and recover the OPRF output for that input — and on the
    * OPAQUE path that output is what the envelope keys derive from. {@code input} is redacted too
    * because it is the client's plaintext OPRF input.
+   *
+   * <p>Not guarded. A {@code toString} that throws turns a lifetime bug into a confusing secondary
+   * failure inside a debugger or a log formatter, which is the worst place to discover one.
    */
   @Override
   public String toString() {
     return "ClientHashingContext[requestId=" + requestId
-        + ", blindingFactor=<redacted>, input=<redacted>]";
+        + ", blindingFactor=<redacted>, input=<redacted>, closed=" + closed + "]";
   }
 }

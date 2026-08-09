@@ -16,6 +16,27 @@ seamless.
 
 ## Upgrading an existing Hofmann deployment
 
+> **The client-side `AutoCloseable` types are final classes, not records.** `ClientHashingContext`,
+> `VoprfClientContext`, `PoprfClientContext`, `ClientAuthState`, `ClientRegistrationState` and
+> `AuthResult` changed shape so they can carry a mutable `closed` flag and refuse use after close —
+> a record cannot. Constructor signatures and accessor names are unchanged, so ordinary code needs
+> no edit.
+>
+> Three things to check. **`equals`/`hashCode` are now identity-based**, so anything keying a
+> collection on one of these, or asserting equality on one in a test, is affected; note the record
+> versions compared `byte[]` by reference and were already nearly useless. **Record patterns no
+> longer deconstruct them.** And **reading one after `close()` now throws
+> `ClosedContextException`** rather than returning a value derived from zeroes — if you have code
+> doing that, it was silently producing wrong answers, and on OPAQUE registration it was creating
+> accounts that could never be logged into.
+>
+> Value equality was not re-implemented on purpose: over a secret it would be a variable-time
+> comparison of secret material. Nor were the `BigInteger` blinds replaced with a zeroable scalar
+> holder — they remain unclearable, which these types have always documented as the larger residual
+> exposure. This refactor is what would make that change cheap, and the next person to look should
+> know it was considered and left, not overlooked: the values are consumed as `BigInteger` by
+> `OpaqueAke` and `OpaqueCredentials`.
+
 > **ristretto255 raw private keys changed encoding.** If you configure the OPAQUE server with a
 > **seed** — `serverKeySeedHex`, which is what both framework adapters and every documented setup
 > use — there is nothing to do; skip this.

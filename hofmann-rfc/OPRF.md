@@ -173,13 +173,22 @@ refusing it would only move the conversion. Every client context implements `Aut
 zeroes its copy of the input on close; the blinding scalars are `BigInteger` and cannot be cleared
 at all, which is why closing shortens a window rather than emptying the context.
 
-**Scope the `try`-with-resources to the whole exchange.** `close()` is not guarded, and a closed
-context does not fail — it answers wrongly. Both `eliminationRequest` and `hashResult` read the
-input, so using a closed context finalizes over zeroes and returns a well-formed hash derived from
-the wrong value, with no exception. In the verifiable modes it hides better still: the blinded
-elements are stored rather than recomputed, so the server evaluates correctly and **the proof
-verifies**; only the hash is wrong. An asynchronous round trip, where the response arrives after
-the block has exited, is the shape to watch for.
+**Scope the `try`-with-resources to the whole exchange.** A closed context refuses to be used:
+every accessor that returns protocol state throws `ClosedContextException`, so a lifetime mistake
+fails at the first call rather than travelling. An asynchronous round trip, where the response
+arrives after the block has exited, is the shape to watch for.
+
+That guard is newer than the `close()` it protects, and what it replaced is worth knowing if you
+are upgrading. A closed context used to answer *wrongly* rather than fail. Both `eliminationRequest`
+and `hashResult` read the input, so a closed context finalized over zeroes and returned a
+well-formed hash derived from the wrong value, with no exception anywhere. The verifiable modes hid
+it best: the blinded elements are stored rather than recomputed, so the server evaluated correctly
+and **the proof verified** — only the hash was wrong. That is why the guard covers
+`blindedElements()` and `info()`, not just the input it zeroes; guarding only the zeroed field
+would leave that case intact and merely move the failure to after the network call.
+
+`requestId()`, `size()`, `isClosed()` and `toString()` keep working on a closed context, so you can
+still log about one.
 
 ### VOPRF
 

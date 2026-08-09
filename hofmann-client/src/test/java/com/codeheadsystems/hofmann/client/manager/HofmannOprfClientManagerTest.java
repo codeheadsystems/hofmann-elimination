@@ -145,6 +145,11 @@ class HofmannOprfClientManagerTest {
   @Test
   void performHash_clearsTheContextEvenWhenTheExchangeFails() {
     ClientHashingContext context = new ClientHashingContext(REQUEST_ID, BigInteger.TWO, SENSITIVE_BYTES);
+    // Taken before the manager runs, because input() refuses to answer once the context is closed
+    // and this test is about what happened to the buffer, not about the guard. The reference is
+    // the context's own array — input() aliases rather than copies, deliberately — so it still
+    // shows the zeroing afterwards.
+    byte[] contextsOwnArray = context.input();
 
     when(oprfClientManager.hashingContext(any(byte[].class))).thenReturn(context);
     when(oprfClientManager.eliminationRequest(context))
@@ -156,7 +161,7 @@ class HofmannOprfClientManagerTest {
       // the failure is the scenario, not the assertion
     }
 
-    assertThat(context.input())
+    assertThat(contextsOwnArray)
         .as("a failed exchange must not leave the input on the heap with no handle to clear it")
         .containsOnly((byte) 0);
     assertThat(Arrays.equals(SENSITIVE_BYTES, new byte[SENSITIVE_BYTES.length]))

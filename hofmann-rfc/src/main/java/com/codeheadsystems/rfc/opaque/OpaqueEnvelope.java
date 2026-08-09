@@ -168,5 +168,18 @@ final class OpaqueEnvelope {
    */
   record RecoverResult(BigInteger clientPrivateKey, byte[] clientPublicKey,
                        CleartextCredentials cleartextCredentials, byte[] exportKey) {
+
+    /**
+     * Redacts the client's long-term private key, which the generated {@code toString} printed in
+     * full decimal. Package-private, so the reach is one in-package log statement rather than the
+     * public surface — but it is the client's long-term key, so the value of a disclosure is
+     * higher than for the ephemeral one on {@code OpaqueCipherSuite.AkeKeyPair}.
+     */
+    @Override
+    public String toString() {
+      return "RecoverResult[clientPrivateKey=<redacted>, clientPublicKey="
+          + (clientPublicKey == null ? "null" : clientPublicKey.length + " byte(s)")
+          + ", cleartextCredentials=present, exportKey=<redacted>]";
+    }
   }
 }

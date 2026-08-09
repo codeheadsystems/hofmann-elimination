@@ -116,7 +116,7 @@ class HofmannOpaqueClientManagerZeroizationTest {
     manager.register(SERVER_ID, CREDENTIAL_ID, password);
 
     assertThat(recordingClient.registrationStates).hasSize(1);
-    assertThat(recordingClient.registrationStates.get(0).password())
+    assertThat(recordingClient.registrationStatePasswords.get(0))
         .as("the state's copy of the password must be zeroed before register() returns")
         .containsOnly((byte) 0);
     assertThat(password)
@@ -139,7 +139,7 @@ class HofmannOpaqueClientManagerZeroizationTest {
         .isInstanceOf(IllegalStateException.class);
 
     assertThat(recordingClient.registrationStates).hasSize(1);
-    assertThat(recordingClient.registrationStates.get(0).password()).containsOnly((byte) 0);
+    assertThat(recordingClient.registrationStatePasswords.get(0)).containsOnly((byte) 0);
     assertThat(password).isEqualTo(password());
   }
 
@@ -156,7 +156,7 @@ class HofmannOpaqueClientManagerZeroizationTest {
     manager.changePassword(SERVER_ID, CREDENTIAL_ID, newPassword, "jwt");
 
     assertThat(recordingClient.registrationStates).hasSize(1);
-    assertThat(recordingClient.registrationStates.get(0).password()).containsOnly((byte) 0);
+    assertThat(recordingClient.registrationStatePasswords.get(0)).containsOnly((byte) 0);
     // Added after a reviewer pointed out this was the one manager test that asserted nothing
     // about the caller's array — which made it a control for the try-with-resources half only,
     // and left my claim that reverting the copy fails all six tests wrong. It failed five.
@@ -187,7 +187,7 @@ class HofmannOpaqueClientManagerZeroizationTest {
     manager.authenticate(SERVER_ID, CREDENTIAL_ID, password);
 
     assertThat(recordingClient.authStates).hasSize(1);
-    assertThat(recordingClient.authStates.get(0).password()).containsOnly((byte) 0);
+    assertThat(recordingClient.authStatePasswords.get(0)).containsOnly((byte) 0);
     assertThat(password)
         .as("authenticate() may hand this same array to changePassword on key rotation")
         .isEqualTo(password());
@@ -222,10 +222,10 @@ class HofmannOpaqueClientManagerZeroizationTest {
     manager.authenticate(SERVER_ID, CREDENTIAL_ID, password);
 
     assertThat(recordingClient.authResults).hasSize(1);
-    assertThat(recordingClient.authResults.get(0).exportKey())
+    assertThat(recordingClient.authResultExportKeys.get(0))
         .as("the export key is derived from randomizedPwd and has nowhere to go through this API")
         .containsOnly((byte) 0);
-    assertThat(recordingClient.authResults.get(0).sessionKey())
+    assertThat(recordingClient.authResultSessionKeys.get(0))
         .as("the session key the client computed locally; the caller gets the server's copy")
         .containsOnly((byte) 0);
   }
@@ -250,7 +250,7 @@ class HofmannOpaqueClientManagerZeroizationTest {
         .isInstanceOf(SecurityException.class);
 
     assertThat(recordingClient.authStates).hasSize(1);
-    assertThat(recordingClient.authStates.get(0).password()).containsOnly((byte) 0);
+    assertThat(recordingClient.authStatePasswords.get(0)).containsOnly((byte) 0);
     assertThat(wrongPassword).isEqualTo("wrong-password".getBytes(StandardCharsets.UTF_8));
   }
 
@@ -288,8 +288,8 @@ class HofmannOpaqueClientManagerZeroizationTest {
     assertThat(recordingClient.registrationPasswords).hasSize(1);
     assertThat(recordingClient.registrationPasswords.get(0)).isEqualTo(password());
     // And both states were closed.
-    assertThat(recordingClient.authStates.get(0).password()).containsOnly((byte) 0);
-    assertThat(recordingClient.registrationStates.get(0).password()).containsOnly((byte) 0);
+    assertThat(recordingClient.authStatePasswords.get(0)).containsOnly((byte) 0);
+    assertThat(recordingClient.registrationStatePasswords.get(0)).containsOnly((byte) 0);
   }
 
   // ─── helpers ────────────────────────────────────────────────────────────────
@@ -307,13 +307,29 @@ class HofmannOpaqueClientManagerZeroizationTest {
     return plain.finalizeRegistration(state, response, null, null);
   }
 
-  /** Delegates to the real client and keeps every state it produced. */
+  /**
+   * Delegates to the real client and keeps every state it produced, plus a live reference to the
+   * secret array inside each one.
+   *
+   * <p>The live references are the point. These tests assert that the manager <em>closed</em> each
+   * state, and the accessors refuse to answer once it has — so the array has to be grabbed here, at
+   * the moment the state is handed out and before the manager can close it. Every one of these
+   * accessors aliases rather than copies, so what is captured is the object's own buffer and it
+   * still shows the zeroing afterwards. Reaching for the accessor after the call, which is what
+   * these tests used to do, now throws {@code ClosedContextException} — which is itself the fix
+   * working.
+   */
   private static class RecordingClient extends Client {
     private final List<ClientRegistrationState> registrationStates = new ArrayList<>();
     private final List<ClientAuthState> authStates = new ArrayList<>();
     private final List<AuthResult> authResults = new ArrayList<>();
     /** Copies of the password as it arrived, taken before the flow can touch anything. */
     private final List<byte[]> registrationPasswords = new ArrayList<>();
+    /** Live references into each state, captured at hand-out time. */
+    private final List<byte[]> registrationStatePasswords = new ArrayList<>();
+    private final List<byte[]> authStatePasswords = new ArrayList<>();
+    private final List<byte[]> authResultSessionKeys = new ArrayList<>();
+    private final List<byte[]> authResultExportKeys = new ArrayList<>();
 
     RecordingClient(OpaqueConfig config) {
       super(config);
@@ -324,6 +340,7 @@ class HofmannOpaqueClientManagerZeroizationTest {
       registrationPasswords.add(password.clone());
       ClientRegistrationState state = super.createRegistrationRequest(password);
       registrationStates.add(state);
+      registrationStatePasswords.add(state.password());
       return state;
     }
 
@@ -331,6 +348,7 @@ class HofmannOpaqueClientManagerZeroizationTest {
     public ClientAuthState generateKE1(byte[] password) {
       ClientAuthState state = super.generateKE1(password);
       authStates.add(state);
+      authStatePasswords.add(state.password());
       return state;
     }
 
@@ -339,6 +357,8 @@ class HofmannOpaqueClientManagerZeroizationTest {
                                   byte[] serverIdentity, KE2 ke2) {
       AuthResult result = super.generateKE3(state, clientIdentity, serverIdentity, ke2);
       authResults.add(result);
+      authResultSessionKeys.add(result.sessionKey());
+      authResultExportKeys.add(result.exportKey());
       return result;
     }
   }

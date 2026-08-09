@@ -1,5 +1,6 @@
 package com.codeheadsystems.rfc.oprf.model;
 
+import com.codeheadsystems.rfc.common.ClosedContextException;
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.List;
@@ -18,45 +19,42 @@ import java.util.Objects;
  * value taken from the server. That is what binds the proof to this particular {@code info}: a
  * server evaluating under a different public input produces a proof against a different tweaked
  * key, and verification fails.
- *
- * @param requestId       correlates the request with its response
- * @param inputs          the client inputs, in order
- * @param blinds          the blinding scalars, aligned with {@code inputs}
- * @param blindedElements the serialized blinded elements, aligned with {@code inputs}
- * @param info            the public input, shared with the server and covered by the output
- * @param tweakedKey      the client-derived key the proof is graded against
+ * <p>
+ * <strong>A closed context refuses to be used</strong> — every accessor that returns protocol
+ * state throws {@link ClosedContextException}. See {@link #close()}.
+ * <p>
+ * <strong>A final class rather than a record</strong>, because refusing use-after-close needs a
+ * mutable {@code closed} flag. See {@link ClientHashingContext} for the full argument.
  */
-public record PoprfClientContext(String requestId,
-                                 List<byte[]> inputs,
-                                 List<BigInteger> blinds,
-                                 List<byte[]> blindedElements,
-                                 byte[] info,
-                                 byte[] tweakedKey)
-    implements AutoCloseable {
+public final class PoprfClientContext implements AutoCloseable {
+
+  private final String requestId;
+  // final for the JMM final-field freeze — see ClientHashingContext.
+  private final List<byte[]> inputs;
+  private final List<BigInteger> blinds;
+  private final List<byte[]> blindedElements;
+  private final byte[] info;
+  private final byte[] tweakedKey;
+
+  private volatile boolean closed;
 
   /**
-   * Zeroes this context's copies of the inputs. See {@link VoprfClientContext#close()}; the
-   * reasoning is identical and the two are kept in step deliberately.
+   * Rejects a context whose lists are not aligned or which is missing its POPRF-specific state,
+   * and copies every array.
    *
-   * <p>Not {@code info} or {@code tweakedKey}: the public input is public by construction — it is
-   * agreed with the server and covered by the output — and the tweaked key is derived from it and
-   * the server's public key. Of the five components other than {@code requestId}, {@code inputs}
-   * is the only secret one, and zeroing any of the rest would only make a reader wonder which.
-   *
-   * <p>The use-after-close hazard described on {@link VoprfClientContext#close()} applies here
-   * identically, including the part where the DLEQ proof still verifies. Tracked in TODO.md.
+   * @param requestId       correlates the request with its response
+   * @param inputs          the client inputs, in order
+   * @param blinds          the blinding scalars, aligned with {@code inputs}
+   * @param blindedElements the serialized blinded elements, aligned with {@code inputs}
+   * @param info            the public input, shared with the server and covered by the output
+   * @param tweakedKey      the client-derived key the proof is graded against
    */
-  @Override
-  public void close() {
-    for (byte[] input : inputs) {
-      Arrays.fill(input, (byte) 0);
-    }
-  }
-
-  /**
-   * Rejects a context whose lists are not aligned or which is missing its POPRF-specific state.
-   */
-  public PoprfClientContext {
+  public PoprfClientContext(final String requestId,
+                            final List<byte[]> inputs,
+                            final List<BigInteger> blinds,
+                            final List<byte[]> blindedElements,
+                            final byte[] info,
+                            final byte[] tweakedKey) {
     if (inputs == null || blinds == null || blindedElements == null) {
       throw new IllegalArgumentException("Context lists are required");
     }
@@ -86,11 +84,37 @@ public record PoprfClientContext(String requestId,
     // derived from and what the output is bound to.
     //
     // blinds needs no element copy; BigInteger is immutable.
-    inputs = copyEach(inputs);
-    blinds = List.copyOf(blinds);
-    blindedElements = copyEach(blindedElements);
-    info = info.clone();
-    tweakedKey = tweakedKey.clone();
+    this.requestId = requestId;
+    this.inputs = copyEach(inputs);
+    this.blinds = List.copyOf(blinds);
+    this.blindedElements = copyEach(blindedElements);
+    this.info = info.clone();
+    this.tweakedKey = tweakedKey.clone();
+  }
+
+  /**
+   * Zeroes this context's copies of the inputs and refuses all further use. See
+   * {@link VoprfClientContext#close()}; the reasoning is identical, including the part where the
+   * DLEQ proof still verified before the guard existed, and the two are kept in step deliberately.
+   *
+   * <p>Not {@code info} or {@code tweakedKey}: the public input is public by construction — it is
+   * agreed with the server and covered by the output — and the tweaked key is derived from it and
+   * the server's public key. Of the five components other than {@code requestId}, {@code inputs}
+   * is the only secret one, and zeroing any of the rest would only make a reader wonder which.
+   *
+   * <p><strong>Zeroing {@code tweakedKey} would be actively wrong, not merely pointless.</strong>
+   * An all-zero array is the ristretto255 encoding of the identity element, and {@code tweakedKey}
+   * is the statement {@code hashResults} grades the server's DLEQ proof against. So it is
+   * <em>guarded</em> instead: {@link #tweakedKey()} on a closed context throws rather than handing
+   * back a key that is not the one the proof should be checked under. That is the one accessor
+   * here whose guard has cryptographic content rather than lifetime-hygiene content.
+   */
+  @Override
+  public void close() {
+    closed = true;
+    for (byte[] input : inputs) {
+      Arrays.fill(input, (byte) 0);
+    }
   }
 
   /**
@@ -112,12 +136,26 @@ public record PoprfClientContext(String requestId,
   }
 
   /**
+   * Returns the request identifier. Not guarded — see {@link ClientHashingContext#requestId()}.
+   *
+   * @return the request id
+   */
+  public String requestId() {
+    return requestId;
+  }
+
+  /**
    * Returns a copy of the public input.
    *
+   * <p>Guarded despite being public data, because this is one of the accessors
+   * {@code eliminationRequest} reads — see {@link VoprfClientContext#close()} for why the
+   * request-building accessors are the ones that make the guard work at all.
+   *
    * @return a copy of the public input
+   * @throws ClosedContextException if this context has been closed
    */
-  @Override
   public byte[] info() {
+    assertOpen();
     return info.clone();
   }
 
@@ -125,9 +163,10 @@ public record PoprfClientContext(String requestId,
    * Returns a copy of the client-derived tweaked key.
    *
    * @return a copy of the tweaked key
+   * @throws ClosedContextException if this context has been closed
    */
-  @Override
   public byte[] tweakedKey() {
+    assertOpen();
     return tweakedKey.clone();
   }
 
@@ -135,29 +174,60 @@ public record PoprfClientContext(String requestId,
    * Returns the client inputs, each element copied.
    *
    * @return the inputs
+   * @throws ClosedContextException if this context has been closed
    */
-  @Override
   public List<byte[]> inputs() {
+    assertOpen();
     return copyEach(inputs);
+  }
+
+  /**
+   * Returns the blinding scalars.
+   *
+   * @return the blinds
+   * @throws ClosedContextException if this context has been closed
+   */
+  public List<BigInteger> blinds() {
+    assertOpen();
+    return blinds;
   }
 
   /**
    * Returns the serialized blinded elements, each element copied.
    *
    * @return the blinded elements
+   * @throws ClosedContextException if this context has been closed
    */
-  @Override
   public List<byte[]> blindedElements() {
+    assertOpen();
     return copyEach(blindedElements);
   }
 
   /**
-   * Batch size.
+   * Batch size. Not guarded — a count, carrying no secret, and useful when logging.
    *
    * @return the number of inputs in this context
    */
   public int size() {
     return inputs.size();
+  }
+
+  /**
+   * Whether this context has been closed. A lifetime assertion, not a concurrency check — see
+   * {@link ClientHashingContext#isClosed()}.
+   *
+   * @return true if {@link #close()} has been called
+   */
+  public boolean isClosed() {
+    return closed;
+  }
+
+  private void assertOpen() {
+    if (closed) {
+      throw new ClosedContextException(
+          "PoprfClientContext has been closed and its copies of the inputs zeroed; "
+              + "scope the try-with-resources to the whole exchange");
+    }
   }
 
   /**
@@ -170,13 +240,15 @@ public record PoprfClientContext(String requestId,
    * OPRF output for that input. The {@code List<byte[]>} fields are harmless on their own (each
    * element renders as an identity hash) but {@code inputs} is the client's plaintext, so it is
    * redacted too. Blinded elements are public and are left as a count.
+   *
+   * <p>Not guarded — see {@link ClientHashingContext#toString()}.
    */
   @Override
   public String toString() {
     return "PoprfClientContext[requestId=" + requestId
         + ", inputs=<redacted>, blinds=<redacted>, blindedElements=" + blindedElements.size()
         + " element(s)"
-        + ", info=<redacted>, tweakedKey=<redacted>"
+        + ", info=<redacted>, tweakedKey=<redacted>, closed=" + closed
         + "]";
   }
 }
