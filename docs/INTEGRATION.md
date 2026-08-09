@@ -151,8 +151,18 @@ OpaqueConfig config = OpaqueConfig.withArgon2id(
 // 2. Derive the server key pair and OPRF seed from hex seeds
 byte[] serverKeySeed = hexToBytes(env.getRequired("SERVER_KEY_SEED_HEX"));
 byte[] oprfSeed      = hexToBytes(env.getRequired("OPRF_SEED_HEX"));
-AkeKeyPair kp = config.cipherSuite().deriveAkeKeyPair(serverKeySeed);
-Server server = new Server(kp.privateKeyBytes(), kp.publicKeyBytes(), oprfSeed, config);
+
+OpaqueCipherSuite suite = config.cipherSuite();
+OpaqueCipherSuite.AkeKeyPair kp = suite.deriveAkeKeyPair(serverKeySeed);
+
+// AkeKeyPair.privateKey() is a BigInteger, and Server decodes a fixed-width scalar. Use the
+// group's serializeScalar, NOT BigInteger.toByteArray(): the encoding is big-endian on the NIST
+// curves and little-endian on ristretto255, and toByteArray() is neither fixed-width nor
+// little-endian. It happens to work often enough on P-256 to look correct, and is silently wrong
+// on ristretto255.
+byte[] privateKeyBytes = suite.oprfSuite().groupSpec().serializeScalar(kp.privateKey());
+
+Server server = new Server(privateKeyBytes, kp.publicKeyBytes(), oprfSeed, config);
 
 // 3. Build the standalone OPRF supplier (supports hot key rotation)
 BigInteger masterKey = new BigInteger(1, hexToBytes(env.getRequired("OPRF_MASTER_KEY_HEX")));
@@ -171,18 +181,36 @@ JwtManager jwt   = new JwtManager(jwtSecret, "my-app", 3600L, sessionStore);
 HofmannOpaqueServerManager manager =
     new HofmannOpaqueServerManager(server, credentialStore, jwt);
 
-// 7. Optionally build the standalone OPRF manager
-OprfServerManager oprfManager = new OprfServerManager(
-    OprfCipherSuite.P256_SHA256, oprfSupplier);
+// 7. Optionally build the standalone OPRF manager.
+// OprfCipherSuite has no public constants — the curve constant lives on CurveHashSuite, and the
+// suite is built. The mode defaults to OprfMode.OPRF, which is what this manager requires; a
+// suite built for VOPRF or POPRF is rejected here rather than computing a different function.
+OprfCipherSuite oprfSuite = OprfCipherSuite.builder()
+    .withSuite(CurveHashSuite.P256_SHA256)
+    .build();
+OprfServerManager oprfManager = new OprfServerManager(oprfSuite, oprfSupplier);
 ```
 
 Expose the manager methods through your own HTTP layer.  Exception mapping:
 
-| Exception thrown           | HTTP status             |
-|----------------------------|-------------------------|
-| `IllegalArgumentException` | 400 Bad Request         |
-| `SecurityException`        | 401 Unauthorized        |
-| `IllegalStateException`    | 503 Service Unavailable |
+| Exception thrown                 | HTTP status               | Raised when |
+|----------------------------------|---------------------------|-------------|
+| `IllegalArgumentException`       | 400 Bad Request           | bad or missing request data |
+| `SecurityException`              | 401 Unauthorized          | auth failure or expired session |
+| `UnsupportedOperationException`  | 404 Not Found             | recovery is not configured |
+| `RateLimitExceededException`     | 429 Too Many Requests     | rate limit or concurrency ceiling |
+| `IllegalStateException`          | 503 Service Unavailable   | session store at capacity |
+
+`HofmannOpaqueServerManager`'s class javadoc is the authority for this table; check it against
+your adapter when upgrading.  **Do not omit the 429 row.**  `RateLimitExceededException` is thrown
+from seven manager methods, and an adapter that maps only what an earlier version of this table
+listed returned 500 under load — for the condition the limiter exists to signal, on the endpoint
+it most protects.  That has happened here once already.
+
+Send a `Retry-After` header with the 429.  `RateLimitExceededException` carries no value — both
+shipped adapters use a fixed `Retry-After: 60` — so pick one and set it; a client that cannot
+distinguish throttling from failure retries immediately, which is the behaviour the limiter is
+there to stop.
 
 ---
 

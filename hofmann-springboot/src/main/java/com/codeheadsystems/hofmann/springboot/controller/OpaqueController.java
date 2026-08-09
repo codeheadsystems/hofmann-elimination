@@ -39,10 +39,22 @@ import org.springframework.web.server.ResponseStatusException;
  * Delegates all business logic to {@link HofmannOpaqueServerManager} and translates its
  * exception contract into Spring HTTP responses:
  * <ul>
- *   <li>{@link IllegalArgumentException} → 400 Bad Request</li>
- *   <li>{@link SecurityException}        → 401 Unauthorized</li>
- *   <li>{@link IllegalStateException}    → 503 Service Unavailable</li>
+ *   <li>{@link IllegalArgumentException}      → 400 Bad Request</li>
+ *   <li>{@link SecurityException}             → 401 Unauthorized</li>
+ *   <li>{@link UnsupportedOperationException} → 404 Not Found</li>
+ *   <li>{@link RateLimitExceededException}    → 429 Too Many Requests</li>
+ *   <li>{@link IllegalStateException}         → 503 Service Unavailable</li>
  * </ul>
+ *
+ * <p>This list must stay in step with the one on {@link HofmannOpaqueServerManager}, which is the
+ * authority. It fell two rows behind — this class caught and mapped both missing types, but said
+ * it did not, and the manager's javadoc warns that an adapter written against an incomplete list
+ * returns 500 under load for a condition that should be a 429. A third adapter is written from
+ * this list, so a gap here reproduces the bug rather than merely describing it.
+ *
+ * <p>Note that {@link com.codeheadsystems.hofmann.springboot.security.HofmannSecurityConfig}'s
+ * entry point can rewrite an unauthenticated response to 401 before it reaches the client; see its
+ * javadoc before concluding a status mapped here is the one observed.
  */
 @RestController
 @RequestMapping("/opaque")
