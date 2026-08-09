@@ -188,30 +188,79 @@ Expose the manager methods through your own HTTP layer.  Exception mapping:
 
 ## Implementing CredentialStore
 
-`CredentialStore` persists one `RegistrationRecord` per user.  The key is a `credentialIdentifier` byte array — the user's canonical, stable identifier (see [Credential identifier](KEY_MANAGEMENT.md#credential-identifier) below).
+`CredentialStore` persists one `RegistrationRecord` per user.  The key is a `credentialIdentifier` byte array — the user's canonical, stable identifier (see [Credential identifier](KEY_MANAGEMENT.md#credential-identifier)).
+
+The interface has six methods.  Three are abstract; three have defaults that exist so an
+implementation written against an earlier version keeps compiling.  **Two of those defaults are
+not safe in production**, and because they compile, nothing tells you when you have kept them:
 
 ```java
 public interface CredentialStore {
+    // Abstract — you must implement these.
     void                         store(byte[] credentialIdentifier, RegistrationRecord record);
     Optional<RegistrationRecord> load(byte[] credentialIdentifier);
     void                         delete(byte[] credentialIdentifier);
+
+    // Defaulted — override all three for production.
+    default void store(byte[] credentialIdentifier, RegistrationRecord record, int keyVersion);
+    default boolean storeIfAbsent(byte[] credentialIdentifier, RegistrationRecord record,
+                                  int keyVersion);
+    default Optional<VersionedCredential> loadVersioned(byte[] credentialIdentifier);
 }
 ```
 
-All three methods must be thread-safe.  A minimal JDBC implementation:
+All six methods must be thread-safe.  Two contracts are load-bearing:
+
+**`store` must be an upsert.**  A single operation that leaves either the old record or the new
+one visible, never neither.  The server replaces a record during recovery and password change and
+relies on there being no window in which the account does not exist.
+
+**`storeIfAbsent` must be atomic, and its default is not.**  Registration finish is
+unauthenticated: without a guard, anyone who knows a victim's credential identifier can
+re-register it with their own password and take over the account.  Expressing that guard as
+`load(...).isPresent()` followed by `store(...)` is a check-then-act — two concurrent finishes for
+the same identifier can both observe "absent" and both write.  The store is the only place that
+can make the check and the write one operation, which is why the primitive lives here.  The
+default implementation performs exactly the check-then-act it exists to prevent.
+
+A JDBC implementation.  Note that it overrides all six methods, and that `key_version` is what
+makes [OPAQUE key rotation](KEY_MANAGEMENT.md#opaque-key-rotation) work — keep the default
+`loadVersioned` and every credential reports version 0 forever:
 
 ```java
 public class JdbcCredentialStore implements CredentialStore {
 
+    // Schema: id BYTEA PRIMARY KEY, record_bytes BYTEA NOT NULL, key_version INT NOT NULL
+
+    @Override
     public void store(byte[] id, RegistrationRecord record) {
-        // UPSERT: id (BYTEA primary key), record_bytes (BYTEA)
-        jdbcTemplate.update(
-            "INSERT INTO credentials(id, record_bytes) VALUES (?, ?) " +
-            "ON CONFLICT(id) DO UPDATE SET record_bytes = EXCLUDED.record_bytes",
-            id, record.serialize());
+        store(id, record, 0);
     }
 
+    @Override
+    public void store(byte[] id, RegistrationRecord record, int keyVersion) {
+        jdbcTemplate.update(
+            "INSERT INTO credentials(id, record_bytes, key_version) VALUES (?, ?, ?) " +
+            "ON CONFLICT(id) DO UPDATE SET record_bytes = EXCLUDED.record_bytes, " +
+            "key_version = EXCLUDED.key_version",
+            id, record.serialize(), keyVersion);
+    }
+
+    @Override
+    public boolean storeIfAbsent(byte[] id, RegistrationRecord record, int keyVersion) {
+        // DO NOTHING, not DO UPDATE. The check and the write are one statement, and the row
+        // count tells us which of the two happened. A racing second caller gets false.
+        return jdbcTemplate.update(
+            "INSERT INTO credentials(id, record_bytes, key_version) VALUES (?, ?, ?) " +
+            "ON CONFLICT(id) DO NOTHING",
+            id, record.serialize(), keyVersion) == 1;
+    }
+
+    @Override
     public Optional<RegistrationRecord> load(byte[] id) {
+        // query + isEmpty, not queryForObject. The idiomatic queryForObject throws
+        // EmptyResultDataAccessException for an unknown user, which the adapters map to 500
+        // while a wrong password returns 401 — an enumeration oracle in the error code.
         List<byte[]> rows = jdbcTemplate.query(
             "SELECT record_bytes FROM credentials WHERE id = ?",
             (rs, n) -> rs.getBytes(1), id);
@@ -220,11 +269,28 @@ public class JdbcCredentialStore implements CredentialStore {
             : Optional.of(RegistrationRecord.deserialize(rows.get(0)));
     }
 
+    @Override
+    public Optional<VersionedCredential> loadVersioned(byte[] id) {
+        List<VersionedCredential> rows = jdbcTemplate.query(
+            "SELECT record_bytes, key_version FROM credentials WHERE id = ?",
+            (rs, n) -> new VersionedCredential(
+                rs.getInt("key_version"),
+                RegistrationRecord.deserialize(rs.getBytes("record_bytes"))),
+            id);
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
+    }
+
+    @Override
     public void delete(byte[] id) {
         jdbcTemplate.update("DELETE FROM credentials WHERE id = ?", id);
     }
 }
 ```
+
+The atomic conditional write is `INSERT ... ON CONFLICT DO NOTHING` on PostgreSQL and SQLite,
+`INSERT IGNORE` on MySQL, and a conditional put on a key-value store — DynamoDB's
+`attribute_not_exists(id)` condition expression, or Redis `SET NX`.  In every case
+`storeIfAbsent` returns whether *this* caller performed the write.
 
 Record size guide: a `RegistrationRecord` serializes to approximately `Npk + Nh + 96` bytes.
 For P-256 that is roughly 160 bytes; for P-521 roughly 224 bytes.  A `BYTEA` / `BLOB` column of 512 bytes is more than sufficient for all supported cipher suites.

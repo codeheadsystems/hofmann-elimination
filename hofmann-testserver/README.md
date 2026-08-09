@@ -30,8 +30,12 @@ Then leave the server running and open a second terminal for the CLI commands be
 
 ### Overriding Keys
 
-The server ships with stable hard-coded test keys baked into `config/config.yml` as defaults.
-To rotate them, export any or all of the following environment variables **before** running
+No keys are committed. `config/config.yml` sets `allowEphemeralKeys: true`, so with nothing
+exported the server generates random key material at startup and runs — which is what makes the
+quick start above work on a fresh clone. **Every registration is invalidated when the container
+restarts.**
+
+To get keys that survive a restart, export any or all of the following **before** running
 `docker compose up`:
 
 ```bash
@@ -45,7 +49,11 @@ docker compose up --build
 ```
 
 > **Important**: Changing keys between runs invalidates all previously registered OPAQUE
-> credentials. Re-register after any key rotation.
+> credentials. Re-register after any key rotation. This is also why the ephemeral default
+> invalidates everything on restart — a random seed each boot is a key rotation each boot.
+
+To make the test server fail closed when the keys are missing, as a production deployment does,
+export `ALLOW_EPHEMERAL_KEYS=false`.
 
 ---
 

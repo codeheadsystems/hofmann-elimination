@@ -133,18 +133,23 @@ before running `make up` (or `docker compose up -d`).
 
 Copy `.env.example` to `.env` to override defaults without modifying any files.
 
-| Variable | Default (in config.yml) | Purpose |
-|----------|------------------------|---------|
+| Variable | Default | Purpose |
+|----------|---------|---------|
 | `DEMO_PORT` | `443` | Host port mapped to HAProxy :443 |
 | `API_PORT`  | `8443` | Host port mapped to HAProxy :8443 |
-| `SERVER_KEY_SEED_HEX`  | stable test value | OPAQUE server key seed |
-| `OPRF_SEED_HEX`        | stable test value | OPAQUE OPRF seed |
-| `OPRF_MASTER_KEY_HEX`  | stable test value | Standalone OPRF master key |
-| `JWT_SECRET_HEX`       | stable test value | JWT signing secret |
+| `SERVER_KEY_SEED_HEX`  | *unset — generated at startup* | OPAQUE server key seed |
+| `OPRF_SEED_HEX`        | *unset — generated at startup* | OPAQUE OPRF seed |
+| `OPRF_MASTER_KEY_HEX`  | *unset — generated at startup* | Standalone OPRF master key |
+| `JWT_SECRET_HEX`       | *unset — generated at startup* | JWT signing secret |
+| `ALLOW_EPHEMERAL_KEYS` | `true` | Whether a missing key may be generated instead of failing |
 
-The four key variables default to stable values so the server produces
-consistent results across restarts during development. Generate fresh random
-keys for any environment shared with others:
+No key material is committed — a fallback in a file that ships inside a published image is a
+working key shared by every deployment of that image. Instead `config.yml` sets
+`allowEphemeralKeys: true`, so `make up` works with nothing exported and the server generates
+random keys at startup. **Every registration is invalidated when the stack restarts.**
+
+Set the four keys for results that survive a restart, and for any environment shared with
+others:
 
 ```bash
 export SERVER_KEY_SEED_HEX=$(openssl rand -hex 32)

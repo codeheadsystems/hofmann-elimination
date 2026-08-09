@@ -6,6 +6,7 @@ import com.codeheadsystems.rfc.oprf.model.BlindedRequest;
 import com.codeheadsystems.rfc.oprf.model.EvaluatedResponse;
 import com.codeheadsystems.rfc.oprf.model.ServerProcessorDetail;
 import com.codeheadsystems.rfc.oprf.rfc9497.OprfCipherSuite;
+import com.codeheadsystems.rfc.oprf.rfc9497.OprfMode;
 import java.util.function.Supplier;
 import org.bouncycastle.util.encoders.Hex;
 import org.slf4j.Logger;
@@ -25,10 +26,12 @@ public class OprfServerManager {
   /**
    * Instantiates a new Oprf server manager.
    *
-   * @param suite                         the suite
+   * @param suite                         the cipher suite, which must be in base OPRF mode
    * @param serverProcessorDetailSupplier the server processor detail supplier
+   * @throws IllegalArgumentException if the suite is configured for VOPRF or POPRF
    */
   public OprfServerManager(OprfCipherSuite suite, Supplier<ServerProcessorDetail> serverProcessorDetailSupplier) {
+    suite.assertMode(OprfMode.OPRF);
     this.suite = suite;
     this.groupSpec = suite.groupSpec();
     this.supplier = serverProcessorDetailSupplier;
