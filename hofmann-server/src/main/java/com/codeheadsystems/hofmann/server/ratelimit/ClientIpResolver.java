@@ -11,6 +11,9 @@ package com.codeheadsystems.hofmann.server.ratelimit;
  * They do nothing against an attacker who varies the identifier, because every distinct value
  * draws on its own budget — which is what lets a flood reach the pending-session store unthrottled.
  * Bounding by origin is the missing dimension, and it only works if the key cannot be forged.
+ *
+ * <p>See {@code docs/adr/0002-origin-rate-limiting-on-by-default.md} for why the /64 aggregation
+ * below is what made origin limiting viable as a default.
  */
 public final class ClientIpResolver {
 

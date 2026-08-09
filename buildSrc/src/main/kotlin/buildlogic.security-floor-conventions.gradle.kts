@@ -1,3 +1,4 @@
+// Why the floor blocks and the scan only advises: docs/adr/0006-advisory-dependency-scanning.md
 /*
  * Minimum versions for transitive dependencies with published advisories.
  *

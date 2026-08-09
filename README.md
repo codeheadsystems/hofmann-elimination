@@ -42,6 +42,7 @@ See [hofmann-elimination-example](https://github.com/codeheadsystems/hofmann-eli
 - **[Migration guide](MIGRATION.md)** — how to migrate an existing site from traditional password auth to OPAQUE
 - **[Configuration guide](USAGE.md)** — server configuration, key management, credential store implementation
 - **[Account recovery guide](RECOVERY.md)** — pluggable account recovery via email, OTP, or custom mechanisms
+- **[Architecture decision records](docs/adr/)** — why the load-bearing decisions are shaped the way they are, and which earlier analyses turned out to be wrong
 - **[Interactive API docs](https://codeheadsystems.github.io/hofmann-elimination/api-docs.html)** — Swagger UI for OPAQUE and OPRF endpoints
 - **At runtime (Dropwizard only):** set `serveApiDocs: true` and visit `/api-docs/` for embedded Swagger UI. It is off by default, and the Spring Boot integration does not serve API docs at all.
 - **Raw OpenAPI specs:** [OPRF API](docs/oprf-api.yaml) | [OPAQUE API](docs/opaque-api.yaml)
@@ -65,6 +66,9 @@ To build in parallel, use a separate `git worktree` per build; the contention is
 separate checkouts do not interact. If you hit it, `./gradlew clean build` recovers —
 `--rerun-tasks` does not, because a truncated result store makes the next run fail in under a
 second before any test executes. Deleting `<module>/build/test-results/<task>/binary` clears that.
+
+A `flock` in `gradlew` was built, measured and reverted; the reasoning is in
+[docs/adr/0004-one-build-per-checkout.md](docs/adr/0004-one-build-per-checkout.md).
 
 #### TypeScript
 

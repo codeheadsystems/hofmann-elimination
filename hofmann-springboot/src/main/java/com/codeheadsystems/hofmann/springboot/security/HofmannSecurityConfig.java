@@ -108,6 +108,9 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  * how a caller obtains a token, so requiring one to reach it would be circular. The endpoints
  * that do need authentication — credential deletion and password change — verify the bearer
  * token themselves and check that its subject matches the credential being acted on.
+ *
+ * <p>Recorded as a decision, with the explanation that was wrong the first time, in
+ * {@code docs/adr/0007-spring-security-autoconfiguration.md}.
  */
 @AutoConfiguration(
     // `after` is load-bearing rather than decorative: @ConditionalOnBean below can only see beans

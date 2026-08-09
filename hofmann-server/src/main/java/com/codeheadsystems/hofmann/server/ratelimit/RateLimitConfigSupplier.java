@@ -7,12 +7,15 @@ package com.codeheadsystems.hofmann.server.ratelimit;
  *
  * <p>Implement this interface to size the limits for your traffic;
  * {@link DefaultRateLimitConfigSupplier} provides conservative defaults for the four required
- * methods and inherits the default-off {@link #originRateLimitConfig()}.
+ * methods and inherits the enabled-by-default {@link #originRateLimitConfig()}.
  *
  * <p>The four required limiters key on a value the caller supplies — a credential identifier or a
  * client address — so each bounds attempts against one account or one origin, not overall request
  * volume. See {@link #originRateLimitConfig()} for the cross-cutting bound and what it does and
  * does not buy you.
+ *
+ * <p>See {@code docs/adr/0001-fixed-capacity-rate-limiting.md} for why these are backed by a
+ * fixed-capacity limiter rather than a bounded map.
  */
 public interface RateLimitConfigSupplier {
 
@@ -53,25 +56,21 @@ public interface RateLimitConfigSupplier {
   RateLimitConfig recoveryRateLimitConfig();
 
   /**
-   * Limit applied per request origin across the unauthenticated OPAQUE endpoints, or {@code null}
-   * to disable it. <strong>Disabled by default.</strong>
+   * Limit applied per request origin across the unauthenticated OPAQUE endpoints.
+   * <strong>Enabled by default</strong>, at 600 tokens per aggregated origin per minute. Override
+   * this to return {@code null} to disable it.
    *
-   * <p><strong>Enable it if you enable account recovery.</strong> It is the only global bound on
-   * {@code recoveryStart}, which is unauthenticated and whose own limiter keys on the credential
-   * identifier — a value an attacker varies freely. Without it, the capacity policy in
-   * {@code InMemoryRecoveryChallengeStore} is the only thing bounding a flood, which is a last
-   * line rather than a first. See {@code RECOVERY.md}.
+   * <p>It is the only global bound on {@code recoveryStart}, which is unauthenticated and whose
+   * own limiter keys on the credential identifier — a value an attacker varies freely. Disabling
+   * it leaves the capacity policy in {@code InMemoryRecoveryChallengeStore} as the only thing
+   * bounding a flood, which is a last line rather than a first. See {@code RECOVERY.md}.
    *
    * <p>The other limiters key on the credential identifier, which bounds attempts against one
-   * account and nothing else — an attacker who varies the identifier is unthrottled, and reaches
-   * the pending-session store at whatever rate they can send. Bounding by origin is the missing
-   * dimension, but it is off by default because as a blanket default it does more harm than good:
+   * account and nothing else — an attacker who varies the identifier is unthrottled by them, and
+   * reaches the pending-session store at whatever rate they can send. This is the missing
+   * dimension. What it does and does not buy:
    *
    * <ul>
-   *   <li><strong>It throttles real deployments.</strong> One login draws two tokens, so a limit
-   *       of N per minute allows N/2 logins per minute for an entire origin. Behind a corporate
-   *       NAT or mobile CGNAT that is one bucket for thousands of users, and a morning login peak
-   *       will hit it.</li>
    *   <li><strong>It does not stop a determined attacker.</strong> IPv6 keys are aggregated to the
    *       /64 — one subscriber line, rather than the 2^64 distinct keys a bare address allowed —
    *       but a distributed source, or an attacker holding more than one prefix, still sidesteps
@@ -81,11 +80,15 @@ public interface RateLimitConfigSupplier {
    *       varying the key; the cost is that distinct origins can share a slot and therefore a
    *       budget. An origin denied by a neighbour's traffic is denied in front of all six
    *       endpoints.</li>
+   *   <li><strong>It is sized so a shared origin is not throttled.</strong> One login draws two
+   *       tokens, so 600/min is 300 logins a minute from a single aggregated origin — chosen to
+   *       stay out of the way of a corporate NAT or mobile CGNAT. A deployment whose clients are
+   *       concentrated behind fewer origins than that should raise it.</li>
    * </ul>
    *
-   * <p>So it is a useful control for a deployment that knows its client-address distribution, and
-   * a liability as a default. Operators who want it should override this method and size it for
-   * their traffic.
+   * <p>This shipped disabled in 3.0.0, when the key was a bare address and the limiter was
+   * map-backed; both objections that justified opting out were removed rather than argued with.
+   * See {@code docs/adr/0002-origin-rate-limiting-on-by-default.md}.
    *
    * @return the origin rate limit config, or null to disable origin-based limiting
    */
