@@ -78,6 +78,26 @@ class DeployedConfigHasNoCommittedKeysTest {
         .isEmpty();
   }
 
+  /**
+   * Removing the committed keys made both quick starts fail: {@code ${VAR:-}} yields empty, the
+   * fail-closed check fires, and the server refuses to start. Neither file enabled the escape
+   * hatch, so {@code docker compose up} and {@code make up} died on a fresh clone while four
+   * documents described pre-baked keys — and on the demo path Compose hung on a health check
+   * rather than printing the reason.
+   *
+   * <p>These are the two local-development configs, so the escape hatch is what makes them
+   * runnable at all. A deployment that wants the production behaviour sets
+   * {@code ALLOW_EPHEMERAL_KEYS=false}; that is the override, not the default.
+   */
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("deployedConfigs")
+  void aDevConfigWithNoKeysSetCanStillStart(Path config) throws Exception {
+    assertThat(Files.readString(config))
+        .as("%s ships no keys, so without the ephemeral escape hatch it cannot start at all",
+            config.getFileName())
+        .contains("allowEphemeralKeys: ${ALLOW_EPHEMERAL_KEYS:-true}");
+  }
+
   /** The settings must still be present and wired to the environment, just without defaults. */
   @ParameterizedTest(name = "{0}")
   @MethodSource("deployedConfigs")

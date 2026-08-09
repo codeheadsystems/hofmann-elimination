@@ -9,20 +9,26 @@ services:
       - "${HOFMANN_APP_PORT:-8080}:8080"
       - "${HOFMANN_ADMIN_PORT:-8081}:8081"
     environment:
-      # Each variable is only forwarded to the container when it is set in the
-      # host environment. There are no committed fallbacks: if unset, the server refuses
-      # to start unless allowEphemeralKeys is enabled in config.yml,
-      # giving a consistent local-development experience out of the box.
+      # Each variable is only forwarded to the container when it is set in the host environment.
+      # There are no committed fallbacks — a fallback here would be a working key shared by every
+      # deployment of the published image.
       #
-      # Set any of these to override the default stable test keys:
+      # With none of them set, config.yml's allowEphemeralKeys default takes over and the server
+      # generates random keys at startup, so `docker compose up` works on a fresh clone. Every
+      # registration is then lost on restart.
+      #
+      # Set these for keys that survive a restart:
       #   export SERVER_KEY_SEED_HEX=$(openssl rand -hex 32)
       #   export OPRF_SEED_HEX=$(openssl rand -hex 32)
       #   export OPRF_MASTER_KEY_HEX=$(openssl rand -hex 32)
       #   export JWT_SECRET_HEX=$(openssl rand -hex 32)
+      #
+      # Or export ALLOW_EPHEMERAL_KEYS=false to make the server refuse to start without them.
       - SERVER_KEY_SEED_HEX
       - OPRF_SEED_HEX
       - OPRF_MASTER_KEY_HEX
       - JWT_SECRET_HEX
+      - ALLOW_EPHEMERAL_KEYS
     healthcheck:
       test:
         - CMD

@@ -185,9 +185,14 @@ cd hofmann-testserver
 docker compose up
 ```
 
-The default `config.yml` uses Argon2id (65536 KiB / 3 / 1) and stable pre-generated test
-keys so the server public key is consistent across container restarts within the same image.
-Override individual keys by setting environment variables before running Compose:
+The default `config.yml` uses Argon2id (65536 KiB / 3 / 1) and sets `allowEphemeralKeys: true`,
+so with no environment variables set the server generates random key material at startup and
+runs. Nothing is committed as a key — a fallback in a file that ships inside a published image is
+a working key shared by every deployment of that image.
+
+The cost of the ephemeral default is stated in the startup warning: **every registration is
+invalidated when the container restarts**, and two nodes cannot authenticate each other's
+credentials. Set the keys to get a server public key that survives a restart:
 
 ```bash
 export SERVER_KEY_SEED_HEX=$(openssl rand -hex 32)
@@ -196,6 +201,9 @@ export OPRF_MASTER_KEY_HEX=$(openssl rand -hex 32)
 export JWT_SECRET_HEX=$(openssl rand -hex 32)
 docker compose up
 ```
+
+To make the test server behave like production and refuse to start when the keys are missing,
+export `ALLOW_EPHEMERAL_KEYS=false`.
 
 Clients connecting to the testserver can use `HofmannOpaqueClientManager(accessor)` without
 any manual config — the manager fetches the cipher suite, context, and Argon2id parameters

@@ -49,8 +49,14 @@ argon2Parallelism: 1
 # allowEphemeralKeys escape hatch below would never be reached. `${VAR:-}` yields empty, which is
 # what both of those paths test for.
 #
-# For a throwaway local run, set allowEphemeralKeys: true instead and accept that all state is
-# lost on restart.
+# This file is the Docker demo, so allowEphemeralKeys defaults to true: with no variables
+# exported, the server generates random keys at startup and runs. That is what makes `make up`
+# work on a fresh clone. The cost is stated plainly in the startup warning — every registration is
+# invalidated on restart, and two nodes cannot share credentials.
+#
+# Export the four variables to get stable keys, or set ALLOW_EPHEMERAL_KEYS=false to make the
+# server fail closed when you have not.
+allowEphemeralKeys: ${ALLOW_EPHEMERAL_KEYS:-true}
 serverKeySeedHex: ${SERVER_KEY_SEED_HEX:-}
 oprfSeedHex: ${OPRF_SEED_HEX:-}
 

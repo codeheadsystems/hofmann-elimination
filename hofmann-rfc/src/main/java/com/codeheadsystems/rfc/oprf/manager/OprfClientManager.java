@@ -6,6 +6,7 @@ import com.codeheadsystems.rfc.oprf.model.ClientHashingContext;
 import com.codeheadsystems.rfc.oprf.model.EvaluatedResponse;
 import com.codeheadsystems.rfc.oprf.model.HashResult;
 import com.codeheadsystems.rfc.oprf.rfc9497.OprfCipherSuite;
+import com.codeheadsystems.rfc.oprf.rfc9497.OprfMode;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -27,9 +28,11 @@ public class OprfClientManager {
   /**
    * Instantiates a new Oprf client manager.
    *
-   * @param suite the suite
+   * @param suite the cipher suite, which must be in base OPRF mode
+   * @throws IllegalArgumentException if the suite is configured for VOPRF or POPRF
    */
   public OprfClientManager(OprfCipherSuite suite) {
+    suite.assertMode(OprfMode.OPRF);
     log.info("OprfClientManager({})", suite.hashAlgorithm());
     this.suite = suite;
     this.groupSpec = suite.groupSpec();
