@@ -109,34 +109,25 @@ on.
 
 ## New findings
 
-- [ ] **A closed `AutoCloseable` context answers wrongly instead of failing** — **[reproduced]**.
-      `ClientHashingContext`, `VoprfClientContext`, `PoprfClientContext` and OPAQUE's
-      `ClientAuthState` all zero their copy of the caller's secret on `close()`, and none of them
-      refuses use afterwards. Every one of them is read after construction — `eliminationRequest`
-      and `hashResult` on the OPRF side, `generateKE3` on the OPAQUE one — so a context used after
-      closing derives from a run of zeroes and returns a well-formed value computed from the wrong
-      input. No exception, nothing downstream notices.
+- [ ] **The server-side secret-bearing result types have no `close()` at all** — raised while
+      closing the use-after-close finding, and the mirror of it rather than an instance. That work
+      converted all six client-side `AutoCloseable` types to guarded classes; the grep that found
+      them (`implements AutoCloseable` across `src/main`) also showed which secret-bearing types
+      have no `close()` to guard. `ServerAuthState` holds `expectedClientMac` and `sessionKey`, and
+      `OpaqueEnvelope.StoreResult` holds `exportKey`. Both are abandoned to the collector, which is
+      the same defect `AuthResult` was fixed for on the client side.
 
-      **The verifiable modes hide it best, which is why this is worth an entry rather than a
-      comment.** `eliminationRequest` returns the blinded elements the context already holds rather
-      than recomputing them, so against a closed context the server receives correct elements,
-      evaluates them correctly, and returns a proof that *verifies*. The DLEQ check that exists to
-      catch a misbehaving server is silent, because the server did not misbehave. Only the final
-      hash is wrong. On OPAQUE the failure at least surfaces, but as
-      `SecurityException("Authentication failed")` — indistinguishable from a wrong password, so
-      the user is told their password is bad when the fault is a lifetime bug in the caller.
+      **`ServerAuthState` is the one with substance, and it is not a one-line fix**, which is why
+      it was filed rather than folded into that change. It is not scoped to a call: the server
+      stores it in `PendingSessionStore` between `authStart` and `authFinish`, so a session key sits
+      in a map for the pending-session TTL. Zeroing it means deciding the policy at three exits —
+      normal `serverFinish`, expiry sweep, and capacity eviction — across both store
+      implementations, and closing one at the wrong exit breaks authentication rather than leaking.
+      That is a design question about the store, not a lifetime bug in a model class.
 
-      Pre-existing on `ClientAuthState`, which has shipped `close()` since it was introduced;
-      inherited by the OPRF contexts when they gained `close()` alongside the `byte[]` API. All
-      four now document it. Nothing in-tree hits it — `performHash` scopes its
-      try-with-resources to the whole exchange — and an asynchronous round trip is the shape that
-      would.
-
-      Closing it means a guard, and a guard means these types stop being records: a record cannot
-      carry a mutable `closed` flag, and content-sniffing for an all-zero input would refuse a
-      legal OPRF input to detect an illegal call. So it is a deliberate shape change across four
-      public types, which is more than the `String`-secret finding that surfaced it warranted.
-      One fix covers all four.
+      Note this is a *residue* finding, not a wrong-answer one: neither type is read after being
+      dropped, so nothing here answers wrongly. The client-side guard has no analogue to add until
+      the types have a `close()` to guard.
 
 - [ ] **`sleepUntil`'s settling phase degenerates when a branch arrives with less than the settle
       window left** — raised while closing the persistent-store enumeration oracle, and a property

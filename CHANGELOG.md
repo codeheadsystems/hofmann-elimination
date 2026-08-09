@@ -190,6 +190,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Critical
 
+- **A closed client context or state answered wrongly instead of failing**, across all six
+  `AutoCloseable` types in the library. Each zeroes its copy of the caller's secret on `close()`
+  and none refused use afterwards, so a context used after closing derived from a run of zeroes and
+  returned a well-formed value computed from the wrong input.
+
+  **The verifiable OPRF modes hid it best.** `eliminationRequest` returns the blinded elements the
+  context already holds rather than recomputing them, so against a closed context the server
+  received correct elements, evaluated them correctly, and returned a DLEQ proof that *verified*.
+  The check that exists to catch a misbehaving server was silent, because the server had not
+  misbehaved. Only the final hash was wrong, and it arrived a full round trip after the mistake.
+
+  **OPAQUE registration was the worst case, and it was not on the original finding's list of
+  four.** `finalizeRegistration` reads the password and blind to derive `randomizedPwd`, and
+  registration has no envelope MAC to fail against: nothing rejects an all-zero OPRF input, so a
+  closed state produced a complete, valid registration record that the client uploaded. The
+  resulting account **can never be logged into by anyone** — the evaluated element was computed
+  from `blind · H(realPassword)` before the close while `Finalize` consumed zeroes, so the envelope
+  is keyed to a value no client can reproduce. Because `changePassword` runs the same code, the bug
+  on a rotation path destroyed a working account while the server's atomic record replacement made
+  it look like a successful rotation. (An earlier analysis called this an account-takeover
+  primitive on the reasoning that the account became registered under the publicly-known all-zero
+  password. That is wrong — the two halves of the OPRF disagree — and `ClosedStateRefusalTest`
+  reproduces the real outcome.)
+
+  On OPAQUE authentication the failure at least surfaced, but as
+  `SecurityException("Authentication failed")` — indistinguishable from a wrong password, so the
+  user was told their password was bad when the fault was a lifetime bug in the caller.
+
+  Every accessor returning protocol state now throws `ClosedContextException`. That covers
+  `blindedElements()` and `info()`, not just the fields `close()` zeroes: guarding only the zeroed
+  field would leave the verifiable-mode case fully intact and merely move the failure to after the
+  network call. Nothing in-tree was hitting this — every caller already scopes its
+  try-with-resources to the whole exchange — and an asynchronous round trip is the shape that
+  would. See *Breaking changes*.
+
+- **`ClientAuthState`, `ClientRegistrationState` and `OpaqueCipherSuite.AkeKeyPair` printed private
+  scalars in full decimal from their generated `toString()`.** Found while converting the first two
+  to classes, which forced a hand-written `toString` and made the omission visible.
+
+  `ClientRegistrationState` was the clearest: it printed `blind`, and `blindedElement = blind ·
+  H(password)` sat one field away in the same object, so both halves of a password verifier landed
+  in one log line — enough to recover `H(password)` and mount an offline dictionary attack without
+  the server. `ClientAuthState` printed `blind` *and* `clientAkePrivateKey`; its blinded element is
+  a field deeper and did not render, but the element is on the wire and in the server's hands, so a
+  log holder generally has the other half.
+
+  `OpaqueCipherSuite.AkeKeyPair` has the widest reach of the three — a public nested record on a
+  public class, returned by `deriveAkeKeyPair` for the client's ephemeral AKE key **and the
+  server's**. `OpaqueEnvelope.RecoverResult`, which printed the client's long-term private key, is
+  package-private and was fixed alongside. All five now redact.
+
+  The three OPRF client contexts have redacted their blinds for exactly this reason since they were
+  written; these were simply missed.
+
 - **The Java OPRF client accepted the identity element as the server's evaluated element**
   (`hofmann-rfc`). RFC 9497 §2.1 requires `DeserializeElement` to reject the group identity. For
   ristretto255 the identity is the canonical all-zero encoding, so every RFC 9496 decode check
@@ -293,16 +347,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Behaviour of the protocol itself is unchanged — the RFC 9497 vectors and the Java↔TypeScript
   cross-implementation tests pass untouched.
 
-  **`close()` is not guarded, and a closed context answers wrongly rather than failing.** Both
-  `eliminationRequest` and `hashResult` read the input, so using a context after closing it
-  finalizes over zeroes and returns a well-formed value derived from the wrong input, with no
-  exception. The verifiable modes hide it better: the blinded elements are stored rather than
-  recomputed, so the server evaluates correctly and **the DLEQ proof still verifies** — only the
-  final hash is wrong. Scope the `try`-with-resources to the whole exchange; an asynchronous round
-  trip is the shape to watch. A record cannot carry a mutable "closed" flag, so refusing
-  use-after-close needs these types to stop being records; tracked in TODO.md. The same applies to
-  OPAQUE's `ClientAuthState`, which has had `close()` and this hazard since it was introduced and
-  now documents it.
+  **`close()` is now guarded — see the next entry, which supersedes this one.** These contexts
+  shipped unguarded in an earlier state of this release, where a closed context answered wrongly
+  rather than failing.
+
+- **Six client-side `AutoCloseable` types are now final classes rather than records**, and a
+  closed one refuses to be used instead of answering wrongly. `ClientHashingContext`,
+  `VoprfClientContext`, `PoprfClientContext`, `ClientAuthState`, `ClientRegistrationState` and
+  `AuthResult` are affected. See *Security* for what the old behaviour cost.
+
+  Constructor signatures and every accessor name are unchanged, so ordinary calling code compiles
+  and runs untouched. Three things can break:
+
+  - **`equals` and `hashCode` are now identity-based**, since these are no longer records. Note the
+    generated ones compared `byte[]` components by *reference* and were already close to useless
+    here. Value equality was deliberately not re-implemented: a content-based `equals` over a
+    secret is a variable-time comparison of secret material, which is a worse thing to hand a
+    caller than no `equals` at all.
+  - **Record patterns no longer deconstruct them.** `case ClientAuthState(var blind, ...)` does not
+    compile; call the accessors.
+  - **Reading any of them after `close()` now throws** `ClosedContextException`, where it
+    previously returned a value derived from zeroes. If you have code doing that, it was already
+    producing wrong answers.
+
+  `requestId()`, `size()`, `isClosed()` and `toString()` stay available on a closed instance, as
+  does `AuthResult.ke3()` — `close()` does not zero it and it is a MAC over a transcript already
+  sent.
+
+  `ClosedContextException` extends `IllegalStateException`, so a broad catch still works. It is a
+  subclass rather than the bare type because BouncyCastle's `DecoderException` is also an
+  `IllegalStateException`, and this library wraps that into `SecurityException` specifically so a
+  hostile server cannot choose the exception type an application sees; a local lifetime bug filed
+  under the same type would undo that.
+
+  **What was considered and not done:** replacing the `BigInteger` blinds with a zeroable scalar
+  holder. They remain unclearable, which the types have always documented as the larger residual
+  exposure, and this refactor is the one that would make the change cheap. It was left out because
+  the values are consumed as `BigInteger` by `OpaqueAke` and `OpaqueCredentials`, which is separate
+  work.
 
 - **The Spring Boot default security chain bean is renamed** from `securityFilterChain` to
   `hofmannSecurityFilterChain`. Nothing needs to change unless you referenced it *by name* — a

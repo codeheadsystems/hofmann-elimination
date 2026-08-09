@@ -10,6 +10,7 @@ import com.codeheadsystems.rfc.oprf.model.VerifiableProcessorDetail;
 import com.codeheadsystems.rfc.oprf.rfc9497.CurveHashSuite;
 import com.codeheadsystems.rfc.oprf.rfc9497.OprfCipherSuite;
 import com.codeheadsystems.rfc.oprf.rfc9497.OprfMode;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
@@ -66,12 +67,15 @@ class OprfClientSecretHandlingTest {
     ClientHashingContext context = manager.hashingContext(secret);
     Arrays.fill(secret, (byte) 0);
 
-    assertThat(context.input())
+    // input() aliases rather than copies, so this reference is the context's own array and still
+    // shows the zeroing after close — which input() itself will no longer answer for.
+    byte[] contextsOwnArray = context.input();
+    assertThat(contextsOwnArray)
         .as("clearing the caller's array must not empty the context")
         .isEqualTo(expected);
 
     context.close();
-    assertThat(context.input())
+    assertThat(contextsOwnArray)
         .as("and closing the context must clear its own copy")
         .containsOnly((byte) 0);
   }
@@ -86,12 +90,13 @@ class OprfClientSecretHandlingTest {
   void closingZeroesTheContextsCopy() {
     OprfClientManager manager = new OprfClientManager(SUITE);
     ClientHashingContext context = manager.hashingContext(secret());
+    byte[] contextsOwnArray = context.input();
 
-    assertThat(context.input()).isNotEqualTo(new byte[secret().length]);
+    assertThat(contextsOwnArray).isNotEqualTo(new byte[secret().length]);
     context.close();
-    assertThat(context.input()).containsOnly((byte) 0);
+    assertThat(contextsOwnArray).containsOnly((byte) 0);
     context.close();
-    assertThat(context.input())
+    assertThat(contextsOwnArray)
         .as("close is idempotent, so a try-with-resources around a caller that also closes is fine")
         .containsOnly((byte) 0);
   }
@@ -133,7 +138,7 @@ class OprfClientSecretHandlingTest {
     VoprfClientContext vctx = voprf.hashingContext(List.of(secret()));
     assertThat(vctx.inputs().get(0)).isEqualTo(secret());
     vctx.close();
-    assertThat(vctx.inputs().get(0))
+    assertThat(heldInputs(vctx).get(0))
         .as("VOPRF context must clear its copy of the input")
         .containsOnly((byte) 0);
 
@@ -145,12 +150,46 @@ class OprfClientSecretHandlingTest {
     byte[] info = "public-info".getBytes(StandardCharsets.UTF_8);
     PoprfClientContext pctx = poprf.hashingContext(List.of(secret()), info);
     assertThat(pctx.inputs().get(0)).isEqualTo(secret());
+    byte[] publicInputBefore = pctx.info();
     pctx.close();
-    assertThat(pctx.inputs().get(0))
+    assertThat(heldInputs(pctx).get(0))
         .as("POPRF context must clear its copy of the input")
         .containsOnly((byte) 0);
-    assertThat(pctx.info())
+    assertThat(publicInputBefore)
         .as("but not the public input, which is not a secret")
         .isEqualTo(info);
+    assertThat(heldInfo(pctx))
+        .as("and the context's own copy of it is left alone too")
+        .isEqualTo(info);
+  }
+
+  /**
+   * Reads the list of inputs a context is holding, without going through {@code inputs()}.
+   *
+   * <p>Needed because the verifiable-mode accessors copy on read <em>and</em> now refuse once
+   * closed, so neither a before-reference nor an after-call can observe the zeroing the way
+   * {@code ClientHashingContext.input()} allows. Reflection is the established idiom for this in
+   * the tree ({@code ByteUtilsTest}, {@code PackageBoundaryTest},
+   * {@code HofmannOpaqueClientManagerZeroizationTest}), and the alternative — a package-private
+   * accessor existing only for tests — would put a hole in production code to observe a property
+   * of production code.
+   */
+  @SuppressWarnings("unchecked")
+  private static List<byte[]> heldInputs(final Object context) {
+    return (List<byte[]>) read(context, "inputs");
+  }
+
+  private static byte[] heldInfo(final PoprfClientContext context) {
+    return (byte[]) read(context, "info");
+  }
+
+  private static Object read(final Object target, final String fieldName) {
+    try {
+      Field field = target.getClass().getDeclaredField(fieldName);
+      field.setAccessible(true);
+      return field.get(target);
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError("could not read " + fieldName, e);
+    }
   }
 }

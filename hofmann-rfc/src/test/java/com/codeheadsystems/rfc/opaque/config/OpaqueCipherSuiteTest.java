@@ -170,4 +170,22 @@ class OpaqueCipherSuiteTest {
     assertThat(kp1.privateKey()).isEqualTo(kp2.privateKey());
     assertThat(kp1.publicKeyBytes()).isEqualTo(kp2.publicKeyBytes());
   }
+
+  /**
+   * The generated {@code toString} printed the private key in full decimal, and this is the
+   * widest-reach instance of that mistake in the library: a public nested record on a public class,
+   * returned by {@code deriveAkeKeyPair} for the client's ephemeral AKE key and the server's alike.
+   * Disclosing either yields that session's Diffie-Hellman outputs. Pinned because redaction
+   * regresses silently otherwise.
+   */
+  @Test
+  void akeKeyPairToString_doesNotDiscloseThePrivateKey() {
+    OpaqueCipherSuite s = OpaqueCipherSuite.P256_SHA256;
+    OpaqueCipherSuite.AkeKeyPair kp =
+        s.deriveAkeKeyPair("a-seed".getBytes(StandardCharsets.UTF_8));
+
+    assertThat(kp.toString())
+        .doesNotContain(kp.privateKey().toString())
+        .contains("<redacted>");
+  }
 }

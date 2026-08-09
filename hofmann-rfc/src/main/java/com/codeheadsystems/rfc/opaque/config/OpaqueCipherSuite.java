@@ -255,7 +255,26 @@ public record OpaqueCipherSuite(OprfCipherSuite oprfSuite) {
 
   /**
    * A derived AKE key pair.
+   *
+   * @param privateKey     the AKE private key
+   * @param publicKeyBytes the serialized AKE public key
    */
   public record AkeKeyPair(BigInteger privateKey, byte[] publicKeyBytes) {
+
+    /**
+     * Redacts the private key.
+     *
+     * <p>The generated {@code toString} printed it in full decimal, and this is the highest-reach
+     * instance of that mistake in the library: a public nested record on a public class, returned
+     * by {@link #deriveAkeKeyPair(byte[])} for the client's ephemeral AKE key <em>and</em> for the
+     * server's. Disclosing either yields the corresponding Diffie-Hellman outputs for that
+     * session. Found while redacting {@code ClientAuthState}, which had the same defect with
+     * narrower reach.
+     */
+    @Override
+    public String toString() {
+      return "AkeKeyPair[privateKey=<redacted>, publicKeyBytes="
+          + (publicKeyBytes == null ? "null" : publicKeyBytes.length + " byte(s)") + "]";
+    }
   }
 }

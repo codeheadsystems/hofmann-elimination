@@ -1,5 +1,6 @@
 package com.codeheadsystems.rfc.oprf.model;
 
+import com.codeheadsystems.rfc.common.ClosedContextException;
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.List;
@@ -17,56 +18,39 @@ import java.util.Objects;
  * to the same input, and the evaluated elements the server returns are matched to them by index.
  * Losing that alignment does not fail loudly; it produces plausible-looking output derived from
  * the wrong pairing.
- *
- * @param requestId       correlates the request with its response
- * @param inputs          the client inputs, in order
- * @param blinds          the blinding scalars, aligned with {@code inputs}
- * @param blindedElements the serialized blinded elements, aligned with {@code inputs}
+ * <p>
+ * <strong>A closed context refuses to be used</strong> — every accessor that returns protocol
+ * state throws {@link ClosedContextException}. See {@link #close()}, which is where the reasoning
+ * for this mode specifically lives; the verifiable modes are where use-after-close hid best.
+ * <p>
+ * <strong>A final class rather than a record</strong>, because refusing use-after-close needs a
+ * mutable {@code closed} flag. See {@link ClientHashingContext} for the full argument, including
+ * why value equality was not re-implemented.
  */
-public record VoprfClientContext(String requestId,
-                                 List<byte[]> inputs,
-                                 List<BigInteger> blinds,
-                                 List<byte[]> blindedElements)
-    implements AutoCloseable {
+public final class VoprfClientContext implements AutoCloseable {
+
+  private final String requestId;
+  // final for the JMM final-field freeze, which a record gave for nothing and a hand-written class
+  // has to ask for. See ClientHashingContext for why that matters to a guard whose stated purpose
+  // is surviving an asynchronous round trip.
+  private final List<byte[]> inputs;
+  private final List<BigInteger> blinds;
+  private final List<byte[]> blindedElements;
+
+  private volatile boolean closed;
 
   /**
-   * Zeroes this context's copies of the inputs.
+   * Rejects a context whose lists are not aligned, and copies every element.
    *
-   * <p>The constructor copies every input so the context cannot be mutated through a reference the
-   * caller kept; the consequence was a copy of the client's plaintext OPRF input that the caller
-   * had no way to erase. This closes that, and pairs with {@link ClientHashingContext#close()} so
-   * the property does not depend on which mode you picked.
-   *
-   * <p>Only the inputs. {@code blindedElements} goes to the server, so it is not secret;
-   * {@code blinds} are {@link BigInteger} and cannot be zeroed at the Java level, which matters —
-   * a blind together with its blinded element still recovers the input's OPRF output, so closing
-   * this shortens a window rather than emptying the context.
-   *
-   * <p>Anything handed out by {@link #inputs()} is the caller's own copy and is not touched here.
-   *
-   * <p><strong>Close after the exchange, never during one, and note that this mode hides the
-   * mistake better than base mode does.</strong> {@code eliminationRequest} returns the blinded
-   * elements this context already holds rather than recomputing them, so against a closed context
-   * the server still receives correct elements, evaluates them correctly, and returns a proof that
-   * <em>verifies</em>. Only {@code Finalize} reads the zeroed inputs, so the single observable
-   * consequence is a wrong hash — no exception, and the proof check that exists to catch a
-   * misbehaving server says nothing, because the server did not misbehave.
-   *
-   * <p>That is the same shape this record's own class comment warns about for list misalignment:
-   * it does not fail loudly, it produces plausible-looking output derived from the wrong thing.
-   * Not currently guarded — a record cannot carry a mutable "closed" flag — and tracked in TODO.md.
+   * @param requestId       correlates the request with its response
+   * @param inputs          the client inputs, in order
+   * @param blinds          the blinding scalars, aligned with {@code inputs}
+   * @param blindedElements the serialized blinded elements, aligned with {@code inputs}
    */
-  @Override
-  public void close() {
-    for (byte[] input : inputs) {
-      Arrays.fill(input, (byte) 0);
-    }
-  }
-
-  /**
-   * Rejects a context whose lists are not aligned.
-   */
-  public VoprfClientContext {
+  public VoprfClientContext(final String requestId,
+                            final List<byte[]> inputs,
+                            final List<BigInteger> blinds,
+                            final List<byte[]> blindedElements) {
     if (inputs == null || blinds == null || blindedElements == null) {
       throw new IllegalArgumentException("Context lists are required");
     }
@@ -82,9 +66,51 @@ public record VoprfClientContext(String requestId,
     // byte[] element aliased to the caller's. Matches PoprfClientContext, which has the sharper
     // version of the same problem in its tweakedKey; keeping the two consistent means neither
     // grows a divergent copying rule later. blinds needs no element copy: BigInteger is immutable.
-    inputs = copyEach(inputs);
-    blinds = List.copyOf(blinds);
-    blindedElements = copyEach(blindedElements);
+    this.requestId = requestId;
+    this.inputs = copyEach(inputs);
+    this.blinds = List.copyOf(blinds);
+    this.blindedElements = copyEach(blindedElements);
+  }
+
+  /**
+   * Zeroes this context's copies of the inputs and refuses all further use.
+   *
+   * <p>The constructor copies every input so the context cannot be mutated through a reference the
+   * caller kept; the consequence was a copy of the client's plaintext OPRF input that the caller
+   * had no way to erase. This closes that, and pairs with {@link ClientHashingContext#close()} so
+   * the property does not depend on which mode you picked.
+   *
+   * <p>Only the inputs are zeroed. {@code blindedElements} goes to the server, so it is not secret;
+   * {@code blinds} are {@link BigInteger} and cannot be zeroed at the Java level, which matters —
+   * a blind together with its blinded element still recovers the input's OPRF output, so closing
+   * this shortens a window rather than emptying the context. Both are nevertheless <em>guarded</em>
+   * against a closed read, for the reason below.
+   *
+   * <p>Anything handed out by {@link #inputs()} is the caller's own copy and is not touched here.
+   *
+   * <p><strong>Close after the exchange, never during one. This mode is where the guard earns its
+   * keep, because this mode hid the mistake best.</strong> {@code eliminationRequest} returns the
+   * blinded elements this context already holds rather than recomputing them — it never touches
+   * the zeroed inputs at all. So before the guard existed, a closed context still produced a
+   * request the server received correctly, evaluated correctly, and returned a proof for that
+   * <em>verified</em>: the DLEQ check that exists to catch a misbehaving server said nothing,
+   * because the server did not misbehave. Only {@code Finalize} read the zeroed inputs, so a wrong
+   * hash was the single symptom, and it arrived a full round trip after the mistake.
+   *
+   * <p><strong>Which is why {@link #blindedElements()} is guarded and not just {@link #inputs()}.
+   * </strong> Guarding only the field that gets zeroed would leave exactly that case intact and
+   * merely move the failure to {@code hashResults}, after the request had already gone to the
+   * server. A closed context is not a context missing one field; it is not a context.
+   *
+   * <p>See {@link ClientHashingContext#close()} for the flag-then-zero ordering and the
+   * check-then-read race this does not remove.
+   */
+  @Override
+  public void close() {
+    closed = true;
+    for (byte[] input : inputs) {
+      Arrays.fill(input, (byte) 0);
+    }
   }
 
   /**
@@ -106,32 +132,77 @@ public record VoprfClientContext(String requestId,
   }
 
   /**
+   * Returns the request identifier. Not guarded — see {@link ClientHashingContext#requestId()}.
+   *
+   * @return the request id
+   */
+  public String requestId() {
+    return requestId;
+  }
+
+  /**
    * Returns the client inputs, each element copied.
    *
    * @return the inputs
+   * @throws ClosedContextException if this context has been closed
    */
-  @Override
   public List<byte[]> inputs() {
+    assertOpen();
     return copyEach(inputs);
+  }
+
+  /**
+   * Returns the blinding scalars.
+   *
+   * @return the blinds
+   * @throws ClosedContextException if this context has been closed
+   */
+  public List<BigInteger> blinds() {
+    assertOpen();
+    return blinds;
   }
 
   /**
    * Returns the serialized blinded elements, each element copied.
    *
+   * <p>Guarded even though blinded elements are public by construction — they are what goes to the
+   * server. The guard is here because this is the accessor {@code eliminationRequest} reads, and
+   * it is therefore the one that decides whether a closed context fails before the network call or
+   * a round trip after it. See {@link #close()}.
+   *
    * @return the blinded elements
+   * @throws ClosedContextException if this context has been closed
    */
-  @Override
   public List<byte[]> blindedElements() {
+    assertOpen();
     return copyEach(blindedElements);
   }
 
   /**
-   * Batch size.
+   * Batch size. Not guarded — a count, carrying no secret, and useful when logging.
    *
    * @return the number of inputs in this context
    */
   public int size() {
     return inputs.size();
+  }
+
+  /**
+   * Whether this context has been closed. A lifetime assertion, not a concurrency check — see
+   * {@link ClientHashingContext#isClosed()}.
+   *
+   * @return true if {@link #close()} has been called
+   */
+  public boolean isClosed() {
+    return closed;
+  }
+
+  private void assertOpen() {
+    if (closed) {
+      throw new ClosedContextException(
+          "VoprfClientContext has been closed and its copies of the inputs zeroed; "
+              + "scope the try-with-resources to the whole exchange");
+    }
   }
 
   /**
@@ -144,11 +215,13 @@ public record VoprfClientContext(String requestId,
    * OPRF output for that input. The {@code List<byte[]>} fields are harmless on their own (each
    * element renders as an identity hash) but {@code inputs} is the client's plaintext, so it is
    * redacted too. Blinded elements are public and are left as a count.
+   *
+   * <p>Not guarded — see {@link ClientHashingContext#toString()}.
    */
   @Override
   public String toString() {
     return "VoprfClientContext[requestId=" + requestId
         + ", inputs=<redacted>, blinds=<redacted>, blindedElements=" + blindedElements.size()
-        + " element(s)]";
+        + " element(s), closed=" + closed + "]";
   }
 }
