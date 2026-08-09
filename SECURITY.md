@@ -90,7 +90,9 @@ TLS is configured with strong cipher suites and valid certificates.
 The Argon2id key-stretching function runs entirely on the client, not the server. The server
 stores only the already-stretched output inside the OPAQUE envelope and masking key. This
 means the server never performs expensive password hashing — and also means the client and
-server must be configured with matching Argon2id parameters. See [USAGE.md](USAGE.md) for details.
+server must be configured with matching Argon2id parameters. See
+[Client configuration](docs/CLIENT_CONFIG.md#argon2id-consistency-between-server-and-client)
+for details.
 
 **The client obtains those parameters from the server**, via `GET /opaque/config` and
 `OpaqueClientConfig.fromServerConfig`. That is worth stating plainly, because it means a

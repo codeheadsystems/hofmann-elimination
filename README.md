@@ -40,7 +40,11 @@ See [hofmann-elimination-example](https://github.com/codeheadsystems/hofmann-eli
 
 - **[Project landing page](https://codeheadsystems.github.io/hofmann-elimination/)** — overview, protocol diagrams, quick start guides
 - **[Migration guide](MIGRATION.md)** — how to migrate an existing site from traditional password auth to OPAQUE
-- **[Configuration guide](USAGE.md)** — server configuration, key management, credential store implementation
+- **[Documentation map](docs/README.md)** — every document indexed by the question it answers
+- **[Server configuration](USAGE.md)** — every config field, its default, and what leaving it there costs
+- **[Key management](docs/KEY_MANAGEMENT.md)** — generating the four secrets, injecting them, and the three rotation runbooks
+- **[Framework integration](docs/INTEGRATION.md)** — Dropwizard, Spring Boot, bare framework, and the two store interfaces
+- **[Client configuration](docs/CLIENT_CONFIG.md)** — Java and TypeScript clients, and the parameters that must match the server
 - **[Account recovery guide](RECOVERY.md)** — pluggable account recovery via email, OTP, or custom mechanisms
 - **[Architecture decision records](docs/adr/)** — why the load-bearing decisions are shaped the way they are, and which earlier analyses turned out to be wrong
 - **[Interactive API docs](https://codeheadsystems.github.io/hofmann-elimination/api-docs.html)** — Swagger UI for OPAQUE and OPRF endpoints

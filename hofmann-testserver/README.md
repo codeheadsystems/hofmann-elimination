@@ -247,4 +247,4 @@ you must pass matching `--context`, `--memory`, `--iterations`, and `--paralleli
 every CLI invocation.
 
 For a full explanation of the failure modes and Java client setup, see
-[USAGE.md — Argon2id consistency](../USAGE.md#argon2id-consistency-between-server-and-client).
+[Client configuration — Argon2id consistency](../docs/CLIENT_CONFIG.md#argon2id-consistency-between-server-and-client).

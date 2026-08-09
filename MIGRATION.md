@@ -75,8 +75,10 @@ dependencies {
 bootstrap.addBundle(new HofmannBundle<>(credentialStore, sessionStore, null));
 ```
 
-See [USAGE.md](USAGE.md) for full configuration, key material generation, and
-`CredentialStore` / `SessionStore` implementation.
+See [Server configuration](USAGE.md) for the field reference,
+[Key management](docs/KEY_MANAGEMENT.md) for key material generation, and
+[Framework integration](docs/INTEGRATION.md) for `CredentialStore` / `SessionStore`
+implementation.
 
 ### 2. Deploy the OPAQUE client
 
@@ -291,7 +293,8 @@ byte[] credentialId = buf.array();
 
 Choose a value that is **stable** (never changes for a given user), **canonical**
 (always produces the same bytes), and **unique** within your deployment. See the
-[credential identifier section](USAGE.md#credential-identifier) in USAGE.md.
+[credential identifier section](docs/KEY_MANAGEMENT.md#credential-identifier) in the key
+management guide.
 
 If you use email addresses and your application allows email changes, use an internal
 user ID instead. Changing the credential identifier after registration orphans the
@@ -411,7 +414,7 @@ hofmann:
 
 ## Checklist
 
-- [ ] Generate and securely store OPAQUE key material (`serverKeySeedHex`, `oprfSeedHex`, `oprfMasterKeyHex`, `jwtSecretHex`) — see [USAGE.md](USAGE.md#generating-and-managing-key-material)
+- [ ] Generate and securely store OPAQUE key material (`serverKeySeedHex`, `oprfSeedHex`, `oprfMasterKeyHex`, `jwtSecretHex`) — see [Key management](docs/KEY_MANAGEMENT.md)
 - [ ] Implement `CredentialStore` backed by your database
 - [ ] Implement `SessionStore` backed by your session infrastructure (Redis, database, etc.)
 - [ ] Deploy OPAQUE endpoints alongside legacy auth
