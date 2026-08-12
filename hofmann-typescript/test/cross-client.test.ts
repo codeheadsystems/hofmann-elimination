@@ -18,7 +18,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { OprfHttpClient } from '../src/oprf/http.js';
 import { OpaqueHttpClient } from '../src/opaque/http.js';
 import { strToBytes } from '../src/crypto/encoding.js';
-import { toHex } from '../src/crypto/primitives.js';
+import { toHex, fromHex } from '../src/crypto/primitives.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -62,6 +62,78 @@ describe.skipIf(skip)('cross-client OPRF', () => {
     const javaHash = readFile('oprf-java.txt');
     if (javaHash) {
       expect(hashHex).toBe(javaHash);
+    }
+  });
+});
+
+// ── Cross-client VOPRF ─────────────────────────────────────────────────────
+
+/**
+ * The server public key is read from a file the Java side wrote, having derived
+ * it from the configured master key — not fetched from the server. That is the
+ * point of the exercise: a proof graded against a key the same server supplied
+ * would verify no matter which key the server actually used, so fetching it
+ * would make this test unable to fail.
+ *
+ * `OprfHttpClient.create` still cross-checks the pinned key against what
+ * `/oprf/config` advertises, so a disagreement between the two implementations'
+ * key derivation fails here rather than as an unexplained proof failure.
+ */
+describe.skipIf(skip)('cross-client VOPRF', () => {
+  const INPUT_A = 'cross-client-voprf-alpha';
+  const INPUT_B = 'cross-client-voprf-beta';
+
+  it('verifies a Java-served DLEQ proof and matches the Java outputs', async () => {
+    const pinned = readFile('voprf-pks.txt');
+    expect(pinned, 'voprf-pks.txt written by the Java side').not.toBeNull();
+
+    const client = await OprfHttpClient.create(SERVER_URL!, {
+      voprfServerPublicKey: fromHex(pinned!),
+    });
+
+    // A two-element batch, because one proof covers the batch and a single
+    // element would not exercise the composite index at all.
+    const outputs = await client.evaluateVerifiable([
+      strToBytes(INPUT_A), strToBytes(INPUT_B),
+    ]);
+    const hex = outputs.map(toHex).join('\n');
+
+    writeFile('voprf-ts.txt', hex);
+
+    const javaOutputs = readFile('voprf-java.txt');
+    if (javaOutputs) {
+      expect(hex).toBe(javaOutputs);
+    }
+  });
+});
+
+// ── Cross-client POPRF ─────────────────────────────────────────────────────
+
+describe.skipIf(skip)('cross-client POPRF', () => {
+  const INPUT_A = 'cross-client-poprf-alpha';
+  const INPUT_B = 'cross-client-poprf-beta';
+
+  it('verifies a Java-served proof under a public input and matches the outputs', async () => {
+    const pinned = readFile('poprf-pks.txt');
+    const infoHex = readFile('poprf-info.txt');
+    expect(pinned, 'poprf-pks.txt written by the Java side').not.toBeNull();
+    expect(infoHex, 'poprf-info.txt written by the Java side').not.toBeNull();
+
+    const client = await OprfHttpClient.create(SERVER_URL!, {
+      poprfServerPublicKey: fromHex(pinned!),
+    });
+
+    const outputs = await client.evaluatePartiallyOblivious(
+      [strToBytes(INPUT_A), strToBytes(INPUT_B)],
+      fromHex(infoHex!),
+    );
+    const hex = outputs.map(toHex).join('\n');
+
+    writeFile('poprf-ts.txt', hex);
+
+    const javaOutputs = readFile('poprf-java.txt');
+    if (javaOutputs) {
+      expect(hex).toBe(javaOutputs);
     }
   });
 });
