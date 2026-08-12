@@ -66,8 +66,25 @@ paths:
       operationId: getOprfConfig
       summary: Retrieve OPRF client configuration
       description: |
-        Returns the OPRF cipher suite the server is using.  Clients can call this endpoint
-        at startup to self-configure instead of hard-coding the cipher suite.
+        Returns the OPRF cipher suite the server is using, and — when any are enabled —
+        the verifiable modes it offers.  Clients can call this endpoint at startup to
+        self-configure instead of hard-coding the cipher suite.
+
+        **`modes` is not a source of trust.**  This response is unauthenticated, so a
+        hostile or compromised server can put anything in it.  A client must still obtain
+        the server public key out of band and pin it; what `modes` is for is letting the
+        client notice a mismatch and say so, instead of failing every proof verification
+        with no indication of why.  The only two conclusions a client may draw from it are
+        "proceed with the key I already pinned" and "stop" — never "adopt this key".
+        See RFC 9497 §7.3.
+
+        **`modes` is absent, not empty, when no verifiable mode is enabled.**  That is a
+        wire-compatibility requirement: a client whose JSON parser rejects unknown fields
+        would break on a document carrying one it has never seen, so a base-mode
+        deployment emits exactly the document it emitted before this field existed.
+        Read the three states as: absent means no cross-check is possible and the
+        endpoint's `404` remains the capability probe; present and listing the mode is
+        authoritative; present and not listing it means the mode is off.
       responses:
         "200":
           description: OPRF configuration
@@ -76,10 +93,23 @@ paths:
               schema:
                 $ref: "#/components/schemas/OprfClientConfig"
               examples:
-                typical:
-                  summary: Typical OPRF config response
+                baseModeOnly:
+                  summary: Base mode only — byte-identical to pre-`modes` servers
                   value:
                     cipherSuite: "P256_SHA256"
+                withVerifiableModes:
+                  summary: Both verifiable modes enabled
+                  value:
+                    cipherSuite: "P256_SHA256"
+                    modes:
+                      - mode: "VOPRF"
+                        publicKeyHex: "03e17e70604bcabe198882c0a1f27a92441e774224ed9c702e51dd17038b102462"
+                        processIdentifier: "hofmann-oprf-v1-voprf"
+                        maxBatchSize: 64
+                      - mode: "POPRF"
+                        publicKeyHex: "02c5e5300c2d9e6ba7f3f4ad60500ad93a0157e6288eb04b67e125db024a2c74d2"
+                        processIdentifier: "hofmann-oprf-v1-poprf"
+                        maxBatchSize: 64
 
   /oprf:
     post:
@@ -419,6 +449,47 @@ components:
             The OPRF cipher suite the server is using.  Clients must configure the same suite.
           enum: [P256_SHA256, P384_SHA384, P521_SHA512, RISTRETTO255_SHA512]
           example: P256_SHA256
+        modes:
+          type: array
+          description: |
+            The verifiable modes this server has enabled.  **Omitted entirely** when none
+            are, which is also what a server predating this field sends — an empty array is
+            a different document and is not emitted.  Not a source of trust; see the
+            endpoint description.
+          items:
+            $ref: "#/components/schemas/OprfModeInfo"
+
+    OprfModeInfo:
+      type: object
+      required:
+        - mode
+        - publicKeyHex
+        - processIdentifier
+        - maxBatchSize
+      properties:
+        mode:
+          type: string
+          enum: [VOPRF, POPRF]
+        publicKeyHex:
+          type: string
+          description: |
+            The server's **untweaked** public key, hex-encoded.  For POPRF this is `pkS`,
+            not any tweaked key: the tweak is derived by the client from the public input
+            it chooses, so a tweaked key would be the answer to one `info` and wrong for
+            every other.
+
+            A client compares this against the key it pinned out of band, and refuses on a
+            mismatch.  It must never adopt it.
+        processIdentifier:
+          type: string
+          description: |
+            The keying-context label this server stamps on responses for this mode.
+        maxBatchSize:
+          type: integer
+          description: |
+            The largest batch this server accepts for this mode, so a client can refuse an
+            oversized batch locally rather than learning about it from a `400` or a `413`.
+          example: 64
 
     ErrorResponse:
       type: object

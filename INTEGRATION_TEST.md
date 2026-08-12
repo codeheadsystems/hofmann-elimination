@@ -85,6 +85,26 @@ for-byte agreement with the RFC vectors used by the Java side. The Java
 1a + 1b is sufficient to validate cross-language wire compatibility for the
 test-vector cases.
 
+`*CrossClientVerifiableOprfTest` goes further for the verifiable modes: Java runs
+a two-element batch against a live server, TypeScript pins the same public key,
+POSTs its own batch, and **verifies the DLEQ proof** before both sides compare
+outputs. That is the only check that catches the two implementations agreeing
+with themselves but not with each other — a prover and verifier written from the
+same misreading of the proof transcript interoperate perfectly, so per-language
+round trips cannot see it.
+
+These need `npm ci && npm run build` in `hofmann-typescript` first (the harness
+requires `node_modules` and `dist`), and they need the fixed
+`voprf-master-key-hex` / `poprf-master-key-hex` values in
+`hofmann-integration-tests/src/test/resources/application.yml` — the tests derive
+the key they pin from those, so ephemeral keys would defeat the exercise. When
+TypeScript is not built the tests are **skipped, not failed**; check for
+`skipped="0"` in the JUnit XML if you need to be sure they ran.
+
+If you add a new cross-language exchange, register the TypeScript-written file in
+`TypeScriptRunner`'s stale-file cleanup array. Forgetting to makes a failing test
+pass off the previous run's output.
+
 ---
 
 ## 2. `hofmann-testserver` validation

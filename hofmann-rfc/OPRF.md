@@ -120,6 +120,8 @@ The client is constructed with the server's public key and never reads one from 
 
 Obtaining the key is not enough; it must be **authenticated**. An attacker who can substitute it can run a distinct key per client, producing proofs that verify while partitioning users into individually identifiable buckets. RFC 9497 §7.3 treats key consistency as an application responsibility and nothing in the protocol detects a violation.
 
+`GET /oprf/config` advertises the enabled modes and their public keys, and the HTTP clients cross-check that against the pinned copy before sending anything. **That is a diagnostic, not a trust source, and must not be turned into one.** The response is unauthenticated, so the check has only two outcomes — proceed with the key already pinned, or refuse — and never a third where it adopts one. What it buys is that a rotated key or a mistyped pin fails once at startup saying what disagreed, rather than as an unexplained run of `SecurityException: proof did not verify`. See [docs/CLIENT_CONFIG.md](../docs/CLIENT_CONFIG.md).
+
 ### `HashResult.processIdentifier` is not authenticated
 
 The hash is trustworthy — it is only produced after a proof has been checked against the client's configured key — but the accompanying label is whatever the server attached. Treat it as a routing hint; do not persist results keyed by it in a way that would let a server mislabel which key produced a stored value.
@@ -243,6 +245,28 @@ List<HashResult> results = client.hashResults(server.process(client.eliminationR
 ```
 
 Results are positionally aligned with the inputs. The client rejects a response whose length differs from the request before doing anything else, and a reordered response fails proof verification — the composite coefficients bind each element pair to its batch index.
+
+### Over HTTP
+
+The managers above are the in-process API. To drive the modes across a network:
+
+- **Server** — `OprfResource` (Dropwizard) and `OprfController` (Spring Boot) expose
+  `POST /oprf/verifiable` and `POST /oprf/partially-oblivious`. Both answer `404` when the
+  deployment has no key for that mode, which is what a client probing for capability should
+  see and makes enabling a mode later purely additive.
+- **Java client** — `HofmannOprfClientManager.performVerifiableHash` and
+  `performPartiallyObliviousHash`, batch-first with single-input convenience overloads. The
+  server public key is pinned via `OprfClientConfig.withVoprfServerPublicKey` /
+  `withPoprfServerPublicKey`.
+- **TypeScript client** — `OprfHttpClient.evaluateVerifiable` and
+  `evaluatePartiallyOblivious`, with the pinned key passed to `OprfHttpClient.create`.
+  `VoprfClient` and `PoprfClient` are also exported for callers supplying their own
+  transport.
+- **Rust** — `VoprfClient`/`VoprfServer` and `PoprfClient`/`PoprfServer` in the
+  `hofmann-rfc` crate. Crypto only, by design: no HTTP dependency, and the wire encoding is
+  the caller's. It is the only port that implements the server side outside Java.
+
+See [docs/oprf-api.yaml](../docs/oprf-api.yaml) for the wire format.
 
 ## Model Types
 

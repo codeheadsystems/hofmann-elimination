@@ -3,7 +3,7 @@
 Browser/Node TypeScript client for the [Hofmann Elimination](../README.md) OPRF and OPAQUE server.
 
 Implements:
-- **RFC 9497** — Oblivious Pseudorandom Functions (OPRF)
+- **RFC 9497** — Oblivious Pseudorandom Functions: base mode (0x00), VOPRF (0x01), POPRF (0x02)
 - **RFC 9807** — OPAQUE-3DH password-authenticated key exchange
 
 Supported cipher suites:
@@ -94,6 +94,37 @@ const result = await client.evaluate(strToBytes('my-secret-input'));
 // result is a stable Nh-byte Uint8Array — same every time for the same input and server key
 // Nh = 32 (P-256), 48 (P-384), or 64 (P-521 and ristretto255) depending on server configuration
 ```
+
+### Verifiable modes — VOPRF and POPRF
+
+VOPRF (RFC 9497 mode 0x01) returns a DLEQ proof that the server evaluated with the key it publicly committed to. POPRF (mode 0x02) adds a public input, agreed by both parties, that separates evaluations under the same key.
+
+**Both require the server's public key, and this client will not fetch it.** A proof graded against a key the same server supplied proves nothing — a server able to choose both can produce a verifying pair for any key it likes, and RFC 9497 §7.3 notes it can do so per client, partitioning users into individually identifiable buckets while every proof still verifies. The key must reach you out of band, authenticated by something other than this connection.
+
+```typescript
+import { OprfHttpClient, fromHex, strToBytes } from '@codeheadsystems/hofmann-typescript';
+
+const client = await OprfHttpClient.create('https://your-server.example.com', {
+  voprfServerPublicKey: fromHex('03e17e70604bcabe...'),  // out of band, never fetched
+});
+
+// Batched: one proof covers the whole batch, so sending elements one at a time
+// would cost a proof each and prove strictly less.
+const outputs = await client.evaluateVerifiable([
+  strToBytes('input-a'), strToBytes('input-b'),
+]);
+// Throws if the proof does not verify — no output is returned in that case.
+
+// POPRF. `info` is required; an empty Uint8Array means "no public input", which is
+// a real and distinct value, not the absence of one.
+const scoped = await client.evaluatePartiallyObliviousOne(
+  strToBytes('input-a'), strToBytes('tenant-a'),
+);
+```
+
+`create` cross-checks the pinned key against what `GET /oprf/config` advertises and throws `OprfPublicKeyMismatchError` on a disagreement. That check is a **diagnostic, not a security control** — the config response is unauthenticated, so it can only refuse, never accept. Proof verification against the pinned key remains the only thing making a verifiable mode verifiable; the check exists so a rotated key fails once, saying what disagreed, instead of as an unexplained run of proof failures.
+
+`VoprfClient` and `PoprfClient` are exported for callers supplying their own transport. The DLEQ **prover** is deliberately not exported: a client never proves, and one that could would be one that could impersonate a server.
 
 ---
 
@@ -300,14 +331,27 @@ await client.deleteRegistration('alice@example.com', token);
 
 Standalone OPRF client for the `/oprf` endpoint. Useful when you want a server-keyed pseudorandom function without the full OPAQUE flow.
 
-#### `OprfHttpClient.create(baseUrl): Promise<OprfHttpClient>` *(recommended)*
+#### `OprfHttpClient.create(baseUrl, options?): Promise<OprfHttpClient>` *(recommended)*
 
 Fetches `GET /oprf/config`, resolves the cipher suite, and returns a configured client.
 
 ```typescript
 const client = await OprfHttpClient.create('https://your-server.example.com');
 // client.cachedConfig.cipherSuite tells you which suite the server uses
+// client.cachedConfig.modes lists the enabled verifiable modes, when there are any
 ```
+
+`options` accepts `suite` to override the fetched cipher suite, and `voprfServerPublicKey` / `poprfServerPublicKey` to pin the keys the verifiable modes need. Pinned keys are cross-checked against the advertised config here, so a mismatch fails at construction rather than at the first evaluation.
+
+#### `evaluateVerifiable(inputs: Uint8Array[]): Promise<Uint8Array[]>`
+
+VOPRF (mode 0x01). Evaluates the batch, verifies the DLEQ proof against the pinned key, and only then unblinds. Throws if the proof does not verify. Results are index-aligned with `inputs`. `evaluateVerifiableOne(input)` is the single-input convenience.
+
+#### `evaluatePartiallyOblivious(inputs: Uint8Array[], info: Uint8Array): Promise<Uint8Array[]>`
+
+POPRF (mode 0x02). As above, but under a key tweaked by `info`, with the proof graded against the tweaked key the client derives — which is what binds the response to the public input actually requested. `info` is required; empty means "no public input". `evaluatePartiallyObliviousOne(input, info)` is the single-input convenience.
+
+Both throw `OprfModeNotEnabledError` on a `404` (the server has no key for that mode) and `OprfRateLimitedError` on a `429`.
 
 #### `new OprfHttpClient(baseUrl, suite?)`
 
