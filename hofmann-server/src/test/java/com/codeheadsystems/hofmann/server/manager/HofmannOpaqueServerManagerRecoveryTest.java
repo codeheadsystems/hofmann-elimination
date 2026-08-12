@@ -1,6 +1,7 @@
 package com.codeheadsystems.hofmann.server.manager;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
@@ -339,8 +340,21 @@ class HofmannOpaqueServerManagerRecoveryTest {
     String recoveryToken = response.recoveryToken();
 
     RegistrationStartRequest startReq = new RegistrationStartRequest(ALICE, new RegistrationRequest(new byte[33]));
-    // Should not throw
-    manager.registrationStart(startReq, recoveryToken);
+
+    // Previously this test ended at "// Should not throw" with no assertion, so it passed against
+    // any behaviour that did not raise — including one that silently declined to start the
+    // registration. Assert the response the caller actually needs to continue.
+    assertThat(manager.registrationStart(startReq, recoveryToken))
+        .isNotNull()
+        .extracting(r -> r.registrationResponse().serverPublicKey())
+        .isNotNull();
+
+    // The token must be peeked, not consumed: registrationFinish still has to accept it, and a
+    // client that retries start after a dropped response must not be locked out of its own
+    // recovery. Consuming here would make the second call fail.
+    assertThatCode(() -> manager.registrationStart(startReq, recoveryToken))
+        .as("a recovery token is consumed at finish, not at start")
+        .doesNotThrowAnyException();
   }
 
   @Test

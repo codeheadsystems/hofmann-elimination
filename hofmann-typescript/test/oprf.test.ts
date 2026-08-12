@@ -141,17 +141,20 @@ describe('P-384/SHA-384 suite constants', () => {
     expect(toHex(P384_SHA384.CONTEXT_STRING)).toBe('4f50524656312d002d503338342d534841333834');
   });
 
-  it('HashToGroup DST has correct prefix', () => {
-    // "HashToGroup-" + contextString
-    const dst = toHex(P384_SHA384.HASH_TO_GROUP_DST);
-    expect(dst.startsWith('48617368546f47726f75702d')).toBe(true); // "HashToGroup-"
-    expect(dst.endsWith('4f50524656312d002d503338342d534841333834')).toBe(true);
+  // Full bytes, as the P-256 cases above do. These were startsWith/endsWith pairs, which leave
+  // the middle unconstrained: any number of extra bytes between "HashToGroup-" and the context
+  // string satisfied both halves. The DST is hashed into every element, so a wrong one is a
+  // silent interop break against the Java and Rust clients rather than a local failure.
+  it('HashToGroup DST = "HashToGroup-" + contextString', () => {
+    expect(toHex(P384_SHA384.HASH_TO_GROUP_DST)).toBe(
+      '48617368546f47726f75702d' + '4f50524656312d002d503338342d534841333834',
+    );
   });
 
-  it('DeriveKeyPair DST has no dash separator', () => {
-    // "DeriveKeyPair" + contextString (no dash)
-    const dst = toHex(P384_SHA384.DERIVE_KEY_PAIR_DST);
-    expect(dst.startsWith('4465726976654b657950616972')).toBe(true); // "DeriveKeyPair"
+  it('DeriveKeyPair DST = "DeriveKeyPair" + contextString, with no dash separator', () => {
+    expect(toHex(P384_SHA384.DERIVE_KEY_PAIR_DST)).toBe(
+      '4465726976654b657950616972' + '4f50524656312d002d503338342d534841333834',
+    );
   });
 
   it('size constants: Nh=48, Npk=49, Nsk=48, Nn=32, Nm=48, L=72', () => {
@@ -169,10 +172,16 @@ describe('P-521/SHA-512 suite constants', () => {
     expect(toHex(P521_SHA512.CONTEXT_STRING)).toBe('4f50524656312d002d503532312d534841353132');
   });
 
-  it('HashToGroup DST has correct prefix', () => {
-    const dst = toHex(P521_SHA512.HASH_TO_GROUP_DST);
-    expect(dst.startsWith('48617368546f47726f75702d')).toBe(true);
-    expect(dst.endsWith('4f50524656312d002d503532312d534841353132')).toBe(true);
+  it('HashToGroup DST = "HashToGroup-" + contextString', () => {
+    expect(toHex(P521_SHA512.HASH_TO_GROUP_DST)).toBe(
+      '48617368546f47726f75702d' + '4f50524656312d002d503532312d534841353132',
+    );
+  });
+
+  it('DeriveKeyPair DST = "DeriveKeyPair" + contextString, with no dash separator', () => {
+    expect(toHex(P521_SHA512.DERIVE_KEY_PAIR_DST)).toBe(
+      '4465726976654b657950616972' + '4f50524656312d002d503532312d534841353132',
+    );
   });
 
   it('size constants: Nh=64, Npk=67, Nsk=66, Nn=32, Nm=64, L=98', () => {

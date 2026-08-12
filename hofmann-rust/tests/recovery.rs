@@ -100,42 +100,16 @@ fn test_capacity_limit() {
     assert!(result.is_err());
 }
 
-// --- RecoveryChallenger tests ---
-
-#[test]
-fn test_challenger_send_and_verify() {
-    let challenger = TestChallenger::new();
-    let cred = b"user@example.com";
-
-    challenger.send_challenge(cred).unwrap();
-    assert!(challenger.verify_response(cred, "123456"));
-}
-
-#[test]
-fn test_challenger_wrong_code_fails() {
-    let challenger = TestChallenger::new();
-    let cred = b"user@example.com";
-
-    challenger.send_challenge(cred).unwrap();
-    assert!(!challenger.verify_response(cred, "wrong"));
-}
-
-#[test]
-fn test_challenger_verify_is_consume_once() {
-    let challenger = TestChallenger::new();
-    let cred = b"user@example.com";
-
-    challenger.send_challenge(cred).unwrap();
-    assert!(challenger.verify_response(cred, "123456"));
-    // Second verify should fail (code consumed)
-    assert!(!challenger.verify_response(cred, "123456"));
-}
-
-#[test]
-fn test_challenger_unknown_cred_fails() {
-    let challenger = TestChallenger::new();
-    assert!(!challenger.verify_response(b"unknown", "123456"));
-}
+// --- RecoveryChallenger ---
+//
+// Removed: test_challenger_send_and_verify, test_challenger_wrong_code_fails,
+// test_challenger_verify_is_consume_once and test_challenger_unknown_cred_fails.
+//
+// All four exercised `TestChallenger` above — a HashMap stub declared in this file — and asserted
+// it returned the codes it had just been handed. `RecoveryChallenger` is a bare trait with no
+// implementation in `src/`, so nothing in the library was under test: they measured the stub's
+// HashMap. `TestChallenger` itself stays, because test_full_recovery_flow still drives the trait
+// through it.
 
 // --- Full recovery re-registration flow ---
 
