@@ -353,13 +353,18 @@ public class HofmannBundle<C extends HofmannConfiguration> implements Configured
     } else {
       oprfSupplier = buildDefaultProcessorSupplier(configuration);
     }
-    OprfClientConfigResponse oprfClientConfig = new OprfClientConfigResponse(
-        configuration.getOprfCipherSuite());
+    // Built before the config response rather than inline in the resource registration, because
+    // the response advertises whichever of them exists. The resource still receives the same two
+    // managers, so there is exactly one place deciding whether a mode is on.
+    VoprfServerManager voprfServerManager = buildVoprfManager(configuration);
+    PoprfServerManager poprfServerManager = buildPoprfManager(configuration);
+    OprfClientConfigResponse oprfClientConfig = VerifiableKeyConfig.clientConfigResponse(
+        configuration.getOprfCipherSuite(), voprfServerManager, poprfServerManager);
     OprfServerManager oprfServerManager = new OprfServerManager(oprfSuite, oprfSupplier);
     RateLimiter oprfRateLimiter = rateLimiterFunction.apply(rateLimitConfigSupplier.oprfRateLimitConfig());
     environment.jersey().register(new OprfResource(oprfServerManager, oprfClientConfig, oprfRateLimiter,
         configuration.isTrustForwardedHeaders(),
-        buildVoprfManager(configuration), buildPoprfManager(configuration)));
+        voprfServerManager, poprfServerManager));
 
     // Shutdown lifecycle for manager and rate limiters
     environment.lifecycle().manage(new io.dropwizard.lifecycle.Managed() {

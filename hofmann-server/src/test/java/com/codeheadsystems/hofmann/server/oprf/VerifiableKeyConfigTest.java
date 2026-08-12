@@ -3,10 +3,14 @@ package com.codeheadsystems.hofmann.server.oprf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
+import com.codeheadsystems.rfc.oprf.manager.PoprfServerManager;
+import com.codeheadsystems.rfc.oprf.manager.VoprfServerManager;
 import com.codeheadsystems.rfc.oprf.model.VerifiableProcessorDetail;
 import com.codeheadsystems.rfc.oprf.rfc9497.OprfCipherSuite;
 import com.codeheadsystems.rfc.oprf.rfc9497.OprfMode;
 import java.security.SecureRandom;
+import org.bouncycastle.util.encoders.Hex;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -82,5 +86,111 @@ class VerifiableKeyConfigTest {
     assertThatThrownBy(() -> VerifiableKeyConfig.detailFrom(
         suite(), "00", "test-voprf", "hofmann.voprf-master-key-hex"))
         .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  // ─── clientConfigResponse ──────────────────────────────────────────────────
+
+  private VoprfServerManager voprfManager() {
+    OprfCipherSuite s = VerifiableKeyConfig.suiteFor("P256_SHA256", OprfMode.VOPRF, RANDOM);
+    VerifiableProcessorDetail detail = VerifiableKeyConfig.detailFrom(
+        s, "42424242424242424242424242", "test-voprf", "hofmann.voprf-master-key-hex");
+    return new VoprfServerManager(s, () -> detail, 16);
+  }
+
+  private PoprfServerManager poprfManager() {
+    OprfCipherSuite s = VerifiableKeyConfig.suiteFor("P256_SHA256", OprfMode.POPRF, RANDOM);
+    VerifiableProcessorDetail detail = VerifiableKeyConfig.detailFrom(
+        s, "5353535353535353535353535353", "test-poprf", "hofmann.poprf-master-key-hex");
+    return new PoprfServerManager(s, () -> detail, 8);
+  }
+
+  /**
+   * The compatibility case. A base-mode deployment must emit the document it emitted before the
+   * field existed, because an already-released client's {@code ObjectMapper} rejects unknown
+   * properties. An empty list would not do — it is a different document.
+   */
+  @Test
+  void clientConfigResponse_noModes_omitsTheFieldEntirely() {
+    OprfClientConfigResponse response =
+        VerifiableKeyConfig.clientConfigResponse("P256_SHA256", null, null);
+
+    assertThat(response.cipherSuite()).isEqualTo("P256_SHA256");
+    assertThat(response.modes()).isNull();
+  }
+
+  @Test
+  void clientConfigResponse_voprfOnly_advertisesOnlyVoprf() {
+    OprfClientConfigResponse response =
+        VerifiableKeyConfig.clientConfigResponse("P256_SHA256", voprfManager(), null);
+
+    assertThat(response.modes()).hasSize(1);
+    assertThat(response.modes().get(0).mode()).isEqualTo("VOPRF");
+    assertThat(response.modes().get(0).processIdentifier()).isEqualTo("test-voprf");
+    assertThat(response.modes().get(0).maxBatchSize()).isEqualTo(16);
+  }
+
+  @Test
+  void clientConfigResponse_poprfOnly_advertisesOnlyPoprf() {
+    OprfClientConfigResponse response =
+        VerifiableKeyConfig.clientConfigResponse("P256_SHA256", null, poprfManager());
+
+    assertThat(response.modes()).hasSize(1);
+    assertThat(response.modes().get(0).mode()).isEqualTo("POPRF");
+    assertThat(response.modes().get(0).maxBatchSize()).isEqualTo(8);
+  }
+
+  /**
+   * The advertised key must be the one a client's proof verification is graded against. Derived
+   * independently here from the same master key, so a wrong key or a wrong mode fails rather than
+   * being compared against itself.
+   */
+  @Test
+  void clientConfigResponse_advertisesTheKeyClientsMustPin() {
+    OprfCipherSuite voprfSuite =
+        VerifiableKeyConfig.suiteFor("P256_SHA256", OprfMode.VOPRF, RANDOM);
+    VerifiableProcessorDetail expected = VerifiableKeyConfig.detailFrom(
+        voprfSuite, "42424242424242424242424242", "test-voprf", "hofmann.voprf-master-key-hex");
+
+    OprfClientConfigResponse response =
+        VerifiableKeyConfig.clientConfigResponse("P256_SHA256", voprfManager(), null);
+
+    assertThat(response.modes().get(0).publicKeyHex())
+        .isEqualTo(Hex.toHexString(expected.publicKey()));
+  }
+
+  /**
+   * POPRF advertises {@code pkS}, never a tweaked key. The client derives {@code m*G + pkS} from
+   * the public input it chooses, so a tweaked key would be the answer to one {@code info} and
+   * wrong for every other — and nothing would notice until a POPRF client existed.
+   */
+  @Test
+  void clientConfigResponse_poprfAdvertisesTheUntweakedKey() {
+    OprfCipherSuite poprfSuite =
+        VerifiableKeyConfig.suiteFor("P256_SHA256", OprfMode.POPRF, RANDOM);
+    VerifiableProcessorDetail expected = VerifiableKeyConfig.detailFrom(
+        poprfSuite, "5353535353535353535353535353", "test-poprf",
+        "hofmann.poprf-master-key-hex");
+
+    OprfClientConfigResponse response =
+        VerifiableKeyConfig.clientConfigResponse("P256_SHA256", null, poprfManager());
+
+    assertThat(response.modes().get(0).publicKeyHex())
+        .isEqualTo(Hex.toHexString(expected.publicKey()));
+  }
+
+  /**
+   * Order matters only in that it is stable; a client looks modes up by name. Asserted so a
+   * reordering is a deliberate change rather than an accident.
+   */
+  @Test
+  void clientConfigResponse_bothModes_advertisesVoprfThenPoprf() {
+    OprfClientConfigResponse response =
+        VerifiableKeyConfig.clientConfigResponse("P256_SHA256", voprfManager(), poprfManager());
+
+    assertThat(response.modes()).hasSize(2);
+    assertThat(response.modes().get(0).mode()).isEqualTo("VOPRF");
+    assertThat(response.modes().get(1).mode()).isEqualTo("POPRF");
+    assertThat(response.modes().get(0).publicKeyHex())
+        .isNotEqualTo(response.modes().get(1).publicKeyHex());
   }
 }

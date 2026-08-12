@@ -1,10 +1,16 @@
 package com.codeheadsystems.hofmann.server.oprf;
 
+import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
+import com.codeheadsystems.hofmann.model.oprf.OprfModeInfo;
+import com.codeheadsystems.rfc.oprf.manager.PoprfServerManager;
+import com.codeheadsystems.rfc.oprf.manager.VoprfServerManager;
 import com.codeheadsystems.rfc.oprf.model.VerifiableProcessorDetail;
 import com.codeheadsystems.rfc.oprf.rfc9497.OprfCipherSuite;
 import com.codeheadsystems.rfc.oprf.rfc9497.OprfMode;
 import java.math.BigInteger;
 import java.security.SecureRandom;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Builds the VOPRF/POPRF key material both framework adapters need from configuration.
@@ -95,5 +101,48 @@ public final class VerifiableKeyConfig {
       throw new IllegalStateException(propertyName + " is not valid hex", e);
     }
     return VerifiableProcessorDetail.derive(suite, masterKey, processorIdentifier);
+  }
+
+  /**
+   * Builds the {@code GET /oprf/config} response, advertising whichever verifiable modes are
+   * enabled.
+   *
+   * <p>Here for the same reason the rest of this class is: the two adapters would otherwise each
+   * decide independently what to advertise, and the failure mode of them disagreeing is a client
+   * that cross-checks its pinned key successfully against one adapter and fatally against the
+   * other.
+   *
+   * <p><strong>Returns the single-argument form when neither mode is enabled</strong>, so the
+   * emitted document is byte-identical to what shipped before the {@code modes} field existed.
+   * That is what keeps already-released clients — whose {@code ObjectMapper} rejects unknown
+   * properties — working against an upgraded base-mode server. An empty list would not do; see
+   * {@code OprfClientConfigResponse}.
+   *
+   * <p>What is advertised is public data only: the untweaked public key, the keying-context label
+   * already present on every response, and the batch cap already discoverable by sending an
+   * oversized batch. Nothing here is a secret, and nothing here is authenticated — see
+   * {@code OprfModeInfo} for why a client must still pin the key out of band.
+   *
+   * @param cipherSuiteName the configured curve/hash suite name
+   * @param voprf           the VOPRF manager, or null if the mode is disabled
+   * @param poprf           the POPRF manager, or null if the mode is disabled
+   * @return the config response
+   */
+  public static OprfClientConfigResponse clientConfigResponse(final String cipherSuiteName,
+                                                              final VoprfServerManager voprf,
+                                                              final PoprfServerManager poprf) {
+    if (voprf == null && poprf == null) {
+      return new OprfClientConfigResponse(cipherSuiteName);
+    }
+    final List<OprfModeInfo> modes = new ArrayList<>(2);
+    if (voprf != null) {
+      modes.add(new OprfModeInfo(OprfMode.VOPRF.name(), voprf.serverPublicKeyHex(),
+          voprf.processorIdentifier(), voprf.maxBatchSize()));
+    }
+    if (poprf != null) {
+      modes.add(new OprfModeInfo(OprfMode.POPRF.name(), poprf.serverPublicKeyHex(),
+          poprf.processorIdentifier(), poprf.maxBatchSize()));
+    }
+    return new OprfClientConfigResponse(cipherSuiteName, modes);
   }
 }

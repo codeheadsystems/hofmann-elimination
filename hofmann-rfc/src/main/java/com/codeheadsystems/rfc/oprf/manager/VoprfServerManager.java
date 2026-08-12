@@ -81,6 +81,38 @@ public class VoprfServerManager {
   }
 
   /**
+   * The public key clients grade this server's proofs against, hex-encoded.
+   *
+   * <p>Public data by construction — it is what the client must already hold, and a proof is
+   * worthless without it. Read through the supplier on every call rather than cached, so a
+   * deployment that rotates its key advertises the new one rather than a stale value that would
+   * fail every verification while looking configured.
+   *
+   * @return the server public key, hex-encoded
+   */
+  public String serverPublicKeyHex() {
+    return Hex.toHexString(support.requireValidDetail(supplier.get()).publicKey());
+  }
+
+  /**
+   * The keying-context label this server stamps on its responses.
+   *
+   * @return the processor identifier
+   */
+  public String processorIdentifier() {
+    return support.requireValidDetail(supplier.get()).processorIdentifier();
+  }
+
+  /**
+   * The largest batch this server will accept.
+   *
+   * @return the configured maximum batch size
+   */
+  public int maxBatchSize() {
+    return maxBatchSize;
+  }
+
+  /**
    * Evaluates every blinded element in the request and returns them with one proof covering the
    * batch.
    *

@@ -32,6 +32,7 @@ public class OprfCipherSuite {
   private static final Logger log = LoggerFactory.getLogger(OprfCipherSuite.class);
 
   private final String identifier;
+  private final CurveHashSuite curveHashSuite;
   private final OprfMode mode;
   private final byte[] contextString;
   private final byte[] hashToGroupDst;
@@ -47,6 +48,7 @@ public class OprfCipherSuite {
    */
   private OprfCipherSuite(OprfCipherSuite source, RandomProvider randomProvider) {
     this.identifier = source.identifier;
+    this.curveHashSuite = source.curveHashSuite;
     this.mode = source.mode;
     this.contextString = source.contextString;
     this.hashToGroupDst = source.hashToGroupDst;
@@ -60,12 +62,14 @@ public class OprfCipherSuite {
 
   private OprfCipherSuite(String identifier,
                           String contextSuffix,
+                          CurveHashSuite curveHashSuite,
                           OprfMode mode,
                           GroupSpec groupSpec,
                           String hashAlgorithm,
                           int hashOutputLength,
                           RandomProvider randomProvider) {
     this.identifier = identifier;
+    this.curveHashSuite = curveHashSuite;
     this.mode = mode;
     this.contextString = buildContextString(mode, contextSuffix);
     this.hashToGroupDst = ByteUtils.concat(
@@ -149,6 +153,23 @@ public class OprfCipherSuite {
   }
 
   // ─── Accessors ──────────────────────────────────────────────────────────────
+
+  /**
+   * The curve and hash this suite is built on, independent of its {@link #mode()}.
+   *
+   * <p>Distinct from {@link #identifier()}, which returns the RFC's spelling
+   * ({@code "P256-SHA256"}) and is not round-trippable through
+   * {@link Builder#withSuite(String)} — that method does {@code valueOf(name.toUpperCase())}
+   * and so wants the enum's spelling ({@code "P256_SHA256"}), which is also what
+   * {@code GET /oprf/config} puts on the wire. Returning the enum rather than either string
+   * is what lets a caller rebuild the same curve and hash under a different mode without
+   * having to know which of the two spellings it is holding.
+   *
+   * @return the curve and hash suite
+   */
+  public CurveHashSuite curveHashSuite() {
+    return curveHashSuite;
+  }
 
   /**
    * The RFC 9497 protocol mode this suite is configured for.
@@ -641,6 +662,7 @@ public class OprfCipherSuite {
         case P256_SHA256 -> new OprfCipherSuite(
             "P256-SHA256",
             "P256-SHA256",
+            curveHashSuite,
             mode,
             WeierstrassGroupSpecImpl.P256_SHA256,
             "SHA-256",
@@ -650,6 +672,7 @@ public class OprfCipherSuite {
         case P384_SHA384 -> new OprfCipherSuite(
             "P384-SHA384",
             "P384-SHA384",
+            curveHashSuite,
             mode,
             WeierstrassGroupSpecImpl.P384_SHA384,
             "SHA-384",
@@ -659,6 +682,7 @@ public class OprfCipherSuite {
         case P521_SHA512 -> new OprfCipherSuite(
             "P521-SHA512",
             "P521-SHA512",
+            curveHashSuite,
             mode,
             WeierstrassGroupSpecImpl.P521_SHA512,
             "SHA-512",
@@ -668,6 +692,7 @@ public class OprfCipherSuite {
         case RISTRETTO255_SHA512 -> new OprfCipherSuite(
             "ristretto255-SHA512",
             "ristretto255-SHA512",
+            curveHashSuite,
             mode,
             Ristretto255GroupSpec.INSTANCE,
             "SHA-512",

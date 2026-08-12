@@ -82,6 +82,42 @@ public class PoprfServerManager {
   }
 
   /**
+   * The server's <strong>untweaked</strong> public key, hex-encoded.
+   *
+   * <p>Deliberately the raw {@code pkS} and not the tweaked key any particular request is graded
+   * against. The tweak is a function of {@code info}, which the client chooses; the client derives
+   * {@code m*G + pkS} itself and grades the proof against that. Publishing a tweaked key here
+   * would be publishing the answer to one public input, useless for every other, and the mistake
+   * would stay invisible until a POPRF client existed to fail against it.
+   *
+   * <p>Read through the supplier on every call so a rotated key is advertised rather than a stale
+   * one.
+   *
+   * @return the untweaked server public key, hex-encoded
+   */
+  public String serverPublicKeyHex() {
+    return Hex.toHexString(support.requireValidDetail(supplier.get()).publicKey());
+  }
+
+  /**
+   * The keying-context label this server stamps on its responses.
+   *
+   * @return the processor identifier
+   */
+  public String processorIdentifier() {
+    return support.requireValidDetail(supplier.get()).processorIdentifier();
+  }
+
+  /**
+   * The largest batch this server will accept.
+   *
+   * @return the configured maximum batch size
+   */
+  public int maxBatchSize() {
+    return maxBatchSize;
+  }
+
+  /**
    * Evaluates every blinded element under the request's public input and returns one proof
    * covering the batch.
    *
