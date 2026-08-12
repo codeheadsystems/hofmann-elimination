@@ -3,24 +3,31 @@ package com.codeheadsystems.rfc.ellipticcurve.rfc9380;
 import com.codeheadsystems.rfc.common.ByteUtils;
 import com.codeheadsystems.rfc.ellipticcurve.curve.Curve;
 import java.math.BigInteger;
+import org.bouncycastle.crypto.ExtendedDigest;
+import org.bouncycastle.crypto.digests.SHA256Digest;
+import org.bouncycastle.crypto.digests.SHA384Digest;
+import org.bouncycastle.crypto.digests.SHA512Digest;
+import org.bouncycastle.crypto.hash2curve.HashToCurveProfile;
+import org.bouncycastle.crypto.hash2curve.OPRFHashToScalar;
 import org.bouncycastle.math.ec.ECPoint;
 
 /**
- * {@link GroupSpec} implementation for Weierstrass elliptic curves (P-256, P-384, P-521, secp256k1).
- * Delegates hash-to-group to the existing {@link HashToCurve} pipeline and
- * serializes all group elements as compressed SEC1 byte arrays.
+ * {@link GroupSpec} implementation for the NIST Weierstrass curves (P-256, P-384, P-521).
+ * Delegates hash-to-group and hash-to-scalar to BouncyCastle's
+ * {@code org.bouncycastle.crypto.hash2curve} package, and serializes all group elements as
+ * compressed SEC1 byte arrays.
  *
- * @param curve                  the curve this spec operates over, supplying the generator, group
- *                               order and point arithmetic
- * @param hashToCurveImpl        the RFC 9380 hash-to-curve pipeline for {@code curve}, used to map
- *                               messages to group elements
- * @param hashToScalarFieldImpl  the hash-to-field instance configured for the scalar field of
- *                               {@code curve}, used to map messages to scalars
+ * @param curve             the curve this spec operates over, supplying the generator, group order
+ *                          and point arithmetic
+ * @param hashToCurveImpl   the RFC 9380 hash-to-curve pipeline for {@code curve}, used to map
+ *                          messages to group elements
+ * @param hashToScalarImpl  the RFC 9497 hash-to-scalar implementation for {@code curve}, used to
+ *                          map messages to scalars modulo the group order
  */
 public record WeierstrassGroupSpecImpl(
     Curve curve,
-    HashToCurve hashToCurveImpl,
-    HashToField hashToScalarFieldImpl
+    BcWeierstrassHashToCurve hashToCurveImpl,
+    OPRFHashToScalar hashToScalarImpl
 ) implements GroupSpec {
 
   /**
@@ -38,46 +45,39 @@ public record WeierstrassGroupSpecImpl(
    */
   public static final WeierstrassGroupSpecImpl P521_SHA512 = buildP521();
 
-  /**
-   * secp256k1 instance (used in RFC 9380 tests).
-   *
-   * @return the weierstrass group spec
-   */
-  public static WeierstrassGroupSpecImpl forSecp256k1() {
-    return buildSecp256k1();
-  }
-
   private static WeierstrassGroupSpecImpl buildP256() {
-    return new WeierstrassGroupSpecImpl(
-        Curve.P256_CURVE,
-        HashToCurve.forP256(),
-        HashToField.forP256Scalar()
-    );
+    return build(Curve.P256_CURVE, HashToCurveProfile.P256_XMD_SHA_256, new SHA256Digest());
   }
 
   private static WeierstrassGroupSpecImpl buildP384() {
-    return new WeierstrassGroupSpecImpl(
-        Curve.P384_CURVE,
-        HashToCurve.forP384(),
-        HashToField.forP384Scalar()
-    );
+    return build(Curve.P384_CURVE, HashToCurveProfile.P384_XMD_SHA_384, new SHA384Digest());
   }
 
   private static WeierstrassGroupSpecImpl buildP521() {
-    return new WeierstrassGroupSpecImpl(
-        Curve.P521_CURVE,
-        HashToCurve.forP521(),
-        HashToField.forP521Scalar()
-    );
+    return build(Curve.P521_CURVE, HashToCurveProfile.P521_XMD_SHA_512, new SHA512Digest());
   }
 
-  private static WeierstrassGroupSpecImpl buildSecp256k1() {
-    // secp256k1 is used in RFC 9380 hash-to-curve tests only (not in OPRF).
-    // hashToScalarFieldImpl uses the base field; scalar-field operations are not needed.
+  /**
+   * Wires one suite's two hashing pipelines onto a curve.
+   * <p>
+   * Both take the security level {@code k} from the same BouncyCastle profile, which is what keeps
+   * the two consistent. {@code OPRFHashToScalar} derives its own output length as
+   * {@code ceil((bitlen(n-1) + k) / 8)} from the curve's order, giving 48, 72 and 98 bytes for
+   * P-256, P-384 and P-521 — the same lengths the superseded {@code HashToField} scalar factories
+   * hard-coded, which is why this substitution leaves every RFC 9497 vector unchanged.
+   *
+   * @param curve   the curve to operate over
+   * @param profile the BouncyCastle profile naming the RFC 9380 suite for {@code curve}
+   * @param digest  the suite's hash
+   * @return the assembled group spec
+   */
+  private static WeierstrassGroupSpecImpl build(final Curve curve,
+                                                final HashToCurveProfile profile,
+                                                final ExtendedDigest digest) {
     return new WeierstrassGroupSpecImpl(
-        Curve.SECP256K1_CURVE,
-        HashToCurve.forSecp256k1(),
-        HashToField.forSecp256k1()
+        curve,
+        BcWeierstrassHashToCurve.of(curve.curve(), profile, digest),
+        new OPRFHashToScalar(curve.curve(), digest, profile.getK())
     );
   }
 
@@ -100,7 +100,7 @@ public record WeierstrassGroupSpecImpl(
 
   @Override
   public BigInteger hashToScalar(byte[] msg, byte[] dst) {
-    return hashToScalarFieldImpl.hashToField(msg, dst, 1)[0];
+    return hashToScalarImpl.process(msg, dst);
   }
 
   // ─── Builders ────────────────────────────────────────────────────────────────
@@ -212,7 +212,7 @@ public record WeierstrassGroupSpecImpl(
    * recomputes from the same secret value on every single authentication.
    * <p>
    * BouncyCastle resolves the generator path to {@code WNafL2RMultiplier} for all three NIST
-   * curves (and {@code GLVMultiplier} for secp256k1), not to a comb multiplier, so before this it
+   * curves, not to a comb multiplier, so before this it
    * leaked the same way {@link #scalarMultiply} did — a measured ~13% Hamming-weight signal at
    * equal bit length. The precomputed table is cached for the fixed generator, which makes the
    * leak cleaner to measure rather than smaller: the table lookups are still indexed by secret
@@ -352,7 +352,7 @@ public record WeierstrassGroupSpecImpl(
    *   <li><b>On-curve</b> — rejects points that do not satisfy the curve equation.</li>
    *   <li><b>Prime-order subgroup</b> — for curves with cofactor h&gt;1, verifies that
    *       {@code n·P = O} where {@code n} is the group order. For all currently supported
-   *       curves (P-256, P-384, P-521, secp256k1) the cofactor {@code h=1}, which means
+   *       curves (P-256, P-384, P-521) the cofactor {@code h=1}, which means
    *       every non-identity on-curve point is automatically in the prime-order subgroup
    *       and this check is a no-op. The guard is retained for defense-in-depth should a
    *       cofactor&gt;1 curve be added in the future.</li>
@@ -414,7 +414,7 @@ public record WeierstrassGroupSpecImpl(
     if (!p.isValid()) {
       throw new SecurityException("Invalid EC point: not on curve");
     }
-    // For h=1 curves (P-256, P-384, P-521, secp256k1) every non-identity curve point is
+    // For h=1 curves (P-256, P-384, P-521) every non-identity curve point is
     // in the prime-order subgroup — the check below is skipped at no security cost.
     // For h>1 curves we verify n·P = O explicitly.
     if (!curve.h().equals(BigInteger.ONE) && !p.multiply(curve.n()).isInfinity()) {

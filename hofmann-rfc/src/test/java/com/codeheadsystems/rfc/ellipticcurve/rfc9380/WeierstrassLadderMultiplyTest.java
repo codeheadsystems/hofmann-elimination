@@ -35,8 +35,7 @@ class WeierstrassLadderMultiplyTest {
     return Stream.of(
         Arguments.of("P-256", WeierstrassGroupSpecImpl.P256_SHA256),
         Arguments.of("P-384", WeierstrassGroupSpecImpl.P384_SHA384),
-        Arguments.of("P-521", WeierstrassGroupSpecImpl.P521_SHA512),
-        Arguments.of("secp256k1", WeierstrassGroupSpecImpl.forSecp256k1()));
+        Arguments.of("P-521", WeierstrassGroupSpecImpl.P521_SHA512));
   }
 
   /** The reference: what BouncyCastle's own multiplier produces for the same inputs. */
