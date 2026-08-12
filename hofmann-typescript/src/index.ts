@@ -22,6 +22,12 @@ export {
   P521_SHA512,
   RISTRETTO255_SHA512,
   getCipherSuite,
+  // Mode-aware resolution, for the verifiable modes. A VOPRF or POPRF client
+  // needs a suite built for its mode; the base-mode suite computes a different
+  // function under a different set of domain-separation tags.
+  getCipherSuiteForMode,
+  OprfMode,
+  assertMode,
   // Backward-compatible P-256 constant exports
   CONTEXT_STRING,
   HASH_TO_GROUP_DST,
@@ -33,6 +39,32 @@ export {
 // ── OPRF operations ──────────────────────────────────────────────────────────
 export { randomScalar, blind, finalize, hashToScalar, deriveKeyPair } from './oprf/client.js';
 export { OprfHttpClient } from './oprf/http.js';
+
+// ── Verifiable OPRF modes (RFC 9497 VOPRF 0x01 / POPRF 0x02) ─────────────────
+// Both clients require the server's public key, obtained and authenticated out
+// of band. Nothing from './oprf/dleq.js' is exported: the prover exists for the
+// tests, and a client that could generate proofs would be a client that could
+// impersonate a server to anything trusting this package's types.
+export { VoprfClient, PoprfClient } from './oprf/verifiable.js';
+export type {
+  VoprfClientContext,
+  PoprfClientContext,
+  VoprfRequestDto,
+  VoprfResponseDto,
+  PoprfRequestDto,
+  PoprfResponseDto,
+} from './oprf/verifiable.js';
+export {
+  assertPinnedKeyMatches,
+  OprfModeNotEnabledError,
+  OprfPublicKeyMismatchError,
+  OprfRateLimitedError,
+} from './oprf/http.js';
+export type {
+  OprfHttpClientOptions,
+  OprfConfigResponseDto,
+  OprfModeInfoDto,
+} from './oprf/http.js';
 
 // ── OPAQUE types ─────────────────────────────────────────────────────────────
 export type {
