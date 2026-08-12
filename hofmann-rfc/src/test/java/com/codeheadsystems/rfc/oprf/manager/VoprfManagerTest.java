@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.codeheadsystems.rfc.oprf.IdentityEncodings;
 import com.codeheadsystems.rfc.oprf.model.HashResult;
 import com.codeheadsystems.rfc.oprf.model.VerifiableBlindedRequest;
 import com.codeheadsystems.rfc.oprf.model.VerifiableEvaluatedResponse;
@@ -101,6 +102,13 @@ class VoprfManagerTest {
   @ParameterizedTest(name = "{0}")
   @MethodSource("suites")
   void clientRejectsAnUnusablePublicKey(String name, OprfCipherSuite suite) {
+    // The identity, which is a structurally valid encoding refused on its value. Previously this
+    // case was new byte[elementSize()], which on the SEC1 suites is merely malformed — so the
+    // identity public key, the one that makes every proof verify against a zero key, was only
+    // ever tested on ristretto255.
+    assertThatThrownBy(() -> new VoprfClientManager(suite, IdentityEncodings.identityFor(suite)))
+        .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
+    // An all-zero buffer of element size: malformed on SEC1, the identity on ristretto255.
     assertThatThrownBy(() -> new VoprfClientManager(suite, new byte[suite.elementSize()]))
         .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
     assertThatThrownBy(() -> new VoprfClientManager(suite, new byte[]{0x01, 0x02}))
@@ -216,9 +224,50 @@ class VoprfManagerTest {
     VerifiableProcessorDetail d = detail(suite);
     VoprfServerManager server = new VoprfServerManager(suite, () -> d);
 
+    // Both candidate encodings must be refused: the suite's real identity encoding, and the
+    // all-zero element-sized buffer this test used to pass alone.
+    assertThatThrownBy(() -> server.process(new VerifiableBlindedRequest(
+        List.of(Hex.toHexString(IdentityEncodings.identityFor(suite))), "req")))
+        .as("%s must refuse the identity encoding", name)
+        .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
     assertThatThrownBy(() -> server.process(new VerifiableBlindedRequest(
         List.of(Hex.toHexString(new byte[suite.elementSize()])), "req")))
+        .as("%s must refuse an all-zero element-sized buffer", name)
         .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
+  }
+
+  /**
+   * Why the suite above cannot assert a single reason, and what each suite actually guarantees.
+   *
+   * <p>On ristretto255 the identity is representable — 32 zero bytes is a well-formed encoding
+   * that passes the RFC 9496 §4.3.1 decode checks — so refusing it is a decision about its
+   * <em>value</em>, and the message says so. That is the case RFC 9497 §2.1 is written for, and
+   * the one that regressed.
+   *
+   * <p>On the SEC1 curves the wire format is fixed-length compressed (33/49/67 bytes) and simply
+   * has no encoding for the point at infinity: the 1-byte SEC1 identity fails the length check
+   * and an all-zero buffer of the right length fails the prefix check. The identity is therefore
+   * unrepresentable rather than rejected, and asserting an "identity" message there would be
+   * asserting a reason the code has no way to reach. Pinning this keeps the distinction from
+   * being quietly re-flattened into a single permissive assertion.
+   */
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("suites")
+  void identityRefusalReasonIsValueOnRistrettoAndShapeOnSec1(String name, OprfCipherSuite suite) {
+    VerifiableProcessorDetail d = detail(suite);
+    VoprfServerManager server = new VoprfServerManager(suite, () -> d);
+    String identityHex = Hex.toHexString(IdentityEncodings.identityFor(suite));
+
+    if (suite.elementSize() == 32) {
+      assertThatThrownBy(() ->
+          server.process(new VerifiableBlindedRequest(List.of(identityHex), "req")))
+          .hasMessageContaining("identity");
+    } else {
+      assertThatThrownBy(() ->
+          server.process(new VerifiableBlindedRequest(List.of(identityHex), "req")))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("must be exactly");
+    }
   }
 
   @ParameterizedTest(name = "{0}")

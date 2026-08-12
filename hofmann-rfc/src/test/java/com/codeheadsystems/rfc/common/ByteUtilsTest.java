@@ -3,7 +3,6 @@ package com.codeheadsystems.rfc.common;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.lang.reflect.Constructor;
 import java.math.BigInteger;
 import org.bouncycastle.jce.ECNamedCurveTable;
 import org.bouncycastle.jce.spec.ECNamedCurveParameterSpec;
@@ -15,19 +14,9 @@ import org.junit.jupiter.api.Test;
  */
 class ByteUtilsTest {
 
-  // ─── Constructor ──────────────────────────────────────────────────────────
-
-  /**
-   * Private constructor is inaccessible.
-   *
-   * @throws Exception the exception
-   */
-  @Test
-  void privateConstructorIsInaccessible() throws Exception {
-    Constructor<ByteUtils> ctor = ByteUtils.class.getDeclaredConstructor();
-    ctor.setAccessible(true);
-    ctor.newInstance(); // covers the private constructor line
-  }
+  // Removed: privateConstructorIsInaccessible, which made the constructor accessible, invoked it,
+  // and asserted nothing. Its own comment said what it was for — "covers the private constructor
+  // line" — and its name claimed the opposite of what it did.
 
   // ─── I2OSP ────────────────────────────────────────────────────────────────
 
@@ -293,5 +282,89 @@ class ByteUtilsTest {
     byte[] baG = ByteUtils.dhECDH(a, bG);
 
     assertThat(abG).isEqualTo(baG);
+  }
+
+  // ─── scalarToFixedBytes ─────────────────────────────────────────────────────
+  //
+  // Public, static, and previously untested. It exists to be branch-free on the scalar's value,
+  // which is why it always routes through a length+1 intermediate rather than trimming a sign
+  // byte conditionally — so the cases below are chosen to cover the shapes toByteArray() returns:
+  // shorter than length, exactly length, and length+1 with a leading sign byte.
+
+  @Test
+  void scalarToFixedBytes_padsAShortScalarOnTheLeft() {
+    assertThat(ByteUtils.scalarToFixedBytes(BigInteger.valueOf(1), 4))
+        .isEqualTo(new byte[]{0x00, 0x00, 0x00, 0x01});
+  }
+
+  @Test
+  void scalarToFixedBytes_zeroIsAllZeroes() {
+    assertThat(ByteUtils.scalarToFixedBytes(BigInteger.ZERO, 4))
+        .isEqualTo(new byte[]{0x00, 0x00, 0x00, 0x00});
+  }
+
+  /**
+   * The case the length+1 intermediate exists for: a scalar whose high bit is set makes
+   * {@code toByteArray()} prepend a 0x00 sign byte, so the raw form is one byte longer than the
+   * target. The sign byte must be dropped, not shifted into the output.
+   */
+  @Test
+  void scalarToFixedBytes_dropsTheSignByteWhenTheHighBitIsSet() {
+    BigInteger highBitSet = new BigInteger(1, new byte[]{(byte) 0xFF, 0x02, 0x03, 0x04});
+
+    assertThat(ByteUtils.scalarToFixedBytes(highBitSet, 4))
+        .isEqualTo(new byte[]{(byte) 0xFF, 0x02, 0x03, 0x04});
+  }
+
+  @Test
+  void scalarToFixedBytes_exactLengthScalarIsUnchanged() {
+    BigInteger value = new BigInteger(1, new byte[]{0x01, 0x02, 0x03, 0x04});
+
+    assertThat(ByteUtils.scalarToFixedBytes(value, 4))
+        .isEqualTo(new byte[]{0x01, 0x02, 0x03, 0x04});
+  }
+
+  /**
+   * Records what happens to an over-long scalar, which is currently an unchecked
+   * {@link ArrayIndexOutOfBoundsException} rather than a validated rejection: the arraycopy
+   * destination offset is {@code length + 1 - raw.length}, which goes negative once the scalar
+   * needs more than {@code length + 1} bytes.
+   *
+   * <p>Every in-tree caller passes a scalar already reduced mod the group order, so this is not
+   * reachable through the library today. It is pinned rather than fixed because the method is
+   * public and the behaviour should be a deliberate choice: if it ever becomes an
+   * {@link IllegalArgumentException}, this test is where that decision gets recorded.
+   */
+  @Test
+  void scalarToFixedBytes_overLongScalarThrowsRatherThanTruncating() {
+    BigInteger tooWide = BigInteger.ONE.shiftLeft(8 * 33);
+
+    assertThatThrownBy(() -> ByteUtils.scalarToFixedBytes(tooWide, 32))
+        .isInstanceOf(ArrayIndexOutOfBoundsException.class);
+  }
+
+  // ─── isAllZero ──────────────────────────────────────────────────────────────
+  //
+  // The pre-check callers use to refuse the ristretto255 identity with their own exception type.
+
+  @Test
+  void isAllZero_trueForAnAllZeroBuffer() {
+    assertThat(ByteUtils.isAllZero(new byte[32])).isTrue();
+  }
+
+  @Test
+  void isAllZero_trueForAnEmptyBuffer() {
+    assertThat(ByteUtils.isAllZero(new byte[0])).isTrue();
+  }
+
+  @Test
+  void isAllZero_falseWhenAnyByteIsSet() {
+    byte[] lastByteSet = new byte[32];
+    lastByteSet[31] = 1;
+    byte[] firstByteSet = new byte[32];
+    firstByteSet[0] = 1;
+
+    assertThat(ByteUtils.isAllZero(lastByteSet)).isFalse();
+    assertThat(ByteUtils.isAllZero(firstByteSet)).isFalse();
   }
 }

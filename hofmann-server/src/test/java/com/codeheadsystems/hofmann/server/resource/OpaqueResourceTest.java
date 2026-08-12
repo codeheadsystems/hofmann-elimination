@@ -17,6 +17,8 @@ import com.codeheadsystems.rfc.opaque.model.RegistrationResponse;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.RuntimeDelegate;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.AfterAll;
@@ -41,6 +43,7 @@ import org.mockito.Mockito;
 class OpaqueResourceTest {
 
   private static final AtomicInteger LAST_STATUS = new AtomicInteger(-1);
+  private static final Map<String, String> LAST_HEADERS = new ConcurrentHashMap<>();
 
   private HofmannOpaqueServerManager manager;
   private OpaqueResource resource;
@@ -68,6 +71,17 @@ class OpaqueResourceTest {
       LAST_STATUS.set(((Response.StatusType) inv.getArgument(0)).getStatusCode());
       return mockBuilder;
     });
+    // Record headers too, so a mapping can be asserted on Retry-After and not only on the status.
+    // RETURNS_SELF already makes header() chainable; without this stub the recorded value is
+    // unreachable and getHeaderString silently answers null for every name.
+    when(mockBuilder.header(nullable(String.class), any())).thenAnswer(inv -> {
+      // The Object cast is load-bearing: getArgument is generic, so an uncast argument lets
+      // javac select String.valueOf(char[]) and every header value fails with a ClassCastException.
+      LAST_HEADERS.put(inv.getArgument(0), String.valueOf((Object) inv.getArgument(1)));
+      return mockBuilder;
+    });
+    when(mockResponse.getHeaderString(nullable(String.class)))
+        .thenAnswer(inv -> LAST_HEADERS.get(inv.<String>getArgument(0)));
     when(mockBuilder.build()).thenReturn(mockResponse);
     when(mockResponse.getStatus()).thenAnswer(inv -> LAST_STATUS.get());
     // WebApplicationException(Response) and (StatusType) constructors derive their message from
@@ -89,6 +103,7 @@ class OpaqueResourceTest {
     resource = new OpaqueResource(manager,
         new OpaqueClientConfigResponse("P256_SHA256", "context", 0, 0, 0));
     LAST_STATUS.set(-1);
+    LAST_HEADERS.clear();
   }
 
   /** Asserts the callable throws a {@link WebApplicationException} carrying {@code expectedStatus}. */
@@ -197,6 +212,37 @@ class OpaqueResourceTest {
   void recoveryVerify_securityException_mapsTo401() {
     when(manager.recoveryVerify(any())).thenThrow(new SecurityException("Recovery verification failed"));
     assertStatus(() -> resource.recoveryVerify(null, null), Response.Status.UNAUTHORIZED.getStatusCode());
+  }
+
+  /**
+   * The one endpoint that was missing this mapping. {@code recoveryVerify} throws
+   * {@link RateLimitExceededException} from two places — the recovery token bucket and the
+   * {@code MAX_CONCURRENT_RECOVERY_VERIFY} semaphore guarding its constant-time floor — and it
+   * extends {@link RuntimeException} directly, so an unmapped throw escapes as 500 rather than
+   * the 429 the manager's exception contract promises. Its sibling {@code recoveryStart} had the
+   * catch; this one did not. See the note in {@code HofmannOpaqueServerManager}'s class javadoc:
+   * the same omission had already shipped once in a framework adapter.
+   */
+  @Test
+  void recoveryVerify_rateLimit_mapsTo429() {
+    when(manager.recoveryVerify(any())).thenThrow(new RateLimitExceededException());
+    assertStatus(() -> resource.recoveryVerify(null, null), 429);
+  }
+
+  /**
+   * The 429 must carry {@code Retry-After}, which is the only reason a client can distinguish a
+   * throttle it should back off from and a generic refusal. Asserting the header rather than only
+   * the status is what makes {@link #recoveryVerify_rateLimit_mapsTo429} fail against a catch that
+   * maps to a bare 429.
+   */
+  @Test
+  void recoveryVerify_rateLimit_carriesRetryAfter() {
+    when(manager.recoveryVerify(any())).thenThrow(new RateLimitExceededException());
+
+    assertThatThrownBy(() -> resource.recoveryVerify(null, null))
+        .isInstanceOf(WebApplicationException.class)
+        .extracting(e -> ((WebApplicationException) e).getResponse().getHeaderString("Retry-After"))
+        .isEqualTo("60");
   }
 
   // ── changePassword ─────────────────────────────────────────────────────────

@@ -48,12 +48,20 @@ class OpaqueIntegrationTest {
   }
 
   /**
-   * Register completes without error.
+   * Registration must leave a credential the server can actually authenticate against.
+   *
+   * <p>This previously had no assertions at all and passed on anything that did not throw,
+   * including a server that accepted the registration and discarded it. Authenticating is the
+   * only observation that distinguishes those two.
    */
   @Test
-  void register_completesWithoutError() {
+  void register_storesACredentialThatCanThenAuthenticate() {
     byte[] credId = "register-only@example.com".getBytes(StandardCharsets.UTF_8);
+
     hofmannOpaqueClientManager.register(SERVER_ID, credId, PASSWORD);
+
+    assertThat(hofmannOpaqueClientManager.authenticate(SERVER_ID, credId, PASSWORD).token())
+        .isNotEmpty();
   }
 
   /**
@@ -101,14 +109,24 @@ class OpaqueIntegrationTest {
   }
 
   /**
-   * Delete registration with valid token completes without error.
+   * Deleting a registration must actually remove it.
+   *
+   * <p>The previous version called delete and asserted nothing, so it could not tell a real
+   * deletion from a no-op that returned 204. What makes the deletion observable is that the
+   * credential can no longer authenticate afterwards — the property a user deleting their account
+   * is actually asking for.
    */
   @Test
-  void deleteRegistration_withValidToken_completesWithoutError() {
+  void deleteRegistration_withValidToken_preventsFurtherAuthentication() {
     byte[] credId = "delete-me@example.com".getBytes(StandardCharsets.UTF_8);
     hofmannOpaqueClientManager.register(SERVER_ID, credId, PASSWORD);
     AuthFinishResponse authResp = hofmannOpaqueClientManager.authenticate(SERVER_ID, credId, PASSWORD);
+
     hofmannOpaqueClientManager.deleteRegistration(SERVER_ID, credId, authResp.token());
+
+    assertThatThrownBy(() -> hofmannOpaqueClientManager.authenticate(SERVER_ID, credId, PASSWORD))
+        .as("a deleted credential must not authenticate")
+        .isInstanceOf(SecurityException.class);
   }
 
   /**

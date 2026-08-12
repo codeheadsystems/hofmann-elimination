@@ -11,8 +11,14 @@ class OpaqueConfigTest {
 
   // --- Factory methods ---
 
+  /**
+   * Kept, unlike the sibling factory tests removed below, because these are not stored arguments:
+   * they are the shipped defaults a deployment gets by saying nothing. Argon2id at 64 MiB with
+   * three iterations is the cost an offline attacker pays per password guess, so silently
+   * lowering it is a security change and this is the test that makes it a loud one.
+   */
   @Test
-  void default_usesP256AndArgon2() {
+  void default_usesP256AndArgon2WithTheDocumentedCost() {
     OpaqueConfig config = OpaqueConfig.DEFAULT;
     assertThat(config.cipherSuite()).isSameAs(OpaqueCipherSuite.P256_SHA256);
     assertThat(config.ksf()).isInstanceOf(OpaqueConfig.Argon2idKsf.class);
@@ -21,41 +27,24 @@ class OpaqueConfigTest {
     assertThat(config.argon2Parallelism()).isEqualTo(1);
   }
 
+  /**
+   * The test fixture must stay the identity KSF. Not an accessor check: if this fixture ever
+   * acquired a real KSF the whole rfc suite would slow to Argon2id speed per test, and if a
+   * production default leaked into it the vector tests would silently stop reproducing RFC 9807.
+   */
   @Test
-  void forTesting_usesIdentityKsf() {
+  void forTesting_usesIdentityKsfAndTheCfrgContext() {
     OpaqueConfig config = OpaqueTestConfigs.forTesting();
     assertThat(config.cipherSuite()).isSameAs(OpaqueCipherSuite.P256_SHA256);
     assertThat(config.ksf()).isInstanceOf(OpaqueConfig.IdentityKsf.class);
     assertThat(config.context()).isEqualTo("OPAQUE-POC".getBytes(StandardCharsets.US_ASCII));
   }
 
-  @Test
-  void forTesting_withSuite_usesGivenSuite() {
-    OpaqueConfig config = OpaqueTestConfigs.forTesting(OpaqueCipherSuite.P384_SHA384);
-    assertThat(config.cipherSuite()).isSameAs(OpaqueCipherSuite.P384_SHA384);
-    assertThat(config.ksf()).isInstanceOf(OpaqueConfig.IdentityKsf.class);
-  }
-
-  @Test
-  void withArgon2id_noSuite_usesP256() {
-    byte[] ctx = "test-context".getBytes(StandardCharsets.UTF_8);
-    OpaqueConfig config = OpaqueConfig.withArgon2id(ctx, 1024, 1, 1);
-    assertThat(config.cipherSuite()).isSameAs(OpaqueCipherSuite.P256_SHA256);
-    assertThat(config.ksf()).isInstanceOf(OpaqueConfig.Argon2idKsf.class);
-    assertThat(config.argon2Memory()).isEqualTo(1024);
-    assertThat(config.argon2Iterations()).isEqualTo(1);
-    assertThat(config.argon2Parallelism()).isEqualTo(1);
-    assertThat(config.context()).isEqualTo(ctx);
-  }
-
-  @Test
-  void withArgon2id_withSuite_usesGivenSuite() {
-    byte[] ctx = "test".getBytes(StandardCharsets.UTF_8);
-    OpaqueConfig config = OpaqueConfig.withArgon2id(
-        OpaqueCipherSuite.P384_SHA384, ctx, 2048, 2, 4);
-    assertThat(config.cipherSuite()).isSameAs(OpaqueCipherSuite.P384_SHA384);
-    assertThat(config.argon2Memory()).isEqualTo(2048);
-  }
+  // Removed: forTesting_withSuite_usesGivenSuite, withArgon2id_noSuite_usesP256 and
+  // withArgon2id_withSuite_usesGivenSuite. Each handed a factory a suite and some Argon2
+  // parameters and asserted the returned record held them — the compiler's job, not a test's.
+  // The suite argument is exercised for real by every @MethodSource("allSuites") test in this
+  // package, and the Argon2 parameters by argon2idKsf_producesCorrectLengthOutput below.
 
   // --- withRandomConfig ---
 
@@ -70,27 +59,13 @@ class OpaqueConfigTest {
     assertThat(copy.context()).isEqualTo(original.context());
   }
 
-  // --- Size delegates ---
-
-  @Test
-  void sizeDelegates_matchCipherSuite() {
-    OpaqueConfig config = OpaqueTestConfigs.forTesting();
-    OpaqueCipherSuite cs = config.cipherSuite();
-    assertThat(config.Nm()).isEqualTo(cs.Nm());
-    assertThat(config.Nh()).isEqualTo(cs.Nh());
-    assertThat(config.Nx()).isEqualTo(cs.Nx());
-    assertThat(config.Npk()).isEqualTo(cs.Npk());
-    assertThat(config.Nsk()).isEqualTo(cs.Nsk());
-    assertThat(config.Noe()).isEqualTo(cs.Noe());
-    assertThat(config.Nok()).isEqualTo(cs.Nok());
-    assertThat(config.envelopeSize()).isEqualTo(cs.envelopeSize());
-    assertThat(config.maskedResponseSize()).isEqualTo(cs.maskedResponseSize());
-  }
-
-  @Test
-  void nn_isAlways32() {
-    assertThat(OpaqueConfig.Nn).isEqualTo(32);
-  }
+  // Removed: sizeDelegates_matchCipherSuite, which asserted config.Nm() == cipherSuite.Nm() and
+  // eight more of the same. Every one of those methods is a one-line delegation, so the assertion
+  // holds for any value the suite returns and fails only if the delegation is deleted outright.
+  // The values themselves are pinned where they mean something — against RFC 9807's fixed-size
+  // wire fields in OpaqueVectorsTest.
+  //
+  // Removed: nn_isAlways32, which asserted a constant equalled its own literal.
 
   // --- IdentityKsf ---
 

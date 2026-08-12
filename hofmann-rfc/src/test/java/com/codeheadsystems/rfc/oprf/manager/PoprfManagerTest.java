@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.codeheadsystems.rfc.oprf.IdentityEncodings;
 import com.codeheadsystems.rfc.oprf.model.HashResult;
 import com.codeheadsystems.rfc.oprf.model.PartiallyBlindedRequest;
 import com.codeheadsystems.rfc.oprf.model.PartiallyEvaluatedResponse;
@@ -324,8 +325,17 @@ class PoprfManagerTest {
     VerifiableProcessorDetail d = detail(suite);
     PoprfServerManager server = new PoprfServerManager(suite, () -> d);
 
+    // Both candidate encodings must be refused: the suite's real identity encoding, and the
+    // all-zero element-sized buffer this test used to pass alone. The refusal *reason* differs
+    // per suite — see VoprfManagerTest#identityRefusalReasonIsValueOnRistrettoAndShapeOnSec1,
+    // which pins that distinction once for both verifiable modes.
+    assertThatThrownBy(() -> server.process(new PartiallyBlindedRequest(
+        List.of(Hex.toHexString(IdentityEncodings.identityFor(suite))), Hex.toHexString(INFO), "req")))
+        .as("%s must refuse the identity encoding", name)
+        .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
     assertThatThrownBy(() -> server.process(new PartiallyBlindedRequest(
         List.of(Hex.toHexString(new byte[suite.elementSize()])), Hex.toHexString(INFO), "req")))
+        .as("%s must refuse an all-zero element-sized buffer", name)
         .isInstanceOfAny(SecurityException.class, IllegalArgumentException.class);
   }
 

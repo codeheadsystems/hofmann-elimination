@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.codeheadsystems.hofmann.model.oprf.OprfClientConfigResponse;
@@ -215,5 +216,45 @@ class OprfResourceTest {
         .isInstanceOf(WebApplicationException.class)
         .satisfies(e -> assertThat(((WebApplicationException) e).getResponse().getStatus())
             .isEqualTo(Response.Status.BAD_REQUEST.getStatusCode()));
+  }
+
+  // ── base-mode field bounds ─────────────────────────────────────────────────
+  //
+  // Unlike VOPRF and POPRF, whose bounds live on the wire model in OprfWireFields and are
+  // therefore shared by every adapter, base mode validates inline here and again in the Spring
+  // Boot OprfController, each with its own copy of the two limits. The null and blank cases were
+  // already covered above; the two length ceilings were not, on either side. The manager is
+  // never stubbed for these cases on purpose: a rejection that reached the crypto layer would
+  // fail here.
+
+  @Test
+  void evaluate_oversizedEcPoint_throwsBadRequest() {
+    assertBadRequest(new OprfRequest("a".repeat(4097), REQUEST_ID));
+  }
+
+  @Test
+  void evaluate_oversizedRequestId_throwsBadRequest() {
+    assertBadRequest(new OprfRequest(EC_POINT, "a".repeat(513)));
+  }
+
+  /**
+   * The bound is a ceiling, not a floor: a field exactly at the limit must still be accepted.
+   * Without this, tightening either constant to zero would satisfy every rejection test above.
+   */
+  @Test
+  void evaluate_fieldsExactlyAtTheLimit_areAccepted() {
+    OprfRequest request = new OprfRequest("a".repeat(4096), "b".repeat(512));
+    when(oprfServerManager.process(request.blindedRequest()))
+        .thenReturn(new EvaluatedResponse(EVALUATED_POINT, PROCESS_ID));
+
+    assertThat(resource.evaluate(request, ctx, null).ecPoint()).isEqualTo(EVALUATED_POINT);
+  }
+
+  private void assertBadRequest(final OprfRequest request) {
+    assertThatThrownBy(() -> resource.evaluate(request, ctx, null))
+        .isInstanceOf(WebApplicationException.class)
+        .satisfies(e -> assertThat(((WebApplicationException) e).getResponse().getStatus())
+            .isEqualTo(Response.Status.BAD_REQUEST.getStatusCode()));
+    verifyNoInteractions(oprfServerManager);
   }
 }

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.codeheadsystems.rfc.common.RandomProvider;
+import com.codeheadsystems.rfc.oprf.IdentityEncodings;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
@@ -262,19 +263,24 @@ class OprfCipherSuiteTest {
     /**
      * RFC 9497 §2.1: DeserializeElement MUST reject the identity element.
      *
-     * <p>The identity is the all-zero encoding on every supported suite. If a suite accepts
-     * it, {@code blindInv * O = O} and the OPRF output collapses to a function of the input
-     * alone — independent of both the blind and the server key — so a malicious server can
-     * silently downgrade the OPRF to an unkeyed hash. ristretto255 is the suite that
-     * regressed: the all-zero encoding is a legitimate ristretto255 encoding, so the
-     * RFC 9496 §4.3.1 decode checks pass for it and only this protocol-layer check catches
-     * it. Mirrors the TypeScript regression in test/oprf.test.ts.
+     * <p>If a suite accepts it, {@code blindInv * O = O} and the OPRF output collapses to a
+     * function of the input alone — independent of both the blind and the server key — so a
+     * malicious server can silently downgrade the OPRF to an unkeyed hash. ristretto255 is the
+     * suite that regressed: the all-zero encoding is a legitimate ristretto255 encoding, so the
+     * RFC 9496 §4.3.1 decode checks pass for it and only this protocol-layer check catches it.
+     * Mirrors the TypeScript regression in test/oprf.test.ts.
+     *
+     * <p>The identity encoding comes from {@link IdentityEncodings} rather than
+     * {@code new byte[elementSize()]}, which this test used to build. That is not the identity
+     * on the SEC1 suites — it is a malformed encoding, rejected earlier and for a different
+     * reason — so with a permissive {@code isInstanceOfAny} assertion the P-256, P-384 and P-521
+     * parameterizations passed without reaching the identity check at all.
      */
     @ParameterizedTest
     @EnumSource(CurveHashSuite.class)
     void finalize_identityEvaluatedElement_isRejected(CurveHashSuite suite) {
       OprfCipherSuite cs = OprfCipherSuite.builder().withSuite(suite).build();
-      byte[] identity = new byte[cs.groupSpec().elementSize()];
+      byte[] identity = IdentityEncodings.identityFor(suite);
       byte[] input = "correct-horse-battery-staple".getBytes(StandardCharsets.UTF_8);
 
       assertThatThrownBy(() -> cs.finalize(input, cs.randomScalar(), identity))
@@ -282,28 +288,26 @@ class OprfCipherSuiteTest {
     }
 
     /**
-     * The consequence the check above prevents: without it the output is identical across
-     * different blinds, proving it no longer depends on the blind or the server key.
+     * The identity must be rejected as an <em>identity</em>, not incidentally as a malformed
+     * encoding. Without this, the suite above can silently regress back to covering one curve:
+     * swapping in any unparseable buffer keeps it green, because both failures look alike
+     * through {@code isInstanceOfAny}.
+     *
+     * <p>SEC1 {@code 0x00} is a structurally valid point encoding — one byte, the defined
+     * encoding of the point at infinity — so reaching a rejection here means the decoder parsed
+     * it and then refused it on its value.
      */
     @ParameterizedTest
     @EnumSource(CurveHashSuite.class)
-    void finalize_identityEvaluatedElement_neverProducesKeyIndependentOutput(
-        CurveHashSuite suite) {
+    void finalize_identityIsRejectedOnItsValueNotItsLength(CurveHashSuite suite) {
       OprfCipherSuite cs = OprfCipherSuite.builder().withSuite(suite).build();
-      byte[] identity = new byte[cs.groupSpec().elementSize()];
+      byte[] identity = IdentityEncodings.identityFor(suite);
       byte[] input = "correct-horse-battery-staple".getBytes(StandardCharsets.UTF_8);
 
-      byte[] first;
-      try {
-        first = cs.finalize(input, cs.randomScalar(), identity);
-      } catch (SecurityException | IllegalArgumentException expected) {
-        return; // rejected, which is the desired behaviour
-      }
-      byte[] second = cs.finalize(input, cs.randomScalar(), identity);
-      assertThat(first)
-          .as("identity was accepted and two different blinds produced the same output, "
-              + "so the OPRF has degraded to an unkeyed hash")
-          .isNotEqualTo(second);
+      assertThatThrownBy(() -> cs.finalize(input, cs.randomScalar(), identity))
+          .as("the identity encoding for %s must be refused for being the identity, so the "
+              + "message must name it rather than complain about the encoding's shape", suite)
+          .hasMessageContaining("identity");
     }
   }
 

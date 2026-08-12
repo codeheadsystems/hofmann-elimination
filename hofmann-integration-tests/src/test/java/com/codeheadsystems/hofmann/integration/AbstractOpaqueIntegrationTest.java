@@ -8,7 +8,13 @@ import com.codeheadsystems.hofmann.client.config.OpaqueClientConfig;
 import com.codeheadsystems.hofmann.client.manager.HofmannOpaqueClientManager;
 import com.codeheadsystems.hofmann.client.model.ServerConnectionInfo;
 import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
+import com.codeheadsystems.hofmann.model.opaque.AuthFinishRequest;
 import com.codeheadsystems.hofmann.model.opaque.AuthFinishResponse;
+import com.codeheadsystems.hofmann.model.opaque.AuthStartRequest;
+import com.codeheadsystems.hofmann.model.opaque.AuthStartResponse;
+import com.codeheadsystems.rfc.opaque.Client;
+import com.codeheadsystems.rfc.opaque.model.AuthResult;
+import com.codeheadsystems.rfc.opaque.model.ClientAuthState;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -35,6 +41,9 @@ abstract class AbstractOpaqueIntegrationTest {
 
   private HofmannOpaqueClientManager manager;
   private HttpClient httpClient;
+  /** Kept so a test can drive the protocol below the manager — see the session-key test. */
+  private HofmannOpaqueAccessor accessor;
+  private OpaqueClientConfig clientConfig;
 
   /**
    * Returns the cipher suite name for this test class (e.g. "P256_SHA256").
@@ -44,23 +53,17 @@ abstract class AbstractOpaqueIntegrationTest {
   @BeforeEach
   void setUp() {
     httpClient = HttpClient.newHttpClient();
-    OpaqueClientConfig config = OpaqueClientConfig.withArgon2id(
+    clientConfig = OpaqueClientConfig.withArgon2id(
         cipherSuiteName(), "integration-test", 1024, 1, 1);
     Map<ServerIdentifier, ServerConnectionInfo> connections = Map.of(
         SERVER_ID, new ServerConnectionInfo(URI.create(baseUrl())));
-    HofmannOpaqueAccessor accessor = new HofmannOpaqueAccessor(
+    accessor = new HofmannOpaqueAccessor(
         httpClient, new ObjectMapper(), connections);
-    manager = new HofmannOpaqueClientManager(accessor, Map.of(SERVER_ID, config));
+    manager = new HofmannOpaqueClientManager(accessor, Map.of(SERVER_ID, clientConfig));
   }
 
   @Test
-  void register_completesWithoutError() {
-    byte[] credId = uniqueCredId("register-only");
-    manager.register(SERVER_ID, credId, PASSWORD);
-  }
-
-  @Test
-  void registerThenAuthenticate_derivesMatchingSessionKey() {
+  void registerThenAuthenticate_returnsASessionKeyAndToken() {
     byte[] credId = uniqueCredId("auth");
     manager.register(SERVER_ID, credId, PASSWORD);
 
@@ -68,6 +71,48 @@ abstract class AbstractOpaqueIntegrationTest {
 
     assertThat(response.sessionKeyBase64()).isNotEmpty();
     assertThat(response.token()).isNotEmpty();
+  }
+
+  /**
+   * The central claim of an AKE: both parties independently derive the <em>same</em> session key.
+   *
+   * <p>This used to be the name of the test above, which asserted only that the server's key was
+   * a non-empty string — so nothing anywhere compared the two. {@code OpaqueRoundTripTest} proves
+   * agreement inside one process; this proves it survives the wire, which is where a serialization
+   * or base64 fault would land.
+   *
+   * <p>Driven below {@link HofmannOpaqueClientManager} on purpose. That manager computes the
+   * client's session key and immediately closes the {@link AuthResult} that holds it, deliberately
+   * — it is a secret with nowhere to go through that API — so the comparison is only reachable
+   * against the rfc {@link Client} and the accessor directly.
+   */
+  @Test
+  void registerThenAuthenticate_clientAndServerDeriveTheSameSessionKey() {
+    byte[] credId = uniqueCredId("session-key-agreement");
+    manager.register(SERVER_ID, credId, PASSWORD);
+
+    Client client = new Client(clientConfig.opaqueConfig());
+    byte[] clientSessionKey;
+    String serverSessionKeyBase64;
+
+    try (ClientAuthState authState = client.generateKE1(PASSWORD)) {
+      AuthStartResponse startResp = accessor.authStart(SERVER_ID,
+          new AuthStartRequest(credId, authState.ke1()));
+
+      try (AuthResult authResult =
+               client.generateKE3(authState, null, null, startResp.ke2())) {
+        // Copy before the try-with-resources zeroes it.
+        clientSessionKey = authResult.sessionKey().clone();
+        serverSessionKeyBase64 = accessor.authFinish(SERVER_ID,
+            new AuthFinishRequest(startResp.sessionToken(), authResult.ke3())).sessionKeyBase64();
+      }
+    }
+
+    assertThat(Base64.getDecoder().decode(serverSessionKeyBase64))
+        .as("the key the server derived must equal the one the client derived")
+        .isEqualTo(clientSessionKey);
+    // A shared array of zeros would satisfy the equality above.
+    assertThat(clientSessionKey).isNotEqualTo(new byte[clientSessionKey.length]);
   }
 
   @Test
