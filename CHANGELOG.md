@@ -516,6 +516,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   record's generated `toString()` rendered it in full. Third-party `SessionStore` implementations
   that construct `SessionData` need the argument removed;
   `JwtManager.issueToken(String, String)` is deprecated and now discards its second argument.
+- **secp256k1 hash-to-curve was removed**, along with the classes that served it: `HashToCurve`,
+  `HashToField`, `SimplifiedSWU` and `IsogenyMap` are gone, as are
+  `WeierstrassGroupSpecImpl.forSecp256k1()` and `Curve.SECP256K1_CURVE`. secp256k1 was never an
+  OPRF or OPAQUE cipher suite — it existed only to exercise the RFC 9380 §8.7 isogeny path — so
+  no wire format, stored registration record, or TypeScript/Rust client is affected. The four
+  supported suites are unchanged. See *Changed* for why BouncyCastle cannot serve it.
+- **`WeierstrassGroupSpecImpl`'s canonical constructor changed** from
+  `(Curve, HashToCurve, HashToField)` to `(Curve, BcWeierstrassHashToCurve, OPRFHashToScalar)`, and
+  the accessor `hashToScalarFieldImpl()` is now `hashToScalarImpl()`. The
+  `P256_SHA256`/`P384_SHA384`/`P521_SHA512` constants — how every caller in this repository and
+  the documented integrations obtain a spec — are unaffected.
+- **A domain separation tag longer than 255 bytes is now rejected on the NIST curves.**
+  `GroupSpec.hashToGroup` and `GroupSpec.hashToScalar` throw `IllegalArgumentException` where the
+  previous implementation applied the RFC 9380 §5.3.3 `H2C-OVERSIZE-DST-` rewrite; this is
+  BouncyCastle's `XmdMessageExpansion` behaviour and it cannot be overridden on the hash-to-scalar
+  path. ristretto255 still performs the rewrite, since it keeps this module's own
+  `ExpandMessageXmd`. Every DST this library generates is well under 40 bytes, so this is reachable
+  only by a caller passing its own oversize tag.
 
 ### Changed
 
@@ -529,6 +547,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   broken live deployments whose stored outputs only that key reproduces. A warning is logged.
 - Constant-time scalar multiplication costs roughly 2.4x on the primitive: about 0.5 ms extra per
   login on P-256 server-side. On the client the production Argon2id KSF swamps it entirely.
+- **RFC 9380 hash-to-curve on the NIST curves is now BouncyCastle's**, from its
+  `org.bouncycastle.crypto.hash2curve` package, which ships in the `bcprov-jdk18on` 1.85.2 this
+  project already depends on. `hash_to_curve` goes through BouncyCastle's `HashToField`,
+  `SimplifiedShallueVanDeWoestijneMapToCurve` and `NistCurveProcessor`, sequenced by the new
+  `BcWeierstrassHashToCurve`; `hash_to_scalar` goes through its `OPRFHashToScalar`. That retires
+  roughly 750 lines of hand-rolled field, SSWU and isogeny arithmetic.
+
+  **Output is byte-identical.** The substitution is pinned by the RFC 9380 Appendix J vectors for
+  all three curves and, more decisively, by the RFC 9497 and RFC 9807 vector suites and the
+  cross-implementation vectors, all of which exercise `hashToGroup` and `hashToScalar` end to end
+  and would fail on any deviation. `OPRFHashToScalar` derives the same 48/72/98-byte expansion
+  lengths the superseded `HashToField` scalar factories hard-coded.
+
+  ristretto255 is untouched and keeps its own implementation: BouncyCastle has no ristretto255 or
+  decaf448 support. Neither can it serve secp256k1, whose `A = 0` requires Simplified SWU on a
+  3-isogenous curve — the only isogeny BouncyCastle implements is the BLS12-381 G1 one.
+
+  The constant-time Montgomery ladder is **not** affected. It guards `scalarMultiply`, where a
+  long-lived key meets an attacker-chosen point; hash-to-curve is a separate path and was never
+  constant-time in either implementation, a property BouncyCastle documents outright.
 
 ### Upgrade notes
 

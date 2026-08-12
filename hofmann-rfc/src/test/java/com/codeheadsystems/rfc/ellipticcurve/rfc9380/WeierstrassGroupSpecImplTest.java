@@ -36,12 +36,6 @@ class WeierstrassGroupSpecImplTest {
     assertThat(spec.curve()).isEqualTo(Curve.P521_CURVE);
   }
 
-  @Test
-  void forSecp256k1_returnsSecp256k1Curve() {
-    WeierstrassGroupSpecImpl spec = WeierstrassGroupSpecImpl.forSecp256k1();
-    assertThat(spec.curve()).isEqualTo(Curve.SECP256K1_CURVE);
-  }
-
   // --- groupOrder ---
 
   static Stream<Arguments> groupOrderArgs() {

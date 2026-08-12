@@ -31,10 +31,6 @@ public record Curve(ECDomainParameters params, ECCurve curve, ECPoint g, BigInte
    * The constant P521_CURVE.
    */
   public static final Curve P521_CURVE = loadCurve("P-521");
-  /**
-   * The constant SECP256K1_CURVE.
-   */
-  public static final Curve SECP256K1_CURVE = loadCurve("secp256k1");
 
   /**
    * Instantiates a new Curve.

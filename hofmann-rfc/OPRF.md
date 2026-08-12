@@ -305,7 +305,7 @@ This does not affect any deterministic operation (hash-to-curve, key derivation,
 
 ## Dependencies
 
-- `ellipticcurve.rfc9380` — RFC 9380 `HashToCurve`, `ExpandMessageXmd`, `GroupSpec`
+- `ellipticcurve.rfc9380` — RFC 9380 `BcWeierstrassHashToCurve`, `ExpandMessageXmd`, `GroupSpec`
 - BouncyCastle — EC arithmetic for Weierstrass curves (not used by ristretto255)
 
 ## Tests
