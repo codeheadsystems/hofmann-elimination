@@ -4,7 +4,8 @@
 //! key exchange:
 //!
 //! - **RFC 9380** — Hash-to-Elliptic-Curves (Simplified SWU, `expand_message_xmd`)
-//! - **RFC 9497** — Oblivious Pseudorandom Functions (OPRF), base mode
+//! - **RFC 9497** — Oblivious Pseudorandom Functions: base mode (0x00), VOPRF
+//!   (0x01) and POPRF (0x02)
 //! - **RFC 9807** — OPAQUE asymmetric PAKE protocol
 //!
 //! ## Supported Cipher Suites
@@ -53,16 +54,45 @@
 //!
 //! - [`common`] — Byte-level utilities (I2OSP, concat, XOR, constant-time equality)
 //! - [`elliptic_curve`] — [`GroupSpec`](elliptic_curve::GroupSpec) trait and curve implementations
-//! - [`oprf`] — RFC 9497 OPRF cipher suite ([`OprfCipherSuite`](oprf::OprfCipherSuite))
+//! - [`oprf`] — RFC 9497 OPRF cipher suite ([`OprfCipherSuite`](oprf::OprfCipherSuite)),
+//!   the DLEQ proof layer, and the VOPRF/POPRF clients and servers
+//!   ([`VoprfClient`](oprf::VoprfClient), [`VoprfServer`](oprf::VoprfServer),
+//!   [`PoprfClient`](oprf::PoprfClient), [`PoprfServer`](oprf::PoprfServer))
 //! - [`opaque`] — RFC 9807 OPAQUE protocol ([`OpaqueClient`](opaque::OpaqueClient),
 //!   [`OpaqueServer`](opaque::OpaqueServer))
+//!
+//! ## No transport, by design
+//!
+//! This crate is protocol crypto only: everything takes and returns byte slices,
+//! and there is no HTTP dependency. Wire encoding and endpoints belong to the
+//! caller. The Java and TypeScript ports in this repository do have HTTP clients
+//! for `/oprf/verifiable` and `/oprf/partially-oblivious` if a worked example of
+//! the wire format is useful.
+//!
+//! ## Verifiable modes
+//!
+//! Two requirements the verifiable modes place on callers, neither of which the
+//! protocol can enforce:
+//!
+//! - The server public key must be **authenticated out of band**. A client that
+//!   takes it from the same channel that carried the proof has verified nothing,
+//!   and RFC 9497 §7.3 notes an attacker able to substitute it can run a distinct
+//!   key per client and still produce verifying proofs.
+//! - **One secret must not serve two modes.** The mode byte is in every
+//!   domain-separation tag, §7.2.3's static Diffie-Hellman budget is per-key, and
+//!   POPRF exposes an inversion oracle where the other modes expose a
+//!   multiplication one.
+//!   [`VerifiableProcessorDetail::derive_from_seed`](oprf::VerifiableProcessorDetail::derive_from_seed)
+//!   makes the second self-enforcing.
 //!
 //! ## Security
 //!
 //! This library has **not** been formally audited. Use at your own risk in
 //! production systems. All MAC comparisons use constant-time equality, and
 //! sensitive state (`ClientAuthState`, `ClientRegistrationState`,
-//! `ServerAuthState`, `AuthResult`, `RegistrationRecord`) is zeroized on drop.
+//! `ServerAuthState`, `AuthResult`, `RegistrationRecord`,
+//! [`VoprfClientContext`](oprf::VoprfClientContext),
+//! [`PoprfClientContext`](oprf::PoprfClientContext)) is zeroized on drop.
 
 pub mod common;
 pub mod elliptic_curve;

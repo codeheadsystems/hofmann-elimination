@@ -1,5 +1,6 @@
 use crate::common::{concat, i2osp};
 use crate::elliptic_curve::{CurveType, GroupSpec, Ristretto255GroupSpec, WeierstrassGroupSpec};
+use crate::oprf::mode::OprfMode;
 use digest::KeyInit;
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256, Sha384, Sha512};
@@ -59,6 +60,8 @@ enum HashAlgorithm {
 /// The context string follows the format `"OPRFV1-\x00-{suite}"` per RFC 9497 §3.2.
 pub struct OprfCipherSuite {
     identifier: String,
+    curve_hash_suite: CurveHashSuite,
+    mode: OprfMode,
     context_string: Vec<u8>,
     hash_to_group_dst: Vec<u8>,
     hash_to_scalar_dst: Vec<u8>,
@@ -69,8 +72,17 @@ pub struct OprfCipherSuite {
 }
 
 impl OprfCipherSuite {
-    /// Creates a new OPRF cipher suite for the given curve+hash combination.
+    /// Creates a base-mode (0x00) OPRF cipher suite for the given curve+hash
+    /// combination.
+    ///
+    /// Kept as the one-argument form so OPAQUE and every existing caller are
+    /// unaffected; the verifiable modes go through [`Self::new_with_mode`].
     pub fn new(suite: CurveHashSuite) -> Self {
+        Self::new_with_mode(suite, OprfMode::Oprf)
+    }
+
+    /// Creates an OPRF cipher suite for a specific RFC 9497 mode.
+    pub fn new_with_mode(suite: CurveHashSuite, mode: OprfMode) -> Self {
         let (identifier, context_suffix, group_spec, hash_alg, hash_len): (
             &str,
             &str,
@@ -108,13 +120,15 @@ impl OprfCipherSuite {
             ),
         };
 
-        let context_string = build_context_string(context_suffix);
+        let context_string = build_context_string(context_suffix, mode);
         let hash_to_group_dst = concat(&[b"HashToGroup-", &context_string]);
         let hash_to_scalar_dst = concat(&[b"HashToScalar-", &context_string]);
         let derive_key_pair_dst = concat(&[b"DeriveKeyPair", &context_string]);
 
         Self {
             identifier: identifier.to_string(),
+            curve_hash_suite: suite,
+            mode,
             context_string,
             hash_to_group_dst,
             hash_to_scalar_dst,
@@ -217,6 +231,72 @@ impl OprfCipherSuite {
         Ok(self.hash(&hash_input))
     }
 
+    /// RFC 9497 §3.3.3 POPRF Finalize: unblind and produce the output over a
+    /// public input.
+    ///
+    /// Deliberately a separate method rather than an `Option<&[u8]>` parameter
+    /// on [`Self::finalize`]. POPRF emits `I2OSP(len(info), 2)` even when `info`
+    /// is empty, where the base and verifiable modes omit the field entirely —
+    /// so an API where absent and empty differ would be one cleanup away from a
+    /// silent output change, and `finalize` is what every stored OPAQUE
+    /// credential depends on.
+    pub fn finalize_with_info(
+        &self,
+        input: &[u8],
+        info: &[u8],
+        blind: &[u8],
+        evaluated_element: &[u8],
+    ) -> Result<Vec<u8>, &'static str> {
+        let inverse_blind = self.group_spec.scalar_inverse(blind);
+        let unblinded_element = self
+            .group_spec
+            .scalar_multiply(&inverse_blind, evaluated_element)?;
+
+        let hash_input = concat(&[
+            &i2osp(input.len() as u32, 2),
+            input,
+            &i2osp(info.len() as u32, 2),
+            info,
+            &i2osp(unblinded_element.len() as u32, 2),
+            &unblinded_element,
+            b"Finalize",
+        ]);
+
+        Ok(self.hash(&hash_input))
+    }
+
+    /// The RFC 9497 mode this suite is configured for.
+    pub fn mode(&self) -> OprfMode {
+        self.mode
+    }
+
+    /// The curve and hash this suite is built on, independent of its mode.
+    pub fn curve_hash_suite(&self) -> CurveHashSuite {
+        self.curve_hash_suite
+    }
+
+    /// Returns `Err` unless this suite is configured for one of the given modes.
+    ///
+    /// Called from the constructor of every mode-specific manager. Without it,
+    /// handing a base-mode suite to a VOPRF manager is silent: every operation
+    /// still computes, it just computes a different function.
+    pub fn assert_mode(&self, allowed: &[OprfMode]) -> Result<(), &'static str> {
+        if allowed.contains(&self.mode) {
+            Ok(())
+        } else {
+            Err(
+                "cipher suite is configured for a different RFC 9497 mode; the mode byte changes \
+                 every domain-separation tag, so the mismatch would silently compute a different \
+                 function",
+            )
+        }
+    }
+
+    /// Computes the modular inverse of a scalar.
+    pub fn scalar_inverse(&self, scalar: &[u8]) -> Vec<u8> {
+        self.group_spec.scalar_inverse(scalar)
+    }
+
     /// Computes Hash(data) using the suite's hash algorithm.
     pub fn hash(&self, data: &[u8]) -> Vec<u8> {
         match self.hash_algorithm {
@@ -248,7 +328,11 @@ impl OprfCipherSuite {
     }
 }
 
-fn build_context_string(suffix: &str) -> Vec<u8> {
-    // "OPRFV1-" + 0x00 + "-" + suffix
-    concat(&[b"OPRFV1-", &[0x00], format!("-{}", suffix).as_bytes()])
+fn build_context_string(suffix: &str, mode: OprfMode) -> Vec<u8> {
+    // RFC 9497 §3.1: "OPRFV1-" || I2OSP(mode, 1) || "-" || identifier
+    concat(&[
+        b"OPRFV1-",
+        &[mode.value()],
+        format!("-{}", suffix).as_bytes(),
+    ])
 }

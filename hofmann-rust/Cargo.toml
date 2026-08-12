@@ -40,3 +40,8 @@ zeroize = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 hex = "0.4"
+# Tests only. The RFC 9497 Appendix A vectors live in one JSON file shared with
+# the Java implementation rather than transcribed per port — re-transcribing is
+# how a port ends up testing a subset and passing. The shipped crate has no
+# serialization dependency and none of this reaches it.
+serde_json = "1"

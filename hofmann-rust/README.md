@@ -3,7 +3,7 @@
 Rust implementation of three layered IETF RFCs for password-authenticated key exchange (PAKE):
 
 - **RFC 9380** — Hash-to-Elliptic-Curves (Simplified SWU, `expand_message_xmd`)
-- **RFC 9497** — Oblivious Pseudorandom Functions (OPRF), base mode (mode 0)
+- **RFC 9497** — Oblivious Pseudorandom Functions: base mode (0x00), VOPRF (0x01) and POPRF (0x02)
 - **RFC 9807** — OPAQUE asymmetric PAKE protocol (OPAQUE-3DH)
 
 OPAQUE allows a client to authenticate to a server using a password without the server ever learning the password. The server stores only a registration record derived from the password, and both parties arrive at a shared session key upon successful authentication.
@@ -60,13 +60,14 @@ assert_eq!(auth_result.session_key, session_key);
 |---|---|
 | `common` | Byte-level utilities: I2OSP (RFC 8017), concat, XOR, constant-time equality |
 | `elliptic_curve` | `GroupSpec` trait and implementations for Weierstrass curves and ristretto255 |
-| `oprf` | RFC 9497 OPRF cipher suite — `derive_key_pair`, `finalize`, hash/HMAC |
+| `oprf` | RFC 9497 OPRF — cipher suite, `derive_key_pair`, `finalize`, the DLEQ proof layer, and the VOPRF/POPRF clients and servers |
 | `opaque` | RFC 9807 OPAQUE protocol — `OpaqueClient`, `OpaqueServer`, configuration, model types |
 
 ### Key Abstractions
 
 - **`GroupSpec`** — Trait abstracting over cryptographic group operations (hash-to-group, scalar multiplication, serialization). Adding a new cipher suite only requires implementing this trait.
-- **`OprfCipherSuite`** — Bundles a `GroupSpec` with hash algorithm and domain separation tags for a complete OPRF suite.
+- **`OprfCipherSuite`** — Bundles a `GroupSpec` with hash algorithm and domain separation tags for a complete OPRF suite. `new` builds base mode; `new_with_mode` selects VOPRF or POPRF.
+- **`VoprfClient` / `VoprfServer`, `PoprfClient` / `PoprfServer`** — RFC 9497 modes 0x01 and 0x02. Batched: one DLEQ proof covers the whole batch.
 - **`OpaqueCipherSuite`** — Wraps `OprfCipherSuite` with OPAQUE-specific size constants and HKDF operations.
 - **`OpaqueConfig`** — Protocol configuration: cipher suite, Argon2id KSF parameters, and context string.
 

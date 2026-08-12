@@ -241,6 +241,166 @@ impl GroupSpec for WeierstrassGroupSpec {
             }
         }
     }
+
+    fn generator(&self) -> Vec<u8> {
+        match self.curve_type {
+            CurveType::P256 => ProjectivePoint::<p256::NistP256>::generator()
+                .to_affine()
+                .to_sec1_point(true)
+                .as_bytes()
+                .to_vec(),
+            CurveType::P384 => ProjectivePoint::<p384::NistP384>::generator()
+                .to_affine()
+                .to_sec1_point(true)
+                .as_bytes()
+                .to_vec(),
+            CurveType::P521 => ProjectivePoint::<p521::NistP521>::generator()
+                .to_affine()
+                .to_sec1_point(true)
+                .as_bytes()
+                .to_vec(),
+        }
+    }
+
+    fn validate_element(&self, element: &[u8]) -> Result<(), &'static str> {
+        // Exactly Ne bytes with a 0x02/0x03 prefix. RFC 9497 §2.1 requires
+        // DeserializeElement to be the inverse of SerializeElement, and
+        // accepting the uncompressed (0x04) or hybrid encodings would let a
+        // re-encoding produce a proof transcript over different bytes than the
+        // peer hashed.
+        if element.len() != self.element_size() {
+            return Err("element is not Ne bytes");
+        }
+        if element[0] != 0x02 && element[0] != 0x03 {
+            return Err("element is not a compressed SEC1 encoding");
+        }
+        match self.curve_type {
+            CurveType::P256 => decode_point_p256(element).map(|_| ()),
+            CurveType::P384 => decode_point_p384(element).map(|_| ()),
+            CurveType::P521 => decode_point_p521(element).map(|_| ()),
+        }
+    }
+
+    fn deserialize_scalar(&self, bytes: &[u8]) -> Result<Vec<u8>, &'static str> {
+        let ns = self.scalar_size();
+        if bytes.len() != ns {
+            return Err("scalar is not Ns bytes");
+        }
+        // group_order() is the curve's own big-endian width, which is not always
+        // Ns: P-521's order is a 66-byte value returned in a 72-byte U576, so
+        // comparing against it unaligned would make every 66-byte scalar look
+        // shorter than the order and be accepted. Right-align first.
+        let order = self.group_order();
+        let aligned = &order[order.len() - ns..];
+        // Reducing instead of comparing would accept c and c + n as the same
+        // scalar, which is exactly the malleability this check exists to prevent.
+        if !lt_be(bytes, aligned) {
+            return Err("scalar is not canonical (>= group order)");
+        }
+        Ok(bytes.to_vec())
+    }
+
+    fn linear_combination(
+        &self,
+        scalars: &[&[u8]],
+        elements: &[&[u8]],
+    ) -> Result<Vec<u8>, &'static str> {
+        if scalars.len() != elements.len() || scalars.is_empty() {
+            return Err("scalars and elements must be the same non-zero length");
+        }
+        macro_rules! combine {
+            ($curve:ty, $decode_point:ident, $decode_scalar:ident) => {{
+                let mut acc = ProjectivePoint::<$curve>::identity();
+                for (scalar, element) in scalars.iter().zip(elements.iter()) {
+                    self.validate_element(element)?;
+                    let point = $decode_point(element)?;
+                    acc += point * $decode_scalar(scalar);
+                }
+                if bool::from(acc.is_identity()) {
+                    return Err("identity result rejected per RFC 9497 §2.1");
+                }
+                Ok(acc.to_affine().to_sec1_point(true).as_bytes().to_vec())
+            }};
+        }
+        match self.curve_type {
+            CurveType::P256 => combine!(p256::NistP256, decode_point_p256, decode_scalar_p256),
+            CurveType::P384 => combine!(p384::NistP384, decode_point_p384, decode_scalar_p384),
+            CurveType::P521 => combine!(p521::NistP521, decode_point_p521, decode_scalar_p521),
+        }
+    }
+
+    fn scalar_add(&self, a: &[u8], b: &[u8]) -> Vec<u8> {
+        dispatch_curve!(
+            self,
+            (decode_scalar_p256(a) + decode_scalar_p256(b))
+                .to_bytes()
+                .to_vec(),
+            (decode_scalar_p384(a) + decode_scalar_p384(b))
+                .to_bytes()
+                .to_vec(),
+            (decode_scalar_p521(a) + decode_scalar_p521(b))
+                .to_bytes()
+                .to_vec()
+        )
+    }
+
+    fn scalar_sub(&self, a: &[u8], b: &[u8]) -> Vec<u8> {
+        dispatch_curve!(
+            self,
+            (decode_scalar_p256(a) - decode_scalar_p256(b))
+                .to_bytes()
+                .to_vec(),
+            (decode_scalar_p384(a) - decode_scalar_p384(b))
+                .to_bytes()
+                .to_vec(),
+            (decode_scalar_p521(a) - decode_scalar_p521(b))
+                .to_bytes()
+                .to_vec()
+        )
+    }
+
+    fn scalar_mul(&self, a: &[u8], b: &[u8]) -> Vec<u8> {
+        dispatch_curve!(
+            self,
+            (decode_scalar_p256(a) * decode_scalar_p256(b))
+                .to_bytes()
+                .to_vec(),
+            (decode_scalar_p384(a) * decode_scalar_p384(b))
+                .to_bytes()
+                .to_vec(),
+            (decode_scalar_p521(a) * decode_scalar_p521(b))
+                .to_bytes()
+                .to_vec()
+        )
+    }
+
+    fn scalar_is_zero(&self, scalar: &[u8]) -> bool {
+        dispatch_curve!(
+            self,
+            bool::from(decode_scalar_p256(scalar).is_zero()),
+            bool::from(decode_scalar_p384(scalar).is_zero()),
+            bool::from(decode_scalar_p521(scalar).is_zero())
+        )
+    }
+}
+
+/// Big-endian `a < b` for equal-length byte strings, without early exit.
+///
+/// Constant time is not load-bearing here — both operands are public — but a
+/// branchless comparison is no harder to write than a branching one.
+fn lt_be(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return a.len() < b.len();
+    }
+    let mut lt: u8 = 0;
+    let mut gt: u8 = 0;
+    for (x, y) in a.iter().zip(b.iter()) {
+        let decided = lt | gt;
+        let mask = (decided == 0) as u8;
+        lt |= mask & ((x < y) as u8);
+        gt |= mask & ((x > y) as u8);
+    }
+    lt == 1
 }
 
 // --- P-256 helpers ---
