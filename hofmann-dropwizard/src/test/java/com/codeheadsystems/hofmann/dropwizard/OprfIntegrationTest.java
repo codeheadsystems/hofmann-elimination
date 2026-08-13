@@ -1,19 +1,24 @@
 package com.codeheadsystems.hofmann.dropwizard;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.codeheadsystems.hofmann.client.accessor.HofmannOprfAccessor;
 import com.codeheadsystems.hofmann.client.config.OprfClientConfig;
+import com.codeheadsystems.hofmann.client.exceptions.OprfModeNotEnabledException;
 import com.codeheadsystems.hofmann.client.manager.HofmannOprfClientManager;
 import com.codeheadsystems.hofmann.client.model.HofmannHashResult;
 import com.codeheadsystems.hofmann.client.model.ServerConnectionInfo;
 import com.codeheadsystems.hofmann.client.model.ServerIdentifier;
+import com.codeheadsystems.hofmann.model.oprf.PoprfRequest;
+import com.codeheadsystems.hofmann.model.oprf.VoprfRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dropwizard.testing.ResourceHelpers;
 import io.dropwizard.testing.junit5.DropwizardAppExtension;
 import io.dropwizard.testing.junit5.DropwizardExtensionsSupport;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -90,6 +95,32 @@ class OprfIntegrationTest {
     HofmannHashResult result2 = hofmannOprfClientManager.performHash("stable-input", SERVER_ID);
 
     assertThat(result1.hash()).isEqualTo(result2.hash());
+  }
+
+  /**
+   * A deployment with no verifiable keys configured must answer 404 on the verifiable endpoints,
+   * and must not advertise a mode list at all.
+   *
+   * <p>The absent list is a wire-compatibility requirement rather than a preference: every caller
+   * builds the client's {@code ObjectMapper} bare, leaving {@code FAIL_ON_UNKNOWN_PROPERTIES} on,
+   * so a released client would reject a config document carrying a field it has never seen. An
+   * empty list would be such a document.
+   */
+  @Test
+  void baseModeDeployment_advertisesNoModesAnd404sTheVerifiableEndpoints() {
+    OprfClientConfig oprfClientConfig = new OprfClientConfig();
+    Map<ServerIdentifier, ServerConnectionInfo> connections = Map.of(
+        SERVER_ID, new ServerConnectionInfo(URI.create(baseUrl() + "/oprf")));
+    HofmannOprfAccessor accessor = new HofmannOprfAccessor(oprfClientConfig,
+        HttpClient.newHttpClient(), new ObjectMapper(), connections);
+
+    assertThat(accessor.getOprfConfig(SERVER_ID).modes()).isNull();
+    assertThatThrownBy(() -> accessor.handleVerifiableRequest(
+        SERVER_ID, new VoprfRequest(List.of("02" + "00".repeat(32)), "req-1")))
+        .isInstanceOf(OprfModeNotEnabledException.class);
+    assertThatThrownBy(() -> accessor.handlePartiallyObliviousRequest(
+        SERVER_ID, new PoprfRequest(List.of("02" + "00".repeat(32)), "", "req-1")))
+        .isInstanceOf(OprfModeNotEnabledException.class);
   }
 
   private String baseUrl() {

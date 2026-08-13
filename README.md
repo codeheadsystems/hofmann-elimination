@@ -24,7 +24,7 @@ from stolen credentials. Usable with standard Java frameworks like Dropwizard an
 
 | Directory              | Description                                                                                              |
 |------------------------|----------------------------------------------------------------------------------------------------------|
-| [`hofmann-typescript`](hofmann-typescript/README.md) | Browser/Node TypeScript client — RFC 9497 OPRF + RFC 9807 OPAQUE-3DH. Built on `@noble/curves` and `@noble/hashes`. Includes a Vite-powered interactive demo page. |
+| [`hofmann-typescript`](hofmann-typescript/README.md) | Browser/Node TypeScript client — RFC 9497 OPRF (base, VOPRF and POPRF) + RFC 9807 OPAQUE-3DH. Built on `@noble/curves` and `@noble/hashes`. Includes a Vite-powered interactive demo page. |
 
 ### Demo environment
 

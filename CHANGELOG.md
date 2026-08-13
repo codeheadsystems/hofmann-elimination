@@ -15,8 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > session survive the password change meant to revoke it — so upgrading is strongly recommended for
 > anyone running OPAQUE or the standalone OPRF in production.
 >
-> It also adds RFC 9497 VOPRF and POPRF to `hofmann-rfc`. That part is a library addition: base
-> mode is unchanged, and no existing caller needs to do anything. See *Added* below.
+> It also adds RFC 9497 VOPRF and POPRF across the whole stack — library, HTTP endpoints, and
+> the Java, TypeScript and Rust clients. That part is additive: base mode is unchanged, and no
+> existing caller needs to do anything. See *Added* below.
 >
 > **This release contains breaking changes and is versioned 3.1.0, not 3.0.1.** Most deployments
 > need no code changes; the exceptions are listed under *Breaking changes* below. There is no
@@ -25,15 +26,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **RFC 9497 VOPRF (mode 0x01) and POPRF (mode 0x02)** in `hofmann-rfc`, alongside the existing
-  base mode. VOPRF lets a client verify the server evaluated with the key it publicly committed
-  to; POPRF adds a public input, agreed by both parties, that separates evaluations. Both are
-  available on all four cipher suites and support batching under a single proof. See
-  `hofmann-rfc/OPRF.md`.
+- **RFC 9497 VOPRF (mode 0x01) and POPRF (mode 0x02), end to end.** VOPRF lets a client verify
+  the server evaluated with the key it publicly committed to; POPRF adds a public input, agreed
+  by both parties, that separates evaluations. Both are available on all four cipher suites and
+  batch under a single proof. See `hofmann-rfc/OPRF.md`.
+
+  Available in every layer this project ships:
+
+  - **`hofmann-rfc`** — the managers, the DLEQ proof layer, and the wire models.
+  - **HTTP endpoints** — `POST /oprf/verifiable` and `POST /oprf/partially-oblivious` on both
+    the Dropwizard and Spring Boot adapters, answering `404` when the deployment has no key for
+    that mode.
+  - **`hofmann-client`** — `HofmannOprfClientManager.performVerifiableHash` and
+    `performPartiallyObliviousHash`, batch-first with single-input convenience overloads.
+  - **TypeScript** — `OprfHttpClient.evaluateVerifiable` / `evaluatePartiallyOblivious`, plus
+    `VoprfClient` and `PoprfClient` for callers supplying their own transport.
+  - **Rust** — `VoprfClient`/`VoprfServer` and `PoprfClient`/`PoprfServer`. Crypto only, by
+    design: the crate still has no HTTP dependency and wire encoding stays the caller's.
 
   Base mode is unchanged and remains the default, so OPAQUE and every existing caller keep
-  byte-identical behaviour. This is a library addition only — no HTTP endpoints, TypeScript, or
-  Rust support yet.
+  byte-identical behaviour. In TypeScript that is enforced rather than hoped for — the four
+  exported suite constants are still built in mode 0x00 and `getCipherSuite` returns those same
+  objects by reference, which a test asserts, because OPAQUE imports them directly.
 
   Two requirements the verifiable modes place on callers, both of which the protocol cannot
   enforce: the server public key must be **authenticated** out of band, since an attacker able to
@@ -45,6 +59,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   Conformance is pinned against the RFC's own Appendix A vectors — key derivation for all twelve
   (suite, mode) pairs, the DLEQ proof bytes, and full end-to-end exchanges at batch sizes 1 and 2.
+  All three languages read **one** vectors file rather than transcribing it, because
+  re-transcribing is how a port ends up testing a subset and passing. On top of that, the
+  Java↔TypeScript cross-client harness now exchanges a verified batch in both modes on all four
+  suites: TypeScript pins the key, POSTs its own batch to the Java server, and verifies the
+  proof. That harness was confirmed able to fail by swapping the POPRF element lists into
+  VOPRF's order — the classic port mistake, and one that round-trips against itself.
+
+- **`GET /oprf/config` advertises the enabled verifiable modes** and their public keys, so a
+  client can cross-check the key it pinned. **This is a diagnostic, not a trust source.** The
+  response is unauthenticated, so the check has only two outcomes — proceed with the pinned key,
+  or refuse — and never a third where it adopts one. What it buys is that a rotated key or a
+  mistyped pin fails once at startup saying what disagreed, rather than as an unexplained run of
+  `SecurityException: proof did not verify`.
+
+  The `modes` field is **omitted entirely** when no verifiable mode is configured, rather than
+  emitted as an empty list. Every caller in tree builds the client's `ObjectMapper` bare, which
+  leaves `FAIL_ON_UNKNOWN_PROPERTIES` on, so an already-released client would reject a document
+  carrying a field it has never seen. A base-mode deployment therefore emits the byte-identical
+  document it always has.
 
 - `allowEphemeralKeys` (Dropwizard) / `hofmann.allow-ephemeral-keys` (Spring Boot), and the
   removal of committed key fallbacks from the demo and testserver configs. See the ninth
@@ -59,6 +92,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   preamble when identities are absent.
 
 ### Fixed
+
+- **`HofmannOprfAccessor.getOprfConfig` requested the wrong path.** It built
+  `endpoint().resolve(endpoint().getPath() + "/oprf/config")`, which for the
+  `http://host:port/oprf` base that every caller in this repository configures resolved to
+  `/oprf/oprf/config`. Nothing caught it because every one of those callers also passes a config
+  override, so the auto-fetch path never ran against a live server — the bug was only reachable
+  by the documented auto-configuring constructor, which no test exercised end to end.
+
+  All four OPRF paths now share one resolver that accepts both conventions in the wild: the
+  server root, which `HofmannOpaqueAccessor` assumes, and the OPRF base itself. Two behaviour
+  changes fall out, both fixes: `getOprfConfig` against a `.../oprf` base now hits the right
+  path, and `handleRequest` against a root endpoint now POSTs to `/oprf` rather than `/`.
+
+  **One narrow case needs attention on upgrade.** A deployment that mounts the OPRF resource at
+  a path *not* ending in `/oprf` and points `endpoint()` straight at it will now have `/oprf`
+  appended. The new `ServerConnectionInfo(URI, String oprfBasePath)` component is the escape
+  hatch; the single-argument constructor is unchanged and keeps inferring.
 
 - **The base-mode OPRF client API forced the caller's secret into a `String`.**
   `OprfClientManager.hashingContext` and `HofmannOprfClientManager.performHash` now take `byte[]`,

@@ -106,6 +106,66 @@ impl GroupSpec for Ristretto255GroupSpec {
         let inv = s.invert();
         inv.to_bytes().to_vec()
     }
+
+    fn generator(&self) -> Vec<u8> {
+        RISTRETTO_BASEPOINT_POINT.compress().to_bytes().to_vec()
+    }
+
+    fn validate_element(&self, element: &[u8]) -> Result<(), &'static str> {
+        decompress_point(element).map(|_| ())
+    }
+
+    fn deserialize_scalar(&self, bytes: &[u8]) -> Result<Vec<u8>, &'static str> {
+        if bytes.len() != 32 {
+            return Err("scalar is not Ns bytes");
+        }
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(bytes);
+        // `from_canonical_bytes` is the whole point: `from_bytes_mod_order`
+        // would silently accept `c + n` as `c`, giving two byte strings that
+        // verify identically and making the proof malleable.
+        Option::<Scalar>::from(Scalar::from_canonical_bytes(arr))
+            .map(|s| s.to_bytes().to_vec())
+            .ok_or("scalar is not canonical (>= group order)")
+    }
+
+    fn linear_combination(
+        &self,
+        scalars: &[&[u8]],
+        elements: &[&[u8]],
+    ) -> Result<Vec<u8>, &'static str> {
+        if scalars.len() != elements.len() || scalars.is_empty() {
+            return Err("scalars and elements must be the same non-zero length");
+        }
+        let mut acc = RistrettoPoint::default();
+        for (scalar, element) in scalars.iter().zip(elements.iter()) {
+            let point = decompress_point(element)?;
+            acc += decode_scalar(scalar) * point;
+        }
+        let encoded = acc.compress().to_bytes();
+        // The ristretto255 identity encodes as 32 zero bytes rather than
+        // failing, so the check has to be on the encoding.
+        if encoded.iter().all(|&b| b == 0) {
+            return Err("identity result rejected per RFC 9497 §2.1");
+        }
+        Ok(encoded.to_vec())
+    }
+
+    fn scalar_add(&self, a: &[u8], b: &[u8]) -> Vec<u8> {
+        (decode_scalar(a) + decode_scalar(b)).to_bytes().to_vec()
+    }
+
+    fn scalar_sub(&self, a: &[u8], b: &[u8]) -> Vec<u8> {
+        (decode_scalar(a) - decode_scalar(b)).to_bytes().to_vec()
+    }
+
+    fn scalar_mul(&self, a: &[u8], b: &[u8]) -> Vec<u8> {
+        (decode_scalar(a) * decode_scalar(b)).to_bytes().to_vec()
+    }
+
+    fn scalar_is_zero(&self, scalar: &[u8]) -> bool {
+        decode_scalar(scalar) == Scalar::ZERO
+    }
 }
 
 /// Decodes little-endian bytes into a ristretto255 scalar via modular reduction.

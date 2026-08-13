@@ -15,14 +15,18 @@ Generate all secrets with:
 openssl rand -hex 32
 ```
 
-| Secret             | Config field       | Size     | Purpose                                                          |
-|--------------------|--------------------|----------|------------------------------------------------------------------|
-| Server AKE seed    | `serverKeySeedHex` | 32 bytes | Deterministically derives the server's long-term OPAQUE key pair |
-| OPRF seed          | `oprfSeedHex`      | 32 bytes | Deterministically derives the per-user OPRF evaluation key       |
-| OPRF master key    | `oprfMasterKeyHex` | 32 bytes | Evaluation key for the standalone `/oprf` endpoint               |
-| JWT signing secret | `jwtSecretHex`     | 32 bytes | HMAC-SHA256 signing key for session tokens                       |
+| Secret             | Config field        | Size     | Purpose                                                          |
+|--------------------|---------------------|----------|------------------------------------------------------------------|
+| Server AKE seed    | `serverKeySeedHex`  | 32 bytes | Deterministically derives the server's long-term OPAQUE key pair |
+| OPRF seed          | `oprfSeedHex`       | 32 bytes | Deterministically derives the per-user OPRF evaluation key       |
+| OPRF master key    | `oprfMasterKeyHex`  | 32 bytes | Evaluation key for the standalone `/oprf` endpoint               |
+| JWT signing secret | `jwtSecretHex`      | 32 bytes | HMAC-SHA256 signing key for session tokens                       |
+| VOPRF master key   | `voprfMasterKeyHex` | 32 bytes | Evaluation key for `/oprf/verifiable`.  Optional — empty disables the mode |
+| POPRF master key   | `poprfMasterKeyHex` | 32 bytes | Evaluation key for `/oprf/partially-oblivious`.  Optional — empty disables the mode |
 
-All four must be set for a stable production deployment.  Omitting any one causes either `IllegalStateException` on startup (seed pair) or non-deterministic output across restarts (OPRF master key, JWT secret).
+The first four must be set for a stable production deployment.  Omitting any one causes either `IllegalStateException` on startup (seed pair) or non-deterministic output across restarts (OPRF master key, JWT secret).
+
+The two verifiable-mode keys are optional; leaving them empty disables the mode and the endpoint answers `404`.  If you do enable them, **they must be two different secrets.**  RFC 9497 puts the mode byte in every domain-separation tag, so one secret serving two modes computes two different functions — but the §7.2.3 static Diffie-Hellman budget is per-key, and POPRF exposes an inversion oracle where the other modes expose a multiplication one.  There is deliberately no ephemeral fallback for either: the value of a verifiable mode is that clients pin the public key, and a key regenerated on restart would silently invalidate every pinned copy.
 
 **Never commit secrets to source control.** Use one of the patterns below to inject
 them at runtime.
@@ -236,6 +240,47 @@ OprfServerManager oprfManager = new OprfServerManager(
 ```
 
 The `processorIdentifier` string (e.g., `"key-v2"`) is returned in every `/oprf` response so callers can track which key version produced a given output.  Keep previous key versions available until all in-flight derived values have been re-derived under the new key.
+
+---
+
+## Publishing the verifiable-mode public keys
+
+Enabling VOPRF or POPRF adds an operational step that base mode does not have: **the server's
+public key has to reach clients out of band.**
+
+A verifiable mode lets a client check that the server evaluated with the key it publicly
+committed to.  That check is worth nothing if the key arrives from the same server, over the same
+connection, as the proof it authenticates — a server able to choose both can produce a verifying
+pair for any key it likes, and RFC 9497 §7.3 notes it can do so per client, partitioning users
+into individually identifiable buckets while every proof still verifies.
+
+So publish it through whatever channel already carries your other trust anchors: checked into the
+client's configuration, shipped in a signed bundle, distributed by your configuration management.
+Not by having the client call `/oprf/config`.
+
+Read the key off a configured server with:
+
+```bash
+curl -s https://your-server.example.com/oprf/config | jq -r '.modes[] | "\(.mode) \(.publicKeyHex)"'
+```
+
+`/oprf/config` advertises it so that clients can **cross-check** a key they already pinned and
+fail loudly on a mismatch.  That is a diagnostic, not a distribution channel: the response is
+unauthenticated, so the check can only refuse, never accept.  See
+[Client configuration](CLIENT_CONFIG.md).
+
+### Rotating a verifiable-mode key
+
+**Rotation is not transparent, and the order matters.** Every client holding the old pin will
+refuse the new key at the cross-check, and would fail proof verification even without it.
+
+1. Derive the new public key and distribute it to clients.
+2. Wait for the fleet to pick it up.
+3. Switch the server's `voprfMasterKeyHex` / `poprfMasterKeyHex`.
+
+Reversing steps 1 and 3 is an outage for every client that has not been updated.  If you need
+overlap, run the old and new keys as two deployments behind separate `processIdentifier` values
+and migrate clients across, rather than swapping under a live fleet.
 
 ---
 

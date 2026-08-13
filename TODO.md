@@ -46,9 +46,21 @@ Findings tagged **[reproduced]** were demonstrated by executing code, not by rea
   which is per-suite canonical, rather than by picking a side. `OpaqueCrossImplVectorsTest` had
   been reversing the bytes to compensate; that reversal is gone, so it is now a real
   cross-implementation check.
-- **Phase 6** — Java HTTP endpoints, `docs/oprf-api.yaml` and the transport request-size bound,
-  done. `hofmann-client`, TypeScript and Rust remain deferred by design, and are the obvious next
-  scope if a client needs the verifiable modes.
+- **Phase 6** — done, and then completed past its original scope. The Java HTTP endpoints,
+  `docs/oprf-api.yaml` and the transport request-size bound landed first; `hofmann-client`,
+  TypeScript and Rust followed, along with `GET /oprf/config` advertising the enabled modes and
+  a Java↔TypeScript cross-client check of a verified batch on all four suites.
+
+  **Rust is crypto only, by decision rather than omission.** It gained the mode threading, the
+  DLEQ layer and both clients and servers, but no HTTP client: the crate has never had a
+  transport layer, adding reqwest would bring a TLS stack and an async runtime choice it has so
+  far avoided, and callers already wire their own transport for OPAQUE. If that turns out to be
+  wrong, the wire format is specified in `docs/oprf-api.yaml` and the TypeScript client is a
+  worked example.
+
+  Also not done: Java verifying a TypeScript-generated proof. There is no TypeScript server, and
+  the RFC vectors pin the prover on both sides, so the reverse direction would test nothing the
+  vectors do not.
 - **Recovery lockout** — closed with the challenge id. `RecoveryChallenger` gained challenge-id
   overloads of `sendChallenge` and `verifyResponse`, and the manager always calls those, so the
   verification limiter is keyed on a value only the account owner receives. **There is no

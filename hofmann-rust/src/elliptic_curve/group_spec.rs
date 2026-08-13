@@ -78,4 +78,62 @@ pub trait GroupSpec: Send + Sync {
     ///
     /// Per RFC 9497 §2.1, `DeserializeElement` must reject the identity.
     fn is_identity_element(&self, element: &[u8]) -> bool;
+
+    // ── Verifiable-mode primitives (VOPRF / POPRF) ───────────────────────────
+    //
+    // Required rather than defaulted, deliberately. A default implementation
+    // would let a new group compile with arithmetic that silently ignores its
+    // own encoding conventions; a missing one is a compile error.
+
+    /// Returns the group generator **G**, serialized.
+    fn generator(&self) -> Vec<u8>;
+
+    /// Returns `Ok` only for a valid, canonical, non-identity element encoding.
+    ///
+    /// Identity handling is asymmetric across the supported groups: the NIST
+    /// identity has no compressed SEC1 encoding and decoding rejects it anyway,
+    /// while the ristretto255 identity is the all-zero encoding and decompresses
+    /// happily. Both are rejected here so the guarantee is uniform.
+    fn validate_element(&self, element: &[u8]) -> Result<(), &'static str>;
+
+    /// Parses a scalar from its canonical encoding, rejecting a non-canonical one.
+    ///
+    /// The range check is what makes a DLEQ proof non-malleable: without it, `c`
+    /// and `c + n` are distinct byte strings that verify identically. Every
+    /// positive test vector passes either way, so this needs its own negative
+    /// test.
+    ///
+    /// Distinct from [`Self::serialize_scalar`]'s inverse in one respect: that
+    /// method pads and truncates, where this one refuses.
+    fn deserialize_scalar(&self, bytes: &[u8]) -> Result<Vec<u8>, &'static str>;
+
+    /// Computes the multi-scalar multiplication Σ `scalars[i] * elements[i]`.
+    ///
+    /// One operation rather than a composition of multiply-then-add: the
+    /// composed form has to serialize an intermediate that may be the identity,
+    /// which has no encoding on the NIST curves, and so would report a zero
+    /// scalar as a malformed element rather than as the identity result
+    /// RFC 9497 asks the caller to detect.
+    ///
+    /// Returns `Err` if the sum is the identity.
+    fn linear_combination(
+        &self,
+        scalars: &[&[u8]],
+        elements: &[&[u8]],
+    ) -> Result<Vec<u8>, &'static str>;
+
+    /// Adds two scalars mod *n*, returning the suite's canonical encoding.
+    fn scalar_add(&self, a: &[u8], b: &[u8]) -> Vec<u8>;
+
+    /// Subtracts two scalars mod *n*, returning the suite's canonical encoding.
+    ///
+    /// The reduction is not optional: `r - c*k` is negative for the common case
+    /// in `GenerateProof`, and a signed intermediate does not encode.
+    fn scalar_sub(&self, a: &[u8], b: &[u8]) -> Vec<u8>;
+
+    /// Multiplies two scalars mod *n*, returning the suite's canonical encoding.
+    fn scalar_mul(&self, a: &[u8], b: &[u8]) -> Vec<u8>;
+
+    /// Returns `true` if the scalar is congruent to zero mod *n*.
+    fn scalar_is_zero(&self, scalar: &[u8]) -> bool;
 }

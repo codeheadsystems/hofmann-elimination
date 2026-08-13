@@ -449,15 +449,31 @@ public class HofmannAutoConfiguration {
   }
 
   /**
-   * OPRF client config response bean.
+   * OPRF client config response bean, advertising whichever verifiable modes are enabled.
+   *
+   * <p>The two managers are optional, and their absence is how a mode is disabled — the same
+   * signal {@code OprfController.requireMode} turns into a 404. Delegating to
+   * {@link VerifiableKeyConfig#clientConfigResponse} keeps this identical to what the Dropwizard
+   * adapter advertises; a client cross-checking a pinned key must get the same answer from both.
+   *
+   * <p><strong>{@code @ConditionalOnMissingBean} means a consumer-supplied
+   * {@code OprfClientConfigResponse} bean wins,</strong> and such a bean will not advertise modes
+   * unless the consumer builds it the same way. That only costs the client its mismatch check —
+   * the endpoints and their 404s are unaffected — but it is worth knowing before wondering why
+   * {@code modes} is missing on a deployment that has keys configured.
    *
    * @param props the props
+   * @param voprf the VOPRF manager, absent when the mode is disabled
+   * @param poprf the POPRF manager, absent when the mode is disabled
    * @return the oprf client config response
    */
   @Bean
   @ConditionalOnMissingBean
-  public OprfClientConfigResponse oprfClientConfig(HofmannProperties props) {
-    return new OprfClientConfigResponse(props.getOprfCipherSuite());
+  public OprfClientConfigResponse oprfClientConfig(
+      HofmannProperties props,
+      @Autowired(required = false) VoprfServerManager voprf,
+      @Autowired(required = false) PoprfServerManager poprf) {
+    return VerifiableKeyConfig.clientConfigResponse(props.getOprfCipherSuite(), voprf, poprf);
   }
 
   /**

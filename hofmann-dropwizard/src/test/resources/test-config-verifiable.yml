@@ -1,0 +1,32 @@
+# Hofmann test configuration with VOPRF and POPRF enabled.
+# NOT for production use.
+#
+# The two master keys are FIXED, not ephemeral, and deliberately so. The value of a verifiable
+# mode is that the client pins the server's public key; a key regenerated on restart would make
+# every pin stale, so there is no ephemeral fallback for these two and the test derives the
+# public keys it pins from these same values.
+#
+# They are also different from each other. RFC 9497 puts the mode byte in every domain-separation
+# tag, so one secret serving two modes computes two different functions — and POPRF exposes an
+# inversion oracle where VOPRF exposes a multiplication one, which is why §7.2.3's static
+# Diffie-Hellman budget is per-key.
+
+context: "hofmann-test"
+
+argon2MemoryKib: 0
+allowIdentityKsf: true
+allowEphemeralKeys: true
+
+serverKeySeedHex: ""
+oprfSeedHex: ""
+
+oprfMasterKeyHex: ""
+oprfProcessorId: "test-processor"
+
+oprfCipherSuite: "P256_SHA256"
+voprfMasterKeyHex: "4a1f9c3e7b25d8064f13a9e5c72b8d40e916f3a7c5b2d894e0163a7fc9d5b2e8"
+poprfMasterKeyHex: "7d2e5b91c4f38a06e7b1d945c83f2b60a94e7d31f85c206b3e7a9d148f5c2b30"
+
+jwtSecretHex: ""
+jwtTtlSeconds: 3600
+jwtIssuer: "hofmann-test"
