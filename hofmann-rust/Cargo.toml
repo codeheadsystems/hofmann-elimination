@@ -23,7 +23,7 @@ hmac = "0.13"
 digest = "0.11"
 
 # Argon2id
-argon2 = "0.5"
+argon2 = "0.6"
 
 # Random number generation
 rand = "0.10"
