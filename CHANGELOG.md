@@ -324,6 +324,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   t=2, p=1) and type-check the parameters before comparing them, because a non-numeric value
   yields `NaN` in JavaScript and every comparison with `NaN` is false.
 
+- **Spring Boot 4.1.1 ships `tomcat-embed-core` 11.0.24, one patch behind three critical Tomcat
+  advisories** (`hofmann-springboot`): GHSA-h3x4-894j-xpx5 (FORM authentication incorrect
+  authorization), GHSA-9xv2-5v5q-p794 (DIGEST authenticator authentication bypass by
+  capture-replay), and GHSA-gcx9-497g-6cp6 (improper access control), all fixed in 11.0.25. No
+  newer 4.1.x Spring Boot release exists yet to pick this up on its own. A Gradle dependency
+  constraint now floors `tomcat-embed-core`, `-el` and `-websocket` to 11.0.25 — the same
+  mechanism already used here for the Jetty and Logback advisories — without declaring Tomcat as
+  a direct dependency of this module, so a later Spring Boot release that ships a newer Tomcat
+  still wins and this constraint becomes a no-op.
+
 #### High
 
 - **`POST /opaque/registration/finish` was an unauthenticated, unthrottled enumeration oracle.**
