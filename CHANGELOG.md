@@ -393,6 +393,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   referenced by mutable tags in the same job. All actions are now pinned by commit SHA, signing
   material is scrubbed after publish, and the manual release refuses to publish from a ref that
   is not an ancestor of `main`.
+- **`dropwizard-testing` pulled two vulnerable Apache HttpComponents Core advisories, test-scope
+  only** (`hofmann-dropwizard`): its `jersey-apache5-connector` dependency resolved
+  `httpcore5`/`httpcore5-h2` 5.4, one patch behind GHSA-hf6x-8p5f-cgmf (HTTP/1 header parsing
+  memory-exhaustion DoS) and GHSA-v3jc-474w-2wm6 (HPackDecoder unlimited header list size before
+  SETTINGS ACK), both fixed in 5.4.3. Floored via a `testImplementation` constraint rather than
+  `api`, since these never appear outside this module's own test classpath — nothing published
+  from this module depends on them.
+
+#### Medium
+
+- **The same `jersey-apache5-connector` dependency chain also resolved `httpclient5` 5.6.1**,
+  one patch behind GHSA-hjcp-jmpx-g3qm (connection leak on a Content-Encoding decode error leads
+  to pool-exhaustion DoS), fixed in 5.6.3. Floored alongside the two entries above, same
+  `testImplementation` scope and reasoning.
+- **`buildSrc`'s `kotlin-dsl` plugin resolved `kotlin-gradle-plugin` 2.4.0 onto its own
+  plugin-resolution classpath**, three minor versions behind GHSA-r937-wjx7-w2jp (unsafe
+  deserialization in the Kotlin build cache enables code execution), first fixed in the
+  2.4.20-Beta1 pre-release; floored to the stable 2.4.20 instead. This dependency compiles the
+  convention plugin scripts under `buildSrc/src/main` and never reaches a published artifact.
+  Because it is resolved during plugin application rather than through the project's own
+  `dependencies {}` block, the floor is declared on `buildscript.configurations.classpath`
+  instead of the `constraints` block used for every other entry in this section — the only
+  mechanism Gradle exposes for constraining a plugin's own transitive dependency.
 
 ### Breaking changes
 

@@ -11,3 +11,21 @@ repositories {
     // Use the plugin portal to apply community plugins in convention plugins.
     gradlePluginPortal()
 }
+
+// The `kotlin-dsl` plugin (via gradle-kotlin-dsl-plugins 6.7.3, bundled with Gradle 9.7.1) pulls
+// org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.0 onto buildSrc's own plugin-resolution
+// classpath, not into any published artifact — it only compiles the convention plugin scripts
+// under src/main. GHSA-r937-wjx7-w2jp: unsafe deserialization in the Kotlin build cache enables
+// code execution, fixed in 2.4.20-Beta1; floored here to the stable 2.4.20 release instead. This
+// classpath is resolved during plugin application via `plugins {}`, before the project's own
+// `dependencies {}` block runs, so the floor has to go on `buildscript.configurations.classpath`
+// rather than the `constraints` block used elsewhere in this repo for the same purpose.
+buildscript {
+    dependencies {
+        constraints {
+            classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.20") {
+                because("GHSA-r937-wjx7-w2jp: unsafe deserialization in the Kotlin build cache enables code execution; kotlin-dsl 6.7.3 pulls 2.4.0, fixed in 2.4.20-Beta1 (floored to the stable 2.4.20 release instead)")
+            }
+        }
+    }
+}
