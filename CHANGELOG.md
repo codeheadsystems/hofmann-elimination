@@ -195,6 +195,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     artefact. Whether that is also *worse* than the single long sleep it replaced is one
     measurement against an erratic baseline and is not established. Raise the floor if your store
     is anywhere near it; tracked in TODO.md.
+  - **The regression test for the gross failure is currently disabled.**
+    `AuthStartStoreTimingTest.theStoresHitMissGapDoesNotReachTheCaller` — the one that would catch
+    the floor being removed, mis-scoped, or started after the lookup — was commented out as flaky
+    shortly before this release. The floor itself is unchanged and the other four tests in that
+    class still run; what is not running is the check that the store's millisecond-scale gap stays
+    off the wire. Its own javadoc anticipated exactly this outcome, noting that "an intermittent
+    red is read as flakiness and muted". Re-enabling it needs a threshold that reports the code
+    rather than the machine, or a harness that is not a shared CI box.
 
   `sleepUntil` now ends every floor with a settling phase of fixed shape — one coarse sleep, then
   steps of 100 µs — instead of one long sleep. `Thread.sleep` does not exit exactly on time, and
@@ -387,6 +395,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is not an ancestor of `main`.
 
 ### Breaking changes
+
+- **Rust: `GroupSpec` gained eight required methods**, so any downstream implementation of that
+  trait stops compiling until it supplies them: `generator`, `validate_element`,
+  `deserialize_scalar`, `linear_combination`, `scalar_add`, `scalar_sub`, `scalar_mul` and
+  `scalar_is_zero`. The DLEQ layer needs all eight and the trait had none of them.
+
+  **Required rather than defaulted, deliberately.** A default implementation would have to guess
+  at the encoding conventions the trait exists to own — big-endian scalars on the NIST curves,
+  little-endian on ristretto255; an identity element that has no compressed encoding on three
+  curves and a perfectly valid all-zero one on the fourth. A group that inherited those defaults
+  would compile and compute the wrong answer. A missing method is a compile error, which is the
+  outcome to prefer.
+
+  Only implementors of the trait are affected; callers of `WeierstrassGroupSpec`,
+  `Ristretto255GroupSpec`, `OprfCipherSuite`, `OpaqueClient` and `OpaqueServer` are not. As in
+  3.0.0, this is a Rust-crate-only break: the Java artifacts and the TypeScript package are
+  unaffected by it.
+
+- **Three Java records gained components.** `ServerConnectionInfo`, `OprfClientConfig` and
+  `OprfClientConfigResponse` each kept a secondary constructor with the old signature, so
+  ordinary construction still compiles unchanged:
+
+  | Record | Was | Now |
+  |---|---|---|
+  | `ServerConnectionInfo` | `(URI endpoint)` | `(URI endpoint, String oprfBasePath)` |
+  | `OprfClientConfig` | `(OprfCipherSuite suite)` | `(OprfCipherSuite, String voprfServerPublicKeyHex, String poprfServerPublicKeyHex)` |
+  | `OprfClientConfigResponse` | `(String cipherSuite)` | `(String cipherSuite, List<OprfModeInfo> modes)` |
+
+  What does break is anything depending on the *canonical* shape: a record deconstruction pattern,
+  reflective component enumeration, or a subclass-style copy that rebuilds one positionally.
+  Nothing in tree does any of those — the addition was checked against every call site — but a
+  consumer might. `equals`/`hashCode` also now consider the new components, which for two configs
+  differing only in a pinned key is the correct answer rather than a change of behaviour.
 
 - **The OPRF client contexts are `AutoCloseable` and copy their input.** `ClientHashingContext`,
   `VoprfClientContext` and `PoprfClientContext` gained `close()`, and `ClientHashingContext` now
@@ -665,6 +706,10 @@ Recorded in `TODO.md` rather than left implied:
   the limiter can no longer be exhausted, but a targeted lockout is cheap. Closing it needs
   something an attacker cannot supply on the victim's behalf — proof-of-work, or the email round
   trip that recovery ownership rests on anyway.
+- **`authStart`'s constant-time floor ships without its regression test.**
+  `theStoresHitMissGapDoesNotReachTheCaller` is commented out as flaky, so nothing in the build
+  would notice the floor being removed or mis-scoped. The fix is in and the reasoning behind it is
+  recorded under *Security*; the guard against it silently regressing is not. See that entry.
 
 ## [3.0.0] - 2026-08-04
 
