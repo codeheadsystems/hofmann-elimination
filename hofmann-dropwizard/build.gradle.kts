@@ -21,7 +21,7 @@ dependencies {
         // Client/Core 5.x, test-scope only — these never reach a published consumer of this
         // module. Floored on testImplementation (not api) to match that: the constraint has
         // nothing to bind to outside this module's own test classpath.
-        testImplementation("org.apache.httpcomponents.client5:httpclient5:5.6.3") {
+        testImplementation("org.apache.httpcomponents.client5:httpclient5:5.6.4") {
             because("GHSA-hjcp-jmpx-g3qm: connection leak on Content-Encoding decode error leads to pool exhaustion DoS, fixed in 5.6.3")
         }
         testImplementation("org.apache.httpcomponents.core5:httpcore5:5.4.3") {
