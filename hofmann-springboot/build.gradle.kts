@@ -24,16 +24,16 @@ dependencies {
         // control). A constraint (not `force`) floors the resolved version without declaring
         // Tomcat as a direct dependency, so a future Spring Boot release that ships a newer
         // Tomcat still wins and this entry becomes a no-op rather than holding anything back.
-        api("org.apache.tomcat.embed:tomcat-embed-core:11.0.25") {
+        api("org.apache.tomcat.embed:tomcat-embed-core:11.0.26") {
             because("3 critical GHSAs (h3x4-894j-xpx5, 9xv2-5v5q-p794, gcx9-497g-6cp6) fixed in 11.0.25; Spring Boot 4.1.1 ships 11.0.24")
         }
         // tomcat-embed-el and tomcat-embed-websocket are not named in the advisories, but Tomcat
         // publishes the embed family in lockstep, so core 11.0.25 alongside el/websocket 11.0.24
         // is not a combination Tomcat itself tests.
-        api("org.apache.tomcat.embed:tomcat-embed-el:11.0.25") {
+        api("org.apache.tomcat.embed:tomcat-embed-el:11.0.26") {
             because("keeps tomcat-embed-el in step with the floored tomcat-embed-core")
         }
-        api("org.apache.tomcat.embed:tomcat-embed-websocket:11.0.25") {
+        api("org.apache.tomcat.embed:tomcat-embed-websocket:11.0.26") {
             because("keeps tomcat-embed-websocket in step with the floored tomcat-embed-core")
         }
     }
