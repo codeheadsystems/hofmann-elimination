@@ -24,10 +24,10 @@ dependencies {
         testImplementation("org.apache.httpcomponents.client5:httpclient5:5.6.4") {
             because("GHSA-hjcp-jmpx-g3qm: connection leak on Content-Encoding decode error leads to pool exhaustion DoS, fixed in 5.6.3")
         }
-        testImplementation("org.apache.httpcomponents.core5:httpcore5:5.4.3") {
+        testImplementation("org.apache.httpcomponents.core5:httpcore5:5.4.4") {
             because("GHSA-hf6x-8p5f-cgmf: HTTP/1 header parsing memory-exhaustion DoS, fixed in 5.4.3")
         }
-        testImplementation("org.apache.httpcomponents.core5:httpcore5-h2:5.4.3") {
+        testImplementation("org.apache.httpcomponents.core5:httpcore5-h2:5.4.4") {
             because("GHSA-v3jc-474w-2wm6: HPackDecoder unlimited header list size before SETTINGS ACK, fixed in 5.4.3")
         }
     }
