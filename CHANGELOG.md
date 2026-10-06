@@ -400,6 +400,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   SETTINGS ACK), both fixed in 5.4.3. Floored via a `testImplementation` constraint rather than
   `api`, since these never appear outside this module's own test classpath — nothing published
   from this module depends on them.
+- **`vite` pulled a vulnerable `source-map-js`, dev-only** (`hofmann-typescript`): its `postcss`
+  dependency resolved `source-map-js` 1.2.1, one patch behind GHSA-68fv-2mgg-jv7q (event-loop
+  DoS through indexed source-map section offsets), fixed in 1.2.2. Raised in the lockfile only;
+  the package is a build-time dependency and is not bundled into the published library.
 
 #### Medium
 
