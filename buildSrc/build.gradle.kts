@@ -23,7 +23,7 @@ repositories {
 buildscript {
     dependencies {
         constraints {
-            classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.20") {
+            classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.21") {
                 because("GHSA-r937-wjx7-w2jp: unsafe deserialization in the Kotlin build cache enables code execution; kotlin-dsl 6.7.3 pulls 2.4.0, fixed in 2.4.20-Beta1 (floored to the stable 2.4.20 release instead)")
             }
         }
