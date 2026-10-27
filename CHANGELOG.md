@@ -420,6 +420,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `dependencies {}` block, the floor is declared on `buildscript.configurations.classpath`
   instead of the `constraints` block used for every other entry in this section — the only
   mechanism Gradle exposes for constraining a plugin's own transitive dependency.
+- **`hofmann-rust`'s `Cargo.lock` pinned `crypto-bigint` 0.7.5 and `ctutils` 0.4.2**, both
+  reached through the `p256`/`p384`/`p521` curve crates. RUSTSEC-2026-0387 (timing variability
+  in `crypto-bigint` operations intended to be constant-time, fixed in 0.7.6; 0.7.5 is also
+  yanked) and RUSTSEC-2026-0385 (non-constant-time mask generation and `u128` comparisons in
+  `ctutils`, fixed in 0.4.4) failed the `cargo audit` CI step. The lockfile now resolves
+  `crypto-bigint` 0.7.10 and `ctutils` 0.4.6. A library's lockfile does not travel to its
+  consumers, so downstream crates should run `cargo update -p crypto-bigint -p ctutils` too.
 
 ### Breaking changes
 
